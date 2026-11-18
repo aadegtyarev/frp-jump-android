@@ -1321,6 +1321,7 @@
     <string name="window_rule_reply">History + reply is already %1$d&#160;%% of the window</string>
     <string name="window_rule_summary">History + summary is already %1$d&#160;%% of the window</string>
     <string name="window_rule_both">History + reply and history + summary are already %1$d&#160;%% of the window</string>
+    <string name="window_rule_gap">Summary must be at least %1$d&#160;%% of the window smaller than history</string>
     <string name="window_reply_limited">Was %1$s tokens, more than %2$d&#160;%% of the window. Kept at %2$d&#160;%%.</string>
     <string name="window_bar_history">History · %1$d&#160;%%</string>
     <string name="window_bar_reply">Reply · %1$d&#160;%%</string>

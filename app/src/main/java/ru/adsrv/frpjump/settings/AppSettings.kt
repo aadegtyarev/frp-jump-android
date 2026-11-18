@@ -403,9 +403,10 @@ class SettingsStore(private val storage: TextStorage) {
         fun optional(key: String, range: IntRange): Int? = (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.coerceIn(range)
         val summary = number("summary_size_percent", WindowSplit.SUMMARY_RANGE, WindowSplit.DEFAULT_SUMMARY)
         val reply = optional("reply_percent", WindowSplit.REPLY_RANGE)
-        val history = optional("history_percent", WindowSplit.HISTORY_RANGE)?.let { minOf(it, WindowSplit.SUM_MAX - (reply ?: WindowSplit.DEFAULT_REPLY), WindowSplit.SUM_MAX - summary) }
-        limits = limits.copy(summaryPercentSet = optional("summary_percent", AssistantLimits.SUMMARY_PERCENT_RANGE), summarySizePercent = summary,
-            historyPercentSet = history, replyPercentSet = reply,
+        // With the history set, the rules hold on read: the history is lowered first, then the summary gives way (the history is never raised).
+        val fitted = optional("history_percent", WindowSplit.HISTORY_RANGE)?.let { WindowSplit(it, reply ?: WindowSplit.DEFAULT_REPLY, summary).fitted() }
+        limits = limits.copy(summaryPercentSet = optional("summary_percent", AssistantLimits.SUMMARY_PERCENT_RANGE), summarySizePercent = fitted?.summary ?: summary,
+            historyPercentSet = fitted?.history, replyPercentSet = reply,
             replyLimitedFrom = (group?.get("reply_limited_from") as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it > 0 })
         return WireJson.encodeToJsonElement(limits)
     }

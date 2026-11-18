@@ -61,6 +61,8 @@ class AssistantProviderScreenTest {
         }
         compose.onAllNodesWithTag("assistant_summary_percent").assertCountEquals(0)
         field("assistant_summary_model").performScrollTo().performTextReplacement("summary-model")
+        // The keyboard is put away first: in landscape at 200 % it leaves no room for the Save button above it.
+        androidx.test.espresso.Espresso.closeSoftKeyboard(); compose.waitForIdle()
         save().assertIsEnabled().performClick()
         compose.runOnIdle {
             assertEquals(configured.settings!!.summaryPercent,saved!!.settings.summaryPercent)
@@ -168,12 +170,8 @@ class AssistantProviderScreenTest {
         compose.onNodeWithText(compose.activity.getString(R.string.assistant_provider_stale)).assertExists()
     }
     private fun tagText(tag: String) = compose.onNodeWithTag(tag).performScrollTo()
-    /** A stepper button pressed by its action: scrolled to the top of the view it lies under the pinned bar, where a touch would reach the bar. */
-    private fun tap(tag: String) {
-        val node = compose.onNodeWithTag(tag).performScrollTo()
-        // A button at the end of its range has no click action: a press does nothing.
-        if (node.fetchSemanticsNode().config.contains(SemanticsActions.OnClick)) node.performSemanticsAction(SemanticsActions.OnClick)
-    }
+    /** A stepper button pressed by a real touch, after it is scrolled into view (the pinned bar has its own strip, so nothing lies over the button). */
+    private fun tap(tag: String) { compose.onNodeWithTag(tag).performScrollTo().performClick() }
     /** The screen in the run's locale (the activity's own when none is given), as the first test of this class shows it. */
     private fun show(snapshot: AssistantProviderSnapshot, limits: AssistantLimits, onLimits: (AssistantLimits) -> Unit = {},
         onSave: (AssistantProviderDraft, (String?) -> Unit) -> Unit = { _, _ -> }) {
@@ -191,23 +189,10 @@ class AssistantProviderScreenTest {
     private val localeContext get() = compose.activity.createConfigurationContext(Configuration(compose.activity.resources.configuration).apply {
         setLocale(java.util.Locale.forLanguageTag(InstrumentationRegistry.getArguments().getString("chatLocale") ?: "en")) })
 
-    /**
-     * What the owner sees when a finger has scrolled the row of [tag] up to just below the pinned bar: drags until the row's top is a few pixels
-     * under the bar's bottom (the bar is stuck at the top of the view by then), then takes the screen.
-     */
+    /** What the owner sees with the row of [tag] scrolled to the top of the scrolling part: the pinned bar above it and the row, at one glance. */
     private fun glance(tag: String, name: String) {
+        compose.onNodeWithTag(tag).performScrollTo(); compose.waitForIdle()
         compose.onNodeWithTag(tag).performScrollTo()
-        repeat(10) {
-            val row = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.top
-            val bar = compose.onNodeWithTag("window_bar").fetchSemanticsNode().boundsInRoot.bottom
-            val want = bar + 12f - row
-            if (kotlin.math.abs(want) > 20f) compose.onRoot().performTouchInput {
-                val from = androidx.compose.ui.geometry.Offset(centerX, centerY)
-                val dy = want.coerceIn(-height * 0.4f, height * 0.4f)
-                // A drag that stops before the finger lifts: no fling carries it further.
-                down(from); moveTo(from + androidx.compose.ui.geometry.Offset(0f, dy)); advanceEventTime(300); up()
-            }
-        }
         capture(name)
     }
 
@@ -255,13 +240,54 @@ class AssistantProviderScreenTest {
         tagText("window_history_plus").assertIsEnabled(); tagText("window_summary_plus").assertIsEnabled(); tagText("window_reply_plus").assertIsEnabled()
         compose.onAllNodesWithTag("window_history_hint").assertCountEquals(0)
         compose.onAllNodesWithTag("window_summary_hint").assertCountEquals(0); compose.onAllNodesWithTag("window_reply_hint").assertCountEquals(0)
-        // The ranges: history 40-90, reply 1-20, summary 5-40.
+        // The ranges: history 40-90, reply 1-20, summary 5-40 (with the history at 40 the summary stops at 30).
         repeat(12) { tap("window_history_minus") }
         tagText("window_history_value").assertTextEquals("40"); tagText("window_history_minus").assertIsNotEnabled()
         repeat(25) { tap("window_reply_minus") }
         tagText("window_reply_value").assertTextEquals("1"); tagText("window_reply_minus").assertIsNotEnabled()
         repeat(9) { tap("window_summary_plus") }
-        tagText("window_summary_value").assertTextEquals("40"); tagText("window_summary_plus").assertIsNotEnabled()
+        tagText("window_summary_value").assertTextEquals("30"); tagText("window_summary_plus").assertIsNotEnabled()
+        tagText("window_summary_hint").assertTextEquals(localeContext.getString(R.string.window_rule_gap, 10))
+    }
+
+    @Test fun theSummaryStaysTenPercentUnderTheHistoryAndTheHistoryStopsAtTheSummary() {
+        show(configured, AssistantLimits())
+        val gap = localeContext.getString(R.string.window_rule_gap, 10)
+        // History 75 -> 45 (six steps), then the summary up to 35: 45 - 35 = 10.
+        repeat(6) { tap("window_history_minus") }
+        tagText("window_history_value").assertTextEquals("45")
+        compose.onAllNodesWithTag("window_history_hint").assertCountEquals(0)
+        repeat(4) { tap("window_summary_plus") }
+        tagText("window_summary_value").assertTextEquals("35")
+        tagText("window_summary_plus").assertIsNotEnabled(); tagText("window_summary_hint").assertTextEquals(gap)
+        // The history cannot go under summary + 10: its minus is off, with the same line.
+        tagText("window_history_minus").assertIsNotEnabled(); tagText("window_history_hint").assertTextEquals(gap)
+        // The summary down by one step gives the history one more step, and the lines go.
+        tap("window_summary_minus")
+        tagText("window_history_minus").assertIsEnabled(); compose.onAllNodesWithTag("window_history_hint").assertCountEquals(0)
+        compose.onAllNodesWithTag("window_summary_hint").assertCountEquals(0)
+        capture("window-group-gap")
+    }
+
+    @Test fun aRowBroughtIntoViewIsNeverUnderThePinnedBarOrTheTitle() {
+        show(configured, AssistantLimits())
+        // TalkBack focus and bring-into-view scroll the row into the scrolling part: its whole box must lie below the bar's strip and above the Save button.
+        val title = localeContext.getString(R.string.assistant_provider_title)
+        val saveText = localeContext.getString(R.string.save)
+        // History at its top gives the two lines (a hint under a row is a row too).
+        tap("window_history_plus")
+        for (tag in listOf("window_history", "window_history_hint", "window_reply", "window_summary", "window_summary_hint", "window_reply_plus", "window_summary_minus")) {
+            compose.onNodeWithTag(tag).performScrollTo(); compose.waitForIdle()
+            compose.onNodeWithTag(tag).assertIsDisplayed()
+            val node = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            val bar = compose.onNodeWithTag("window_bar").fetchSemanticsNode().boundsInRoot
+            val titleBox = compose.onNodeWithText(title).fetchSemanticsNode().boundsInRoot
+            val saveBox = compose.onNodeWithText(saveText).fetchSemanticsNode().boundsInRoot
+            assertTrue("$tag top ${node.top} is under the bar's bottom ${bar.bottom}", node.top >= bar.bottom - 1f || node.bottom <= bar.top + 1f)
+            assertTrue("$tag is under the title: ${node.top} < ${titleBox.bottom}", node.top >= titleBox.bottom - 1f)
+            assertTrue("the bar is under the title: ${bar.top} < ${titleBox.bottom}", bar.top >= titleBox.bottom - 1f)
+            assertTrue("$tag is under the Save button", node.bottom <= saveBox.top + 1f)
+        }
     }
 
     @Test fun saveStoresTheThreeSharesAfterTheProviderAndTheTokenMirrorIsTheReplyShare() {

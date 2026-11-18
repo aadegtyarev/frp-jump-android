@@ -2,7 +2,6 @@ package ru.adsrv.frpjump.ui.settings
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,68 +41,68 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.settings.WindowSplit
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.FORM_BODY_PADDING_V
 
+/** Where the group's bar sits in the form's scroll (the content's y of its place), so the form can show it above the scroll once it is passed. */
+internal class WindowPin { var slotY by mutableIntStateOf(Int.MAX_VALUE) }
+
 /**
  * «Окно модели»: the one group of the provider form that splits the model's context window. In order: [top] (the window's size), the bar of the
  * whole window, three steppers (history before shortening, the model's reply, the summary) and [bottom] (the summary model). Each stepper is one
- * piece of the bar; the margin is what is left and is not a setting. The bar (its pieces' labels) is pinned at the top of the form's view while the group's rows scroll
- * under it, until the steppers end, so the bar and the value being changed are in sight together at any font size. [window] is null while the size field holds no number.
+ * piece of the bar; the margin is what is left and is not a setting. Once the form is scrolled past the bar's place ([pinned]), the form shows the bar
+ * in its own strip above the scrolling part ([pin] tells where that place is) and the place is empty: the rows scroll below the bar and are never under
+ * it, so touch, TalkBack focus and bring-into-view all stay clear of it. [window] is null while the size field holds no number.
  */
 @Composable
 internal fun AssistantWindowGroup(
-    window: Int?, split: WindowSplit, limitedFrom: Int?, enabled: Boolean, scroll: ScrollState, onSplit: (WindowSplit) -> Unit,
+    window: Int?, split: WindowSplit, limitedFrom: Int?, enabled: Boolean, pin: WindowPin, pinned: Boolean, onSplit: (WindowSplit) -> Unit,
     top: @Composable ColumnScope.() -> Unit, bottom: @Composable ColumnScope.() -> Unit,
 ) {
     val inset = with(LocalDensity.current) { FORM_BODY_PADDING_V.roundToPx() }
     var groupTop by remember { mutableIntStateOf(0) }
-        var slotTop by remember { mutableIntStateOf(0) }
-    var slotHeight by remember { mutableIntStateOf(0) }
-    var cardBottom by remember { mutableIntStateOf(0) }
     Column(Modifier.fillMaxWidth().onGloballyPositioned { groupTop = it.positionInParent().y.toInt() },
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.window_group_title), style = MaterialTheme.typography.titleMedium, color = AppTheme.colors.ink, modifier = Modifier.semantics { heading() })
         top()
-        // The bar keeps its place in the flow; once its top reaches the top of the view it is moved down by the scroll, to the end of the group.
-        Box(Modifier.fillMaxWidth().zIndex(1f).onGloballyPositioned { slotTop = it.positionInParent().y.toInt(); slotHeight = it.size.height }) {
-            Box(Modifier.fillMaxWidth().offset {
-                val stuck = scroll.value - (inset + groupTop + slotTop)
-                IntOffset(0, stuck.coerceIn(0, (cardBottom - slotTop - slotHeight).coerceAtLeast(0)))
-            }) { WindowBar(window, split) }
-        }
+        // The bar's place: the bar itself, or nothing while the form shows it above the scroll (the place keeps its top, so the form knows where to switch back).
+        Box(Modifier.fillMaxWidth().onGloballyPositioned { pin.slotY = inset + groupTop + it.positionInParent().y.toInt() }) { if (!pinned) WindowBar(window, split) }
         WindowMarks(window, split)
-        Surface(color = AppTheme.colors.card, shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.fillMaxWidth().onGloballyPositioned { cardBottom = it.positionInParent().y.toInt() + it.size.height }) {
+        Surface(color = AppTheme.colors.card, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
             Column {
-                val historyAtLimit = split.history >= split.historyMax() && split.historyMax() < WindowSplit.HISTORY_RANGE.last
-                val replyAtLimit = split.reply >= split.replyMax() && split.replyMax() < WindowSplit.REPLY_RANGE.last
-                val summaryAtLimit = split.summary >= split.summaryMax() && split.summaryMax() < WindowSplit.SUMMARY_RANGE.last
-                val ruleReply = stringResource(R.string.window_rule_reply, WindowSplit.SUM_MAX)
-                val ruleSummary = stringResource(R.string.window_rule_summary, WindowSplit.SUM_MAX)
-                val ruleBoth = stringResource(R.string.window_rule_both, WindowSplit.SUM_MAX)
-                // Which of the two rules stops the history's plus: the one whose pair is at the whole (both, when both are).
+                val sums = WindowSplit.SUM_MAX
+                val ruleReply = stringResource(R.string.window_rule_reply, sums)
+                val ruleSummary = stringResource(R.string.window_rule_summary, sums)
+                val ruleBoth = stringResource(R.string.window_rule_both, sums)
+                val ruleGap = stringResource(R.string.window_rule_gap, WindowSplit.SUMMARY_GAP)
+                val replyFull = split.history + split.reply >= sums
+                val summaryFull = split.history + split.summary >= sums
+                // The history's plus is stopped by the two sums (the one whose pair is at the whole, both when both are); its minus by the summary's gap.
+                val historyAtMax = split.history >= split.historyMax() && split.historyMax() < WindowSplit.HISTORY_RANGE.last
+                val historyAtMin = split.history <= split.historyMin() && split.historyMin() > WindowSplit.HISTORY_RANGE.first
                 val historyRule = when {
-                    !historyAtLimit -> null
-                    split.history + split.reply >= WindowSplit.SUM_MAX && split.history + split.summary >= WindowSplit.SUM_MAX -> ruleBoth
-                    split.history + split.reply >= WindowSplit.SUM_MAX -> ruleReply
-                    else -> ruleSummary
+                    historyAtMax -> if (replyFull && summaryFull) ruleBoth else if (replyFull) ruleReply else ruleSummary
+                    historyAtMin -> ruleGap
+                    else -> null
                 }
-                LimitRow("window_history", stringResource(R.string.window_history), split.history, WindowSplit.HISTORY_RANGE.first..split.historyMax(), 5, historyRule) {
+                LimitRow("window_history", stringResource(R.string.window_history), split.history, split.historyMin()..split.historyMax(), 5, historyRule) {
                     if (enabled) onSplit(split.copy(history = it))
                 }
                 RowDivider()
                 val limited = limitedFrom?.let { stringResource(R.string.window_reply_limited, limitNumber(it), WindowSplit.REPLY_RANGE.last) }
+                val replyAtMax = split.reply >= split.replyMax() && split.replyMax() < WindowSplit.REPLY_RANGE.last
                 LimitRow("window_reply", stringResource(R.string.window_reply), split.reply, WindowSplit.REPLY_RANGE.first..split.replyMax(), 1,
-                    listOfNotNull(limited, ruleReply.takeIf { replyAtLimit }).joinToString("\n").ifEmpty { null }) { if (enabled) onSplit(split.copy(reply = it)) }
+                    listOfNotNull(limited, ruleReply.takeIf { replyAtMax }).joinToString("\n").ifEmpty { null }) { if (enabled) onSplit(split.copy(reply = it)) }
                 RowDivider()
+                val summaryAtMax = split.summary >= split.summaryMax() && split.summaryMax() < WindowSplit.SUMMARY_RANGE.last
                 LimitRow("window_summary", stringResource(R.string.window_summary), split.summary, WindowSplit.SUMMARY_RANGE.first..split.summaryMax(), 5,
-                    ruleSummary.takeIf { summaryAtLimit }) { if (enabled) onSplit(split.copy(summary = it)) }
+                    // The gap stops it when the history leaves less than the sum rule does.
+                    (if (split.history - WindowSplit.SUMMARY_GAP <= WindowSplit.SUM_MAX - split.history) ruleGap else ruleSummary).takeIf { summaryAtMax }) {
+                    if (enabled) onSplit(split.copy(summary = it))
+                }
             }
         }
         bottom()
@@ -129,8 +127,11 @@ private fun barColors(): BarColors {
 internal fun WindowBar(window: Int?, split: WindowSplit, modifier: Modifier = Modifier) {
     val colors = barColors()
     val style = MaterialTheme.typography.bodyLarge
+    val decimal = java.text.DecimalFormatSymbols.getInstance(androidx.compose.ui.platform.LocalConfiguration.current.locales[0]).decimalSeparator
+    // Labels carry the tokens short (197K) so that each fits one line at a large font; the description in words keeps the whole numbers.
+    fun compact(percent: Int): String? = window?.let { WindowSplit.compactTokens(WindowSplit.tokens(it, percent), decimal) }
     @Composable fun tokens(percent: Int): String? = window?.let { limitNumber(WindowSplit.tokens(it, percent)) }
-    @Composable fun piece(share: Int, name: Int) = stringResource(name, share) + (tokens(share)?.let { stringResource(R.string.window_bar_tokens, it) } ?: "")
+    @Composable fun piece(share: Int, name: Int) = stringResource(name, share) + (compact(share)?.let { stringResource(R.string.window_bar_tokens, it) } ?: "")
     val history = piece(split.history, R.string.window_bar_history)
     val reply = piece(split.reply, R.string.window_bar_reply)
     val margin = piece(split.margin, R.string.window_bar_margin)
@@ -138,7 +139,7 @@ internal fun WindowBar(window: Int?, split: WindowSplit, modifier: Modifier = Mo
     val description = stringResource(R.string.window_bar_description, window?.let { stringResource(R.string.window_bar_window_tokens, limitNumber(it)) } ?: "",
         split.history, part(split.history), split.reply, part(split.reply), split.margin, part(split.margin), split.compactAt, split.summary)
     Surface(color = AppTheme.colors.card, shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, colors.frame), modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp).testTag("window_bar").clearAndSetSemantics { contentDescription = description }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 10.dp).testTag("window_bar").clearAndSetSemantics { contentDescription = description }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.fillMaxWidth().height(28.dp)) {
                 Row(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).border(1.dp, colors.frame, RoundedCornerShape(8.dp))) {
                     Box(Modifier.weight(split.history.coerceAtLeast(1).toFloat()).fillMaxHeight().background(colors.history).testTag("window_bar_history"))
@@ -170,7 +171,8 @@ private fun WindowMarks(window: Int?, split: WindowSplit) {
     val colors = barColors()
     val style = MaterialTheme.typography.bodyLarge
     val compact = stringResource(R.string.window_bar_compact, split.compactAt)
-    val tokens = window?.let { stringResource(R.string.window_bar_tokens, limitNumber(WindowSplit.tokens(it, split.summary))) }.orEmpty()
+    val decimal = java.text.DecimalFormatSymbols.getInstance(androidx.compose.ui.platform.LocalConfiguration.current.locales[0]).decimalSeparator
+    val tokens = window?.let { stringResource(R.string.window_bar_tokens, WindowSplit.compactTokens(WindowSplit.tokens(it, split.summary), decimal)) }.orEmpty()
     val after = stringResource(R.string.window_bar_after, split.summary) + tokens
     FlowRow(Modifier.fillMaxWidth().padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Mark(colors.line, null, compact, style, "window_label_compact")
@@ -180,8 +182,8 @@ private fun WindowMarks(window: Int?, split: WindowSplit) {
 
 @Composable
 private fun Legend(color: Color, text: String, style: androidx.compose.ui.text.TextStyle, tag: String, frame: Color? = null) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag(tag)) {
-        Box(Modifier.size(16.dp).clip(RoundedCornerShape(4.dp)).background(color).let { if (frame != null) it.border(1.dp, frame, RoundedCornerShape(4.dp)) else it })
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag(tag)) {
+        Box(Modifier.size(14.dp).clip(RoundedCornerShape(4.dp)).background(color).let { if (frame != null) it.border(1.dp, frame, RoundedCornerShape(4.dp)) else it })
         Text(text, style = style, color = AppTheme.colors.ink)
     }
 }

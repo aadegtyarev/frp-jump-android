@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.ui
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,15 +52,18 @@ fun FormScreen(
     onBack: (() -> Unit)?,
     error: String? = null,
     actionEnabled: Boolean = true,
-    /** The scroll of the form's body, for a part that pins itself while the rest scrolls ([FORM_BODY_PADDING_V] is the body's own top inset). */
+    /** The scroll of the form's body ([FORM_BODY_PADDING_V] is the body's own top inset). */
     scroll: ScrollState = rememberScrollState(),
+    /** A strip above the scrolling body, with its own space: the body scrolls below it and never under it. */
+    pinned: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = AppTheme.colors
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(title, fontWeight = FontWeight.Bold) },
+                // One line, cut with an ellipsis: the bar has a fixed height, a second line would be clipped half-way at a large font.
+                title = { Text(title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                 navigationIcon = {
                     onBack?.let {
                         IconButton(onClick = it) {
@@ -76,6 +80,7 @@ fun FormScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
+            pinned?.let { Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) { it() } }
             Column(
                 Modifier
                     .weight(1f)

@@ -180,9 +180,9 @@ tunnel limits are read at use. The kernel's own parameters stay validated (`Agen
 The window split is stored in the same `assistant_limits` group, beside the old keys, which an older version still reads: `history_percent`, `reply_percent`,
 `summary_size_percent` (kept from the earlier version: the summary share, same meaning) and `reply_limited_from` (tokens; present only while the old answer
 reserve is shown as cut). The shares are absent until the owner saves the provider form or the old values are converted, once, at app start when a provider is
-saved: reply share = the provider's old answer reserve over its window, rounded up and held in 1-20 (when held, `reply_limited_from` keeps the old tokens and the form
+saved: reply share = the provider's old answer reserve over its window, rounded up and held in 1-20 (an owner who kept both old defaults, 2,048 tokens and trigger 80, gets the new defaults 75 / 5 / 15 instead; when held, `reply_limited_from` keeps the old tokens and the form
 says so under «Ответ модели» until the owner changes it); history share = the old trigger (the `summary_percent` limit when set, else the provider form's old value) less the
-reply share, held in 40-90; the summary share is the old `summary_size_percent`; then both rules hold, the history lowered first. The old trigger key and the
+reply share, held in 40-90; the summary share is the old `summary_size_percent`; then the rules hold, the history lowered first, then the summary gives way to the gap. The old trigger key and the
 provider's `summaryPercent` and `outputTokens` stay in their files as they were, never read again once the shares are set (an older version still uses them; the
 form writes `outputTokens` as the reply share in tokens with each save, so it stays a sensible reserve there). `reply_chars` and `fresh_tool_percent` are no longer
 written. The reply length cap is derived: max(32,000, reply-share tokens × 4); an owner value above that is no longer kept.
@@ -246,12 +246,13 @@ steppers, then the summary model. Each stepper is one piece of the bar, in perce
 «История до сжатия» (default 75; 40-90; step 5), «Ответ модели» (5; 1-20; step 1) and «Сводка» (15; 5-40; step 5).
 The margin (100 − history − reply) is derived and shown on the bar, not a setting. The model's
 reply share is the request's output limit (share × window, at least 1 token); it replaces the old
-token field. Two rules keep a 5 % margin: history + reply ≤ 95 and history + summary ≤ 95 (the summary
-request reads the whole history); at a limit the «+» is off and one line under that row names the rule.
+token field. Three rules: history + reply ≤ 95 and history + summary ≤ 95 (a 5 % margin; the summary
+request reads the whole history), and summary ≤ history − 10 (a shortening frees at least 10 % of the window); at a limit the «+» (for the
+history's lowest, the «−») is off and one line under that row names the rule.
 The bar is the whole window in three calm pieces (history, reply, margin) with a line where the shortening
 starts (history + reply) and a dashed mark at the summary's size inside the history («after shortening»),
-labels with the shares and tokens, a TalkBack description of the same, and is pinned at the top of the
-form's view while the steppers scroll. The shares are the owner's limits, saved with Save after the
+labels with the shares and short token counts (197K, 13K; the TalkBack description of the same has the whole numbers), and, once the form is scrolled past its
+place, it moves to a strip of its own above the scrolling part (the place stays empty), so the rows scroll below it and never under it. The shares are the owner's limits, saved with Save after the
 provider (a refused save leaves them as they were); the old trigger and answer reserve stored by an older
 version are converted once ([Limits](#limits)). The form explains the additional model
 request and shared provider/key/window requirements. Saving makes no request. The API key

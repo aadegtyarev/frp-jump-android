@@ -198,8 +198,8 @@ class AssistantCompactionTest {
 
     @Test fun `a summary that does not make the request smaller is not saved and the digest is used`() = runBlocking {
         val current = record("now", said("current"))
-        // 8 tiny records are less than the 1,600 bytes a 40 % summary of a 4,000 window may be: a reply of that size would grow the request.
-        val h = Harness(SavedChat(records = (1..8).map { record("p$it", said("q")) } + current), 4_000, out, AssistantLimits(summarySizePercent = 40, historyPercentSet = 40, replyPercentSet = 1)) { AgentReply("q".repeat(5_000)) }
+        // 8 tiny records are less than the 1,200 bytes a 30 % summary of a 4,000 window may be: a reply of that size would grow the request.
+        val h = Harness(SavedChat(records = (1..8).map { record("p$it", said("q")) } + current), 4_000, out, AssistantLimits(summarySizePercent = 30, historyPercentSet = 40, replyPercentSet = 1)) { AgentReply("q".repeat(5_000)) }
         val result = h.engine.prepare(raw(current))
         assertEquals(1, h.seen.size); assertFalse(h.doc.summary!!.byModel); assertTrue(h.doc.summary!!.text.startsWith("Mechanical digest"))
         assertTrue(cost(result) <= 4_000)
@@ -354,7 +354,7 @@ class AssistantCompactionTest {
                 else AgentReply(calls = listOf(ToolCall("g$mains", "ghost", buildJsonObject { put("blob", "x".repeat(4_000)) })))
             }
         }
-        val chat = AssistantConversation(scope, { AssistantAvailability(true, limits = AssistantLimits(summarySizePercent = 40, historyPercentSet = 45, replyPercentSet = 5)) }, { snapshot }, { model }, {}, AgentModule(true), io = Dispatchers.Unconfined,
+        val chat = AssistantConversation(scope, { AssistantAvailability(true, limits = AssistantLimits(summarySizePercent = 40, historyPercentSet = 50, replyPercentSet = 5)) }, { snapshot }, { model }, {}, AgentModule(true), io = Dispatchers.Unconfined,
             historyStore = history, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
         try {
             chat.ready(); chat.edit("Go"); chat.send(); chat.ready()

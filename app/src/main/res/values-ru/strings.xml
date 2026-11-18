@@ -1369,6 +1369,7 @@
     <string name="window_rule_reply">История + ответ уже %1$d&#160;%% окна</string>
     <string name="window_rule_summary">История + сводка уже %1$d&#160;%% окна</string>
     <string name="window_rule_both">История + ответ и история + сводка уже %1$d&#160;%% окна</string>
+    <string name="window_rule_gap">Сводка должна быть меньше истории хотя бы на %1$d&#160;%% окна</string>
     <string name="window_reply_limited">Было %1$s токенов — больше %2$d&#160;%% окна. Оставлено %2$d&#160;%%.</string>
     <string name="window_bar_history">История · %1$d&#160;%%</string>
     <string name="window_bar_reply">Ответ · %1$d&#160;%%</string>

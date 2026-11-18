@@ -69,6 +69,9 @@ private fun AssistantProviderForm(
     var summary by rememberSaveable { mutableIntStateOf(firstSplit.summary) }
     val split = WindowSplit(history, reply, summary)
     val scroll = rememberScrollState()
+    val pin = remember { WindowPin() }
+    // Once the form is scrolled to the bar's place the bar moves to its strip above the scroll (the place stays empty), so nothing is ever under it.
+    val pinned by remember { derivedStateOf { scroll.value >= pin.slotY } }
     val latestLimits by rememberUpdatedState(limits)
     var completion by rememberSaveable { mutableStateOf(initial.completionTokenField) }
     var summaryModel by rememberSaveable { mutableStateOf(initial.summaryModel.orEmpty()) }
@@ -107,6 +110,7 @@ private fun AssistantProviderForm(
         title = stringResource(R.string.assistant_provider_title), action = stringResource(R.string.save), busy = busy,
         actionEnabled = valid, error = failure ?: if (stale && !saving) stringResource(R.string.assistant_provider_stale) else null,
         onBack = leave, scroll = scroll,
+        pinned = if (pinned) { { WindowBar(context.toIntOrNull(), split) } } else null,
         onAction = {
             val captured = draft()
             if (captured != null && !busy) {
@@ -159,7 +163,7 @@ private fun AssistantProviderForm(
             Modifier.testTag("assistant_effort"), enabled = !busy, note = stringResource(R.string.assistant_provider_effort_hint))
         TextButton(enabled = !busy, onClick = { chooseEffort = true }) { Text(stringResource(R.string.assistant_provider_effort_presets)) }
         AssistantWindowGroup(window = context.toIntOrNull(), split = split, limitedFrom = firstLimitedFrom.takeIf { reply == firstSplit.reply }, enabled = !busy,
-            scroll = scroll, onSplit = { history = it.history; reply = it.reply; summary = it.summary; edited() },
+            pin = pin, pinned = pinned, onSplit = { history = it.history; reply = it.reply; summary = it.summary; edited() },
             top = {
                 Field(stringResource(R.string.assistant_provider_context), context, { context = it.filter(Char::isDigit).take(8); edited() },
                     Modifier.testTag("assistant_context"), enabled = !busy, keyboard = KeyboardType.Number,

@@ -46,13 +46,53 @@ class WindowSplitTest {
         // Window 512,000, reserve 25,600 = 5 %, trigger 80.
         val r = WindowSplit.fromLegacy(512_000, 25_600, 80, 15)
         assertEquals(WindowSplit(75, 5, 15), r.split); assertNull(r.limitedFrom)
-        // The default provider: 2,048 of 262,144 is 0.78 %, rounded up to 1 %; history 79.
-        assertEquals(WindowSplit(79, 1, 15), WindowSplit.fromLegacy(262_144, 2_048, 80, 15).split)
         // The reply share is rounded up so the new limit is never below the old one.
         for ((window, old) in listOf(262_144 to 2_048, 100_000 to 5_001, 12_345 to 1_000, 512_000 to 25_601)) {
             val split = WindowSplit.fromLegacy(window, old, 80, 15).split
             assertTrue("$window/$old", split.replyTokens(window) >= old)
         }
+    }
+
+    @Test fun `an owner who kept both old defaults gets the new defaults, any other case is converted`() {
+        // Reserve 2,048 and trigger 80 are the old defaults: 75 / 5 / 15 at any window, not 79 / 1 / 15.
+        for (window in listOf(4_096, 16_384, 262_144, 512_000, 1_000_000)) {
+            val r = WindowSplit.fromLegacy(window, 2_048, 80, 15)
+            assertEquals("$window", WindowSplit(75, 5, 15), r.split); assertNull(r.limitedFrom)
+        }
+        // The summary size is always the old one, the rules made to hold.
+        assertEquals(WindowSplit(75, 5, 20), WindowSplit.fromLegacy(262_144, 2_048, 80, 20).split)
+        // Only the trigger changed: converted by the formula (2,048 of 262,144 rounds up to 1 %).
+        assertEquals(WindowSplit(59, 1, 15), WindowSplit.fromLegacy(262_144, 2_048, 60, 15).split)
+        // Only the reserve changed: converted.
+        assertEquals(WindowSplit(70, 10, 15), WindowSplit.fromLegacy(512_000, 51_200, 80, 15).split)
+        assertEquals(WindowSplit(75, 5, 15), WindowSplit.fromLegacy(512_000, 25_600, 80, 15).split)
+        assertEquals(WindowSplit(50, 10, 25), WindowSplit.fromLegacy(100_000, 10_000, 60, 25).split)
+        // A set share is kept: no default shortcut.
+        assertEquals(WindowSplit(60, 1, 15), WindowSplit.fromLegacy(262_144, 2_048, 80, 15, history = 60).split)
+    }
+
+    @Test fun `the summary stays at least 10 percent of the window under the history, and the history's lowest follows the summary`() {
+        assertTrue(WindowSplit(75, 5, 15).valid); assertTrue(WindowSplit(50, 5, 40).valid); assertTrue(WindowSplit(40, 5, 30).valid)
+        assertFalse(WindowSplit(45, 5, 40).valid); assertFalse(WindowSplit(40, 5, 31).valid); assertFalse(WindowSplit(40, 5, 40).valid)
+        assertEquals(40, WindowSplit(75, 5, 15).historyMin()); assertEquals(45, WindowSplit(75, 5, 35).historyMin()); assertEquals(50, WindowSplit(75, 5, 40).historyMin())
+        assertEquals(30, WindowSplit(40, 5, 15).summaryMax()); assertEquals(35, WindowSplit(60, 5, 15).summaryMax()); assertEquals(20, WindowSplit(75, 5, 15).summaryMax())
+        // Where the gap is what stops it, it is below the sum: history 45 allows a summary of 35 (gap), not 40 (sum would allow 50).
+        assertEquals(35, WindowSplit(45, 5, 15).summaryMax())
+        // Made to hold: the history is lowered for the sums first, then the summary gives way to the gap; nothing is ever raised.
+        assertEquals(WindowSplit(40, 5, 30), WindowSplit(40, 5, 40).fitted())
+        assertEquals(WindowSplit(55, 5, 40), WindowSplit(90, 5, 40).fitted())
+        assertEquals(WindowSplit(45, 5, 35), WindowSplit(45, 5, 40).fitted())
+        for (h in WindowSplit.HISTORY_RANGE) for (r in WindowSplit.REPLY_RANGE step 4) for (m in WindowSplit.SUMMARY_RANGE) assertTrue("$h/$r/$m", WindowSplit(h, r, m).fitted().valid)
+        // A conversion with a low trigger and a big summary: 40 history leaves a summary of 30.
+        assertEquals(WindowSplit(40, 5, 30), WindowSplit.fromLegacy(100_000, 5_000, 20, 40).split)
+    }
+
+    @Test fun `token counts for labels are short, with the locale's decimal mark`() {
+        assertEquals("197K", WindowSplit.compactTokens(196_608)); assertEquals("13K", WindowSplit.compactTokens(13_107)); assertEquals("52K", WindowSplit.compactTokens(52_428))
+        assertEquals("2.6K", WindowSplit.compactTokens(2_621)); assertEquals("2,6K", WindowSplit.compactTokens(2_621, ',')); assertEquals("1K", WindowSplit.compactTokens(1_000))
+        assertEquals("999", WindowSplit.compactTokens(999)); assertEquals("5", WindowSplit.compactTokens(5)); assertEquals("10K", WindowSplit.compactTokens(10_000))
+        assertEquals("1M", WindowSplit.compactTokens(1_000_000)); assertEquals("1.5M", WindowSplit.compactTokens(1_500_000)); assertEquals("200K", WindowSplit.compactTokens(200_000))
+        assertEquals("26K", WindowSplit.compactTokens(25_600)); assertEquals("77K", WindowSplit.compactTokens(76_800))
     }
 
     @Test fun `a reserve over 20 percent is cut to 20 and the old tokens are kept to say so`() {
@@ -95,6 +135,9 @@ class WindowSplitTest {
     @Test fun `the store converts the provider's reserve and trigger once, and the 256000 of 512000 case says it was limited`() {
         val l = converted(Triple(512_000, 256_000, 80))
         assertEquals(20, l.replyPercent); assertEquals(60, l.historyPercent); assertEquals(256_000, l.replyLimitedFrom); assertEquals(15, l.summarySizePercent)
+        // The old defaults (2,048 tokens, trigger 80) become the new defaults in the file too.
+        val kept = converted(Triple(262_144, 2_048, 80))
+        assertEquals(WindowSplit(75, 5, 15), kept.split); assertEquals(75, kept.historyPercentSet); assertEquals(5, kept.replyPercentSet); assertNull(kept.replyLimitedFrom)
         val usual = converted(Triple(512_000, 25_600, 80))
         assertEquals(75, usual.historyPercent); assertEquals(5, usual.replyPercent); assertNull(usual.replyLimitedFrom)
         // Once: another value of the provider afterwards changes nothing.
@@ -142,6 +185,7 @@ class WindowSplitTest {
         assertThrows(IllegalArgumentException::class.java) { store.setAssistantLimits(d.withSplit(WindowSplit(80, 5, 16))) }
         assertThrows(IllegalArgumentException::class.java) { store.setAssistantLimits(d.withSplit(WindowSplit(39, 5, 15))) }
         assertThrows(IllegalArgumentException::class.java) { store.setAssistantLimits(d.withSplit(WindowSplit(75, 21, 15))) }
+        assertThrows(IllegalArgumentException::class.java) { store.setAssistantLimits(d.withSplit(WindowSplit(40, 5, 35))) }
         store.setAssistantLimits(d.withSplit(WindowSplit(80, 15, 15), limitedFrom = 300_000))
         val back = SettingsStore(store.let { MemoryStorage(storageText(it)) }).settings.value.assistantLimits
         assertEquals(WindowSplit(80, 15, 15), back.split); assertEquals(300_000, back.replyLimitedFrom)
