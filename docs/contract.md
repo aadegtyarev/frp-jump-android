@@ -282,15 +282,25 @@ profile without re-enrollment.
   when connected and "Start and open" when not.
 - While the assistant has a "For session" grant or a remembered "For this connection" permission on a saved connection (the owner answered in Chat;
   a session grant lives for the open period of the connection's tunnel, a remembered one until the connection is edited and the other ends the
-  assistant contract lists, see the [assistant contract](agent-contract.md#confirmation-of-changing-calls)), its card shows, under the address, a
-  muted line: "Assistant: no questions, remembered <date>" / «Помощник: без вопроса, запомнено <дата>» (also when a session grant exists too), or
-  with only a session grant "Assistant: no questions, for the tunnel's lifetime" / «Помощник: без вопросов, на время туннеля», with a text button
-  "Forget" / «Забыть» (a 48 dp target; TalkBack reads "Forget the assistant's permissions for <connection name>" / «Забыть разрешения помощника для
-  <имя подключения>»). The line wraps at a large font and is the same on the device card and the Connections tab, for any profile, also while the
-  tunnel is down and while the global switch is off (it states what is remembered). Forget removes both lifetimes of that connection at once,
-  with no confirmation (it narrows authority); they stop being used at once, on the tap, and if deleting the record fails the permission stays unused,
-  the owner is told and the delete is retried. The date shows its year when it is not the current one. The line is gone the moment the grant or record ends for any reason and is never shown for a
-  record that was deleted. This line is the ONE place where remembered permissions are seen and forgotten: no sheet, no "⋮" item and no list
+  assistant contract lists, see the [assistant contract](agent-contract.md#confirmation-of-changing-calls)), its card shows, as the last text line, a
+  calm assistant mark: a small rounded pill with a thin grey outline and no fill, holding the small ✦ and, in the secondary text colour at the size of the details line, "For session" /
+  «Для сессии» when only a session grant exists, or "For this connection" / «Для подключения» when a remembered permission exists (also when a session
+  grant exists too). The whole line (the pill's row, at least 48 dp tall) is a button; TalkBack reads "Assistant in <name>: <text>. Details" / «Помощник в <имя>: <текст>. Подробнее».
+  A tap opens a modal sheet titled "Assistant in <name>" / «Помощник в <имя>» (the name bidi-isolated) with one line per lifetime that exists: "You chose
+  “For session”. The assistant's commands run here at once while the tunnel is on." / «Вы выбрали «Для сессии». Команды помощника здесь выполняются
+  сразу, пока туннель включён.» and "You chose “For this connection” on <date>. The assistant's commands run here at once until the connection is
+  edited." / «Вы выбрали «Для подключения» <дата>. Команды помощника здесь выполняются сразу, пока подключение не изменят.» (each line names exactly the tools that lifetime covers now: "The assistant's commands" / «Команды помощника», "The
+  assistant's typing into tabs" / «Ввод помощника во вкладки» ("…typing into tabs runs here at once…" / «…выполняется сразу…»), or "The assistant's
+  commands and typing into tabs" / «Команды и ввод во вкладки помощника»; a tool that leaves a grant leaves its line at once; the date shows its year
+  when it is not the current one), then
+  "The assistant never types passwords." / «Пароли помощник не вводит никогда.» and the buttons "Ask again" / «Снова спрашивать» and "Close" /
+  «Закрыть». The mark and the sheet are the same on the device card and the Tunnels tab, for any profile, also while the tunnel is down and while the
+  global switch is off (they state what is remembered). "Ask again" does what Forget did: it removes both lifetimes of that connection at once, with
+  no confirmation (it narrows authority); they stop being used at once, on the tap, and if deleting the record fails the permission stays unused, the
+  owner is told ("Could not save. The assistant already asks again; saving will be retried." / «Не удалось сохранить. Помощник уже спрашивает снова,
+  сохранение повторится.») and the delete is retried. The sheet then closes and a notice "The assistant asks again in <name>" / «Помощник снова
+  спрашивает в <имя>» shows. The mark goes, and the sheet closes if it is open, the moment the grant or record ends for any reason, and neither is ever
+  shown for a record that was deleted. The chip and its sheet are the one place where remembered permissions are seen and ended: no "⋮" item and no list
   in Tools (to be added when a second class becomes rememberable).
 - Bringing a connection's tunnel up for these actions (and for "Use key login" and "Change login") is the `tunnel_up` operation of the
   [operations surface](contracts/surfaces/operations.md): same order, same 45 s wait for the tunnel, same notices as before it was
@@ -315,12 +325,13 @@ Quick access to the saved connections of every device, active ones first.
   re-sorts on a visit, a pull or a state change. Within a group the
   connections keep their stored order; a tunnel up that no saved
   connection names is listed after them, under its device.
-- Each connection is the same card as on the device card: kind tile, its own
-  name only when it has one other than the kind (a default "SSH" is not
-  repeated), port (and the SSH user and login method), state, the main
-  button ("Start" / "Terminal" / "Explore" / "Open" / "Copy"),
-  Stop while up, and "⋮". A tap on the card does its main action
-  (scenario 4).
+- Each connection is the same compact card as on the device card: on the left its name (its own only when it has one other than the kind; a
+  default "SSH" is not repeated), the kind as text over the port (and the SSH user and login method), the state with the local address on one line,
+  and the assistant mark (§4) when it has a grant; on the right, vertically centred, up to three round buttons (32 dp visible, growing with the
+  font; a touch target of at least 44 dp; stacked vertically at a very large font): the main action while up (the glyph of its kind: terminal,
+  globe, arcs or copy; a tonal circle; SSH with two or more terminals shows their count), "⏻" (a red outline to stop, a green one to start) and "⋮".
+  A connection that is down shows only "⏻" to start and "⋮"; one being connected or disconnected only a busy "⏻" and "⋮". TalkBack reads each
+  button's action with the connection's name. A tap on the card does its main action (scenario 4).
 - On a device offline as of a fresh answer of the server, a connection that
   is down is dimmed: its Start and the tap on its card are off, and its
   state says "Device offline" instead of "Off". Its "⋮" and a long

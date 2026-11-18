@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.ui.connections
 
 import kotlinx.coroutines.CancellationException
+import ru.adsrv.frpjump.assistant.AssistantToolId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -83,13 +84,12 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     private fun runtime(profile: String) = app.profiles.runtime(profile)
 
     /**
-     * The connections the assistant may act on without a question now (the card's "Assistant: no questions" line): the value is the time of the persistent
-     * "For this connection" permission (the line says "remembered <date>"), null for a "For session" grant alone.
+     * The connections the assistant may act on without a question now (the card's assistant mark and its sheet): per connection, the tools of its "For session"
+     * grant, if any, and the persistent "For this connection" permission, if any, with its date and tools.
      */
-    val assistantGrants: kotlinx.coroutines.flow.StateFlow<Map<ru.adsrv.frpjump.settings.GrantTarget, Long?>> by lazy {
-        kotlinx.coroutines.flow.combine(app.sessionGrants.observe(), app.connectionGrants.observe()) { session, remembered ->
-            session.associateWith<ru.adsrv.frpjump.settings.GrantTarget, Long?> { null } + remembered
-        }.stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, app.sessionGrants.observe().value.associateWith<ru.adsrv.frpjump.settings.GrantTarget, Long?> { null } + app.connectionGrants.current())
+    val assistantGrants: kotlinx.coroutines.flow.StateFlow<Map<ru.adsrv.frpjump.settings.GrantTarget, AssistantMark>> by lazy {
+        kotlinx.coroutines.flow.combine(app.sessionGrants.observeTools(), app.connectionGrants.observeRecords()) { session, remembered -> assistantMarks(session, remembered) }
+            .stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, assistantMarks(app.sessionGrants.observeTools().value, app.connectionGrants.currentRecords()))
     }
 
     /**
@@ -509,3 +509,33 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         return app.fileTargets.put(FilesTarget(row.profile, c.device, c.port, login.user, auth))
     }
 }
+
+/**
+ * What the card's assistant mark says of one connection: the tools of its session grant (null: none) and of the remembered permission, with its date
+ * (null: none). The sheet names what each lifetime covers from these sets, never more.
+ */
+data class AssistantMark(
+    val sessionTools: Set<AssistantToolId>?,
+    val rememberedAt: Long?,
+    val rememberedTools: Set<AssistantToolId> = emptySet(),
+) {
+    val session: Boolean get() = sessionTools != null
+}
+
+/** What a grant covers, in the words of the sheet: the assistant's commands, its typing into tabs, or both. */
+enum class GrantCover { COMMANDS, INPUT, BOTH }
+
+internal fun coverOf(tools: Set<AssistantToolId>): GrantCover = when {
+    AssistantToolId.SSH_COMMAND in tools && AssistantToolId.TERMINAL_INPUT in tools -> GrantCover.BOTH
+    tools == setOf(AssistantToolId.TERMINAL_INPUT) -> GrantCover.INPUT
+    else -> GrantCover.COMMANDS
+}
+
+internal fun assistantMarks(
+    session: Map<ru.adsrv.frpjump.settings.GrantTarget, Set<AssistantToolId>>,
+    remembered: Map<ru.adsrv.frpjump.settings.GrantTarget, ru.adsrv.frpjump.settings.RememberedGrant>,
+): Map<ru.adsrv.frpjump.settings.GrantTarget, AssistantMark> =
+    (session.keys + remembered.keys).associateWith { target ->
+        val record = remembered[target]
+        AssistantMark(session[target], record?.at, record?.tools.orEmpty())
+    }

@@ -139,7 +139,7 @@ class ConnectionGrantsTest {
         r.grants.sweep(); assertEquals("the cleaner keeps it too", 1, r.records.size)
         r.fake.persistentFp = PersistentFp.Known("v1:pf1"); assertTrue("known again: it covers again", r.grants.covers(ssh, key))
         val g = r.grants; r.fake.persistentFp = PersistentFp.Known("v1:pf2")
-        assertFalse("mismatch", g.covers(ssh, key)); assertEquals("nothing is written in a call: the cleaner deletes it", 1, r.records.size); assertTrue("but it is not shown any more", g.current().isEmpty())
+        assertFalse("mismatch", g.covers(ssh, key)); assertEquals("nothing is written in a call: the cleaner deletes it", 1, r.records.size); assertTrue("but it is not shown any more", g.currentRecords().isEmpty())
         r.fake.persistentFp = PersistentFp.Known("v1:pf1"); assertFalse("and it does not come back", g.covers(ssh, key))
         g.sweep(); assertTrue("the cleaner deleted it", r.records.isEmpty())
         assertEquals(RecordResult.RECORDED, r.give()); r.fake.persistentFp = PersistentFp.Gone
@@ -153,7 +153,7 @@ class ConnectionGrantsTest {
         // The tap: in memory only. No write has happened and the record is still committed.
         g.revoke("p", "c")
         assertFalse("revoked before any write", g.covers(ssh, key)); assertFalse(g.covers(typing, key)); assertEquals("the record is still committed", 1, r.records.size)
-        assertTrue("and its line is gone", g.current().isEmpty()); assertTrue(runBlocking { g.observe().first() }.isEmpty())
+        assertTrue("and its line is gone", g.currentRecords().isEmpty()); assertTrue(runBlocking { g.observeRecords().first() }.isEmpty())
         // The write fails: it throws, the record stays committed, the use stays revoked.
         storage.failWrites = true
         assertThrows(java.io.IOException::class.java) { g.forget("p", "c") }
@@ -222,11 +222,28 @@ class ConnectionGrantsTest {
         r.grants.forget("p", "nothing"); r.grants.forgetProfile("none")
     }
 
-    @Test fun `observe shows the connections with their date and follows each change`() = runBlocking {
-        val r = Rig(); assertTrue(r.grants.observe().first().isEmpty())
+    @Test fun `observeRecords shows the connections with their date and tools and follows each change`() = runBlocking {
+        val r = Rig(); assertTrue(r.grants.observeRecords().first().isEmpty())
         assertEquals(RecordResult.RECORDED, r.give())
-        assertEquals(mapOf(target to 1_763_020_800_000L), r.grants.observe().first()); assertEquals(mapOf(target to 1_763_020_800_000L), r.grants.current())
-        r.grants.forget("p", "c"); assertTrue(r.grants.observe().first().isEmpty())
+        val shown = r.grants.observeRecords().first()
+        assertEquals(setOf(target), shown.keys); assertEquals(1_763_020_800_000L, shown.getValue(target).at); assertEquals(shown, r.grants.currentRecords())
+        r.grants.forget("p", "c"); assertTrue(r.grants.observeRecords().first().isEmpty())
+    }
+
+    @Test fun `observeRecords hides a revoked record at once, before the write, and names exactly the recorded tools`() = runBlocking {
+        val r = Rig(); assertEquals(RecordResult.RECORDED, r.give(tool = typing, offered = setOf(typing)))
+        val g = r.grants
+        assertEquals("typing only", setOf(typing), g.observeRecords().first().getValue(target).tools)
+        g.revoke("p", "c")
+        assertEquals("still committed", 1, r.records.size)
+        assertTrue("but not shown", g.observeRecords().first().isEmpty()); assertTrue(g.currentRecords().isEmpty())
+        Unit
+    }
+
+    @Test fun `a record of both tools says both`() = runBlocking {
+        val r = Rig(); assertEquals(RecordResult.RECORDED, r.give(offered = setOf(ssh, typing)))
+        assertEquals(setOf(ssh, typing), r.grants.observeRecords().first().getValue(target).tools)
+        Unit
     }
 
     @Test fun `a tool's switch-off leaves the record for good in the same write and switching on does not bring it back`() {

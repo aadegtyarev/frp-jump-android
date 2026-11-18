@@ -238,9 +238,6 @@
     <string name="kind_web">Web</string>
     <string name="kind_ssh" translatable="false">SSH</string>
     <string name="kind_tcp" translatable="false">TCP</string>
-    <string name="kind_web_tile" translatable="false">WEB</string>
-    <string name="kind_ssh_tile" translatable="false">SSH</string>
-    <string name="kind_tcp_tile" translatable="false">TCP</string>
     <string name="state_not_connected">Not connected</string>
     <string name="state_off">Off</string>
     <string name="state_device_offline">Device offline</string>
@@ -258,9 +255,13 @@
 
     <!-- Connection rows and their actions -->
     <string name="connection_details">Port %1$d</string>
-    <string name="connection_details_https">Port %1$d · HTTPS</string>
-    <string name="connection_details_ssh_key">Port %1$d · %2$s · key</string>
-    <string name="connection_details_ssh_password">Port %1$d · %2$s · password</string>
+    <string name="card_details">%1$s · port %2$d</string>
+    <string name="card_details_https">%1$s · port %2$d · HTTPS</string>
+    <string name="card_details_ssh_key">%1$s · port %2$d · %3$s · key</string>
+    <string name="card_details_ssh_password">%1$s · port %2$d · %3$s · password</string>
+    <string name="connect_named">Start “%s”</string>
+    <string name="retry_named">Retry “%s”</string>
+    <string name="main_action_named">%1$s “%2$s”</string>
     <string name="connection_unsaved">Port %d</string>
     <string name="connection_actions">Actions with “%s”</string>
     <string name="connect">Start</string>
@@ -1355,8 +1356,6 @@
     <string name="chat_confirm_tool">%1$s · %2$s</string>
     <string name="action_class_connection_change">Changes in connections</string>
     <string name="action_class_app_change">Changes in the app</string>
-    <string name="connection_assistant_grant">Assistant: no questions, for the tunnel\'s lifetime</string>
-    <string name="connection_assistant_remembered">Assistant: no questions, remembered %1$s</string>
     <string name="confirm_connection">For this connection</string>
     <string name="confirm_remember">Allow and remember</string>
     <string name="confirm_connection_hint">Commands in this connection, remembered until the connection is edited, even if text the assistant read asks for them. Forget it on the connection\'s card.</string>
@@ -1365,10 +1364,21 @@
     <string name="receipt_no_question_connection">no question: for this connection</string>
     <string name="receipt_no_question_session">no question: for the tunnel\'s lifetime</string>
     <string name="receipt_no_question_off">no question: confirmations are off</string>
-    <string name="connection_assistant_forget_failed">Could not save. The assistant no longer uses this permission; deleting it will be retried.</string>
+    <string name="connection_assistant_forget_failed">Could not save. The assistant already asks again; saving will be retried.</string>
+    <string name="connection_assistant_chip_session">For session</string>
+    <string name="connection_assistant_chip_connection">For this connection</string>
+    <string name="connection_assistant_chip_description">Assistant in %1$s: %2$s. Details</string>
+    <string name="connection_assistant_sheet_title">Assistant in %1$s</string>
+    <string name="connection_assistant_sheet_session">You chose “For session”. The assistant\'s commands run here at once while the tunnel is on.</string>
+    <string name="connection_assistant_sheet_session_input">You chose “For session”. The assistant\'s typing into tabs runs here at once while the tunnel is on.</string>
+    <string name="connection_assistant_sheet_session_both">You chose “For session”. The assistant\'s commands and typing into tabs run here at once while the tunnel is on.</string>
+    <string name="connection_assistant_sheet_connection">You chose “For this connection” on %1$s. The assistant\'s commands run here at once until the connection is edited.</string>
+    <string name="connection_assistant_sheet_connection_input">You chose “For this connection” on %1$s. The assistant\'s typing into tabs runs here at once until the connection is edited.</string>
+    <string name="connection_assistant_sheet_connection_both">You chose “For this connection” on %1$s. The assistant\'s commands and typing into tabs run here at once until the connection is edited.</string>
+    <string name="connection_assistant_sheet_passwords">The assistant never types passwords.</string>
+    <string name="connection_assistant_ask_again">Ask again</string>
+    <string name="connection_assistant_asks_again">The assistant asks again in %1$s</string>
     <string name="confirm_remember_hint">The next calls on this connection run without asking until it is edited. Forget on its card.</string>
-    <string name="connection_assistant_forget">Forget</string>
-    <string name="connection_assistant_forget_description">Forget the assistant\'s permissions for %1$s</string>
     <string name="always_dialog_title">Turn off confirmations?</string>
     <string name="always_dialog_text">Changing commands will run without asking, in the whole app, for all tools and tunnels. Turn them back on in %1$s › %2$s › %3$s.</string>
     <string name="always_dialog_confirm">Turn off</string>

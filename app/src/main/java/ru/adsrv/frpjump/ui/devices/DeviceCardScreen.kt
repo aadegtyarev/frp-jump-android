@@ -202,8 +202,7 @@ fun DeviceCardScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     // As on the Connections tab: down on a device offline now, it cannot be connected.
                     offline = knownOffline(state.device),
-                    assistantGrant = row.saved && ru.adsrv.frpjump.settings.GrantTarget(row.profile, row.connection.id) in grants,
-                    assistantRemembered = if (row.saved) grants[ru.adsrv.frpjump.settings.GrantTarget(row.profile, row.connection.id)] else null,
+                    assistant = if (row.saved) grants[ru.adsrv.frpjump.settings.GrantTarget(row.profile, row.connection.id)] else null,
                     onForgetAssistant = { vm.actions.forgetAssistant(row) },
                 )
             }

@@ -206,8 +206,7 @@ fun ConnectionsScreen(
                             onMenu = { ui.menu = if (it) row.key else null },
                             actions = actions,
                             offline = group.offline,
-                            assistantGrant = row.saved && GrantTarget(row.profile, row.connection.id) in grants,
-                            assistantRemembered = if (row.saved) grants[GrantTarget(row.profile, row.connection.id)] else null,
+                            assistant = if (row.saved) grants[GrantTarget(row.profile, row.connection.id)] else null,
                             onForgetAssistant = { vm.actions.forgetAssistant(row) },
                         )
                     }
