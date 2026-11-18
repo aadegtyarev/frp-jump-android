@@ -79,6 +79,22 @@ class SshKeyStore(private val storage: TextStorage, private val box: SecretBox) 
         null
     }
 
+    /**
+     * The phone key's unencrypted OpenSSH text, for export (К4) only; null when there is none or it cannot be unsealed.
+     * The one reader of the private half for that purpose: see [SshKeyExport].
+     */
+    @Synchronized
+    fun phoneKeyForExport(): String? = keys.generated?.let { unseal(it, SshKeySlot.PHONE)?.privateKey }
+
+    /**
+     * Restore (К4): [pair] becomes the phone key, sealed as a generated key is (the same box, no passphrase). The imported key is
+     * not touched. The write is atomic: a failed one leaves the old key.
+     */
+    @Synchronized
+    fun replacePhoneKey(pair: SshKeyPair) {
+        save(keys.copy(generated = StoredKey(privateSealed = box.seal(pair.privateKey), publicLine = pair.publicLine)))
+    }
+
     /** Stores an imported private key; [publicLine] comes from loading it (see [SshClients.publicLineOf]). */
     @Synchronized
     fun import(privateKey: String, passphrase: String?, publicLine: String) {

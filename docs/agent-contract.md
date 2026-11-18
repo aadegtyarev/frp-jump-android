@@ -35,6 +35,8 @@ What the assistant can never do. Each rule is stated where it applies:
   automatically attached to model requests' content
   ([Instructions](#instructions)). The provider key is sent only to its
   configured target ([External API adapter](#external-api-adapter)).
+- SSH keys: export and restore of the phone's SSH key are not available to the assistant: there is no tool for them and nothing of
+  them reaches the model ([SSH keys](contract.md#9-settings)).
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common

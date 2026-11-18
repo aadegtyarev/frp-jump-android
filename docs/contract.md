@@ -408,7 +408,7 @@ The [SSH persistence](ssh-persist-contract.md),
 session, input and measurement guarantees. The entry points and common
 terminal behavior are summarized here.
 
-User + key or password, the phone's generated ed25519 key (shared by
+User + key or password, the phone's own ed25519 key (generated on first use, or restored from an export file; shared by
 all profiles) and an optional imported one (tried first), host keys pinned per profile+device+port, passwords stored
 only on "remember", several sessions at once. A row of snippets (saved
 commands, owner-defined) above the extra keys; the sessions as a row of tabs
@@ -679,6 +679,31 @@ version and update, MQTT plugins (scenario 12), components and licenses).
 
 - "Forget profile": disconnects its tunnels, deletes the phone from that
   server (offline: local wipe only), wipes its credentials and cached lists.
+- SSH keys (Settings → Security → SSH keys): the phone's own ed25519 key and an optional imported one, each with its fingerprint and
+  its public line (Copy and Share hand over the public line only). The phone key's private half stays in the app, sealed with the
+  Keystore ([Stored on the phone](#stored-on-the-phone)). It leaves by one path only: «Выгрузить ключ…» / "Export key…", a strict,
+  explicit action. No clipboard, share sheet, other app, log line or assistant tool ever gets it.
+  - Export: an explanation first (what the file is; whoever has it and its passphrase can log in wherever the key is installed). Then
+    a fresh identity check, at once and even if the app was just unlocked: the system's biometrics or screen lock (BiometricPrompt,
+    a strong biometric or the device credential); cancel or failure: nothing happens. With no screen lock set, a warning, and the
+    export continues only after an explicit «Всё равно выгрузить» / "Export anyway". Then a passphrase typed twice: not empty, at
+    least 8 characters, both the same. The field is a password input with no suggestions and `IME_FLAG_NO_PERSONALIZED_LEARNING`;
+    the activity's window and the dialog's are `FLAG_SECURE` while a passphrase dialog is shown, and only then.
+  - The file is an OpenSSH private key (`openssh-key-v1`) encrypted the way `ssh-keygen -p` writes it: bcrypt KDF (16-byte salt, 16
+    rounds) and aes256-ctr, so `ssh-keygen -y` reads it. There is no unencrypted export. It is written only through the system «Save
+    as» (`ACTION_CREATE_DOCUMENT`, default name `frp-jump-phone-key`); cancel writes nothing, and a failed write says the key was not
+    exported. The passphrase and the plaintext key exist in memory only for the operation: the char and byte arrays are zeroed after
+    it (an immutable `String`, made by the text field or by the store, cannot be).
+  - «Восстановить из файла…» / "Restore from file…": the owner picks a file (`ACTION_OPEN_DOCUMENT`) and, for an encrypted one, enters
+    its passphrase (the same `FLAG_SECURE` and keyboard rules). Only an OpenSSH ed25519 key is accepted: another type (refused at once,
+    before any passphrase), a wrong passphrase, a damaged file and a cipher other than `ssh-keygen`'s default each get a short message
+    of their own and change nothing; the key the phone already has: "nothing changed". Otherwise a confirmation shows two fingerprints,
+    the phone key's and the file's, with Replace / Cancel. After «Заменить» a fresh identity check runs at once (with no screen lock:
+    the same warning), and only its success replaces the key; cancel or failure changes nothing. The restored key takes the phone key's
+    slot with the same at-rest protection as a generated key; the imported key is not touched; the result line tells the owner that
+    devices that have the old public key need the new one. Sessions already open are not touched.
+  - Not part of it: export of the imported key, of settings or of frp access keys; any cloud or backup path. The assistant can neither
+    export nor restore ([assistant contract](agent-contract.md#boundary-and-availability)).
 - Fingerprint unlock: off by default; when on, the app asks for the device's
   biometrics or screen lock. Only the screen is locked: running tunnels, the
   service and the notification's actions are not affected.
@@ -1173,7 +1198,7 @@ cancellation and current execution boundaries belong to the
 | What | Where |
 | --- | --- |
 | Per profile: device token, cert, key, CA | app-private files, encrypted with a Keystore key |
-| SSH private key, remembered passwords | same |
+| SSH private key (the phone's: generated, or replaced by a restore; the imported one), remembered passwords | same. The phone key's export file is the owner's, outside the app, and holds the key only encrypted by the owner's passphrase; the passphrase is stored nowhere |
 | Per profile: the server's last `features` answer, next to its cached device list (labels and icons included) | app-private storage |
 | MQTT plugins: app-level on/off and settings, each connection's own on/off (scenario 12) | app-private storage |
 | Assistant provider metadata and root-bound sealed credential | app-private atomic document; no plaintext key |

@@ -12,7 +12,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.InterceptPlatformTextInput
+import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -44,6 +49,40 @@ fun SecretField(
     saved: String? = null,
     savedSpoken: String? = null,
     contentType: ContentType? = null,
+    /**
+     * The keyboard learns nothing from this field (`IME_FLAG_NO_PERSONALIZED_LEARNING`), on top of the password input
+     * type with no suggestions: for a key file's passphrase (К4).
+     */
+    noPersonalizedLearning: Boolean = false,
+) {
+    if (noPersonalizedLearning) {
+        @OptIn(ExperimentalComposeUiApi::class)
+        InterceptPlatformTextInput(
+            interceptor = { request, session -> session.startInputMethod(NoPersonalizedLearning(request)) },
+            content = { SecretFieldBody(value, onValueChange, label, saved, savedSpoken, contentType) },
+        )
+    } else {
+        SecretFieldBody(value, onValueChange, label, saved, savedSpoken, contentType)
+    }
+}
+
+/** [request] with `IME_FLAG_NO_PERSONALIZED_LEARNING` added to the editor's options. Public so a test can see the flag. */
+class NoPersonalizedLearning(private val request: PlatformTextInputMethodRequest) : PlatformTextInputMethodRequest {
+    override fun createInputConnection(outAttributes: EditorInfo): InputConnection {
+        val connection = request.createInputConnection(outAttributes)
+        outAttributes.imeOptions = outAttributes.imeOptions or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+        return connection
+    }
+}
+
+@Composable
+private fun SecretFieldBody(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    saved: String?,
+    savedSpoken: String?,
+    contentType: ContentType?,
 ) {
     var shown by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }

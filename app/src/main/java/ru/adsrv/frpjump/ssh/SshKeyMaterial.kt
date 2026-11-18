@@ -24,7 +24,17 @@ fun generateEd25519(comment: String, random: SecureRandom = SecureRandom()): Ssh
     val pair = generator.generateKeyPair()
     val private = pair.private as Ed25519PrivateKeyParameters
     val public = pair.public as Ed25519PublicKeyParameters
-    val body = Base64.getMimeEncoder(PEM_LINE, "\n".toByteArray()).encodeToString(OpenSSHPrivateKeyUtil.encodePrivateKey(private))
+    return ed25519KeyPair(private, public, comment)
+}
+
+/** [private] and [public] as the pair the phone stores: the private half as `ssh-keygen` writes it (unencrypted), the public line. */
+internal fun ed25519KeyPair(private: Ed25519PrivateKeyParameters, public: Ed25519PublicKeyParameters, comment: String): SshKeyPair {
+    val blob = OpenSSHPrivateKeyUtil.encodePrivateKey(private)
+    val body = try {
+        Base64.getMimeEncoder(PEM_LINE, "\n".toByteArray()).encodeToString(blob)
+    } finally {
+        blob.fill(0)
+    }
     return SshKeyPair(
         privateKey = "-----BEGIN OPENSSH PRIVATE KEY-----\n$body\n-----END OPENSSH PRIVATE KEY-----\n",
         publicLine = publicKeyLine(ED25519, ed25519PublicBlob(public.encoded), comment),
