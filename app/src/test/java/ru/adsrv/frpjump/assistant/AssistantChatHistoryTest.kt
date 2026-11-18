@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.assistant
 
 import ru.adsrv.frpjump.assistant.chat.*
 import java.util.Base64
+import kotlin.concurrent.thread
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
@@ -32,6 +33,35 @@ class AssistantChatHistoryTest {
         AssistantConversation(scope, { AssistantAvailability(true) }, { saved }, { provider }, {}, AgentModule(true),
             io = Dispatchers.Unconfined, historyStore = store, awaitHistoryClear = awaitClear, commitHistoryClear = commitClear, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
     private suspend fun AssistantConversation.ready() = withTimeout(3000) { state.first { !it.loading && !it.busy } }
+
+    @Test fun `a draft saved the moment the history read ends reaches the file - the read does not drop it`() = runBlocking {
+        // #302: the state turned loaded (editing and Send enabled) a moment before the conversation's own loading flag, and that flag silently drops
+        // every save, so a Send or a draft saved in that gap never reached the file. Observer threads spin on the state and act the moment it flips.
+        val file = Memory()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val seed = AssistantChatHistory(file, Box(), scope, Dispatchers.Unconfined)
+        seed.save(SavedChat().bind(snapshot.settings)); seed.load()
+        var dropped = 0
+        repeat(600) { round ->
+            val hold = java.util.concurrent.CountDownLatch(1)
+            file.beforeRead = { hold.await(10, java.util.concurrent.TimeUnit.SECONDS) }
+            val store = AssistantChatHistory(file, Box(), CoroutineScope(SupervisorJob() + Dispatchers.IO), Dispatchers.IO)
+            val chat = chat(scope, store, AgentProvider { AgentReply("unused") })
+            val text = "draft $round"
+            val observers = (1..4).map { thread(isDaemon = true) {
+                val deadline = System.nanoTime() + 10_000_000_000L
+                while (chat.state.value.loading && System.nanoTime() < deadline) Thread.onSpinWait()
+                chat.edit(text); chat.saveDraft()
+            } }
+            hold.countDown()
+            observers.forEach { it.join(10_000) }
+            chat.ready()
+            if (store.load()!!.draft != text) dropped++
+            chat.close()
+        }
+        scope.cancel()
+        assertEquals("rounds whose draft never reached the file", 0, dropped)
+    }
 
     @Test fun `new owner receives selected target and known diagnostic result without replay`() = runBlocking {
         val file = Memory(); val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
