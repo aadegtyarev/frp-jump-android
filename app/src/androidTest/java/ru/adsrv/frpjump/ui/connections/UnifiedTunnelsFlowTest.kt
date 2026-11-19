@@ -124,7 +124,7 @@ class UnifiedTunnelsFlowTest {
         host()
         compose.onNodeWithText("Home device").performClick()
         compose.onNodeWithText("Work SSH").assertDoesNotExist()
-        compose.onNodeWithText(compose.activity.getString(ru.adsrv.frpjump.R.string.new_connection)).assertIsDisplayed().performClick()
+        compose.onNodeWithText(compose.activity.getString(ru.adsrv.frpjump.R.string.tunnels_add_button)).assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals("home", added) }
         shot("unified-tunnels-empty-device")
     }
