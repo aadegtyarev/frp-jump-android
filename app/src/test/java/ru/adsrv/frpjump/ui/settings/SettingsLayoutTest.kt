@@ -70,12 +70,22 @@ class SettingsLayoutTest {
         val onAssistant = glyphs(assistant) + glyphs(file("AssistantModuleSetting")) + glyphs(file("AssistantToolsScreen").substringBefore("internal fun AssistantToolsRoute")) +
             glyphs(file("AssistantOwnerInstructionsScreen")).take(1) + glyphs(file("AssistantLimitsScreen")).take(1) + glyphs(file("AssistantChatTextSize"))
         assertEquals(
-            listOf("ServerGlyph", "MessageSquareGlyph", "BotGlyph", "WrenchGlyph", "PencilGlyph", "ClockGlyph", "ALargeSmallGlyph").sorted(),
+            listOf("ServerGlyph", "MessageSquareGlyph", "AssistantGlyph", "WrenchGlyph", "PencilGlyph", "ClockGlyph", "ALargeSmallGlyph").sorted(),
             onAssistant.sorted(),
         )
         assertEquals("one icon per row on the Assistant screen: $onAssistant", onAssistant.size, onAssistant.toSet().size)
         assertFalse("no text tile on Settings", main.contains("GlyphTile("))
         assertFalse("no Material icon in a tile", mainBody.contains("Icons.Filled"))
+    }
+
+    @Test fun `a label shrinks by a small step at most, then breaks at a syllable with a hyphen`() {
+        assertTrue(main.contains("const val MIN_WORD_SCALE = 0.85f"))
+        assertTrue(main.contains("hyphens = Hyphens.Auto"))
+    }
+
+    @Test fun `the assistant has the sparkles mark on both screens`() {
+        assertTrue(main.contains("tile = { IconTile(AssistantGlyph) }"))
+        assertTrue(File("src/main/java/ru/adsrv/frpjump/ui/settings/AssistantModuleSetting.kt").readText().contains("IconTile(AssistantGlyph)"))
     }
 
     @Test fun `labels are short nouns or states without a trailing period, in both languages`() {

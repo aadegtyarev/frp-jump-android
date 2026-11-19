@@ -25,6 +25,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.style.Hyphens
 import androidx.lifecycle.ViewModelStore
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -168,7 +169,9 @@ class SettingsR39Test {
                 val s = layout.layoutInput.text.text
                 for (line in 0 until layout.lineCount - 1) {
                     val end = layout.getLineEnd(line)
-                    assertFalse("'$label' broken inside a word at $end", end in 1 until s.length && !s[end - 1].isWhitespace() && !s[end].isWhitespace() && s[end - 1] != '-')
+                    // A break inside a word is allowed only as a hyphenated syllable break (the label is then at its smallest size).
+                    val inside = end in 1 until s.length && !s[end - 1].isWhitespace() && !s[end].isWhitespace() && s[end - 1] != '-'
+                    assertFalse("'$label' broken inside a word at $end without hyphenation", inside && layout.layoutInput.style.hyphens != Hyphens.Auto)
                 }
             }
         }

@@ -516,14 +516,6 @@ val ServerGlyph: ImageVector = pathGlyph(
         "M6 6h.01M6 18h.01",
 )
 
-/** Lucide "bot": the assistant module. */
-val BotGlyph: ImageVector = pathGlyph(
-    "Bot",
-    "M12 8V4H8" +
-        "M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z" +
-        "M2 14h2M20 14h2M15 13v2M9 13v2",
-)
-
 /** Lucide "pencil": the owner's instructions. */
 val PencilGlyph: ImageVector = pathGlyph(
     "Pencil",

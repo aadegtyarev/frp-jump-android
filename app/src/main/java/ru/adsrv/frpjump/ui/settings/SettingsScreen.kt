@@ -23,6 +23,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -635,21 +637,27 @@ internal fun SettingRow(
     }
 }
 
-/** Text that wraps at spaces but never inside a word: when a word is wider than the line, the text gets smaller until it fits. */
+/**
+ * Text that wraps at spaces but not inside a word: when a word is wider than the line, the text gets a little smaller (at most to
+ * [MIN_WORD_SCALE], so the owner's chosen size is kept); if the word still does not fit, it breaks at a syllable with a hyphen.
+ */
 @Composable
 private fun WordText(text: String, size: Float, lineHeight: Float, weight: FontWeight?, color: Color) {
     var scale by remember(text) { mutableFloatStateOf(1f) }
+    val atFloor = scale <= MIN_WORD_SCALE
     Text(
         text,
         fontSize = (size * scale).sp,
         lineHeight = (lineHeight * scale).sp,
         fontWeight = weight,
         color = color,
-        onTextLayout = { if (scale > MIN_WORD_SCALE && it.breaksWord()) scale = (scale - 0.08f).coerceAtLeast(MIN_WORD_SCALE) },
+        style = if (atFloor) TextStyle(lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto) else TextStyle.Default,
+        onTextLayout = { if (!atFloor && it.breaksWord()) scale = (scale - 0.05f).coerceAtLeast(MIN_WORD_SCALE) },
     )
 }
 
-private const val MIN_WORD_SCALE = 0.5f
+/** The smallest a label gets before a word breaks with a hyphen. */
+internal const val MIN_WORD_SCALE = 0.85f
 
 /** True when a line ends inside a word (not at a space or after a hyphen). */
 private fun TextLayoutResult.breaksWord(): Boolean {
