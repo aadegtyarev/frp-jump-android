@@ -237,8 +237,10 @@ class AssistantEntryNavTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("chat_setup").fetchSemanticsNodes().isNotEmpty() }
         assertNoBarWhileChatOnStack()
         compose.onNodeWithTag("chat_setup").performClick()
-        compose.waitUntil(10_000) { route == Routes.SETTINGS }
+        // The assistant's own settings screen (its master switch), over Settings (R39).
+        compose.waitUntil(10_000) { route == Routes.ASSISTANT_SETTINGS }
         compose.waitForIdle()
+        assertTrue(compose.runOnUiThread { nav.currentBackStack.value.any { it.destination.route == Routes.SETTINGS } })
         assertFalse(chatOnStack())
         // 5. Reopened, then left with the chat's own Back: the chat is off the stack.
         assistant(true)
