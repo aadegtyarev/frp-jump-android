@@ -183,86 +183,6 @@ val PictureGlyph: ImageVector = glyph("Picture") {
     lineTo(21f, 17f)
 }
 
-/** Two opposite arrows: direct connection. */
-val SwapGlyph: ImageVector = glyph("Swap") {
-    moveTo(4f, 8f)
-    horizontalLineTo(19f)
-    moveTo(16f, 5f)
-    lineTo(19f, 8f)
-    lineTo(16f, 11f)
-    moveTo(20f, 16f)
-    horizontalLineTo(5f)
-    moveTo(8f, 13f)
-    lineTo(5f, 16f)
-    lineTo(8f, 19f)
-}
-
-/** A circular arrow: checking again. */
-val RepeatGlyph: ImageVector = glyph("Repeat") {
-    moveTo(19f, 12f)
-    arcTo(7f, 7f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 16.9f, y1 = 7f)
-    moveTo(17f, 3f)
-    verticalLineTo(7f)
-    horizontalLineTo(13f)
-}
-
-/** A key: the phone's SSH key. */
-val KeyGlyph: ImageVector = glyph("Key") {
-    moveTo(11f, 12f)
-    arcTo(4f, 4f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 11f, y1 = 11.99f)
-    moveTo(11f, 12f)
-    horizontalLineTo(21f)
-    moveTo(18f, 12f)
-    verticalLineTo(15f)
-    moveTo(21f, 12f)
-    verticalLineTo(14f)
-}
-
-/** A fingerprint's ridges: unlock with fingerprint. */
-val FingerprintGlyph: ImageVector = glyph("Fingerprint", 1.8f) {
-    moveTo(6f, 10f)
-    arcTo(6f, 6f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 18f, y1 = 10f)
-    verticalLineTo(13f)
-    moveTo(9f, 19f)
-    curveTo(9.6f, 17.5f, 9f, 14f, 9f, 11f)
-    arcTo(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 15f, y1 = 11f)
-    verticalLineTo(13f)
-    curveTo(15f, 16f, 14f, 18f, 13f, 20f)
-    moveTo(12f, 11f)
-    verticalLineTo(14f)
-    curveTo(12f, 16f, 11.5f, 18f, 10.8f, 20f)
-    moveTo(6f, 14f)
-    verticalLineTo(10f)
-}
-
-/** A crossed-out eye: hidden from view. */
-val EyeOffGlyph: ImageVector = glyph("EyeOff") {
-    moveTo(3f, 12f)
-    curveTo(5.5f, 7.5f, 8.5f, 5.5f, 12f, 5.5f)
-    curveTo(15.5f, 5.5f, 18.5f, 7.5f, 21f, 12f)
-    curveTo(18.5f, 16.5f, 15.5f, 18.5f, 12f, 18.5f)
-    curveTo(8.5f, 18.5f, 5.5f, 16.5f, 3f, 12f)
-    close()
-    moveTo(15f, 12f)
-    arcTo(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 15f, y1 = 11.99f)
-    moveTo(4f, 4f)
-    lineTo(20f, 20f)
-}
-
-/** A circle half filled: light or dark. */
-val ThemeGlyph: ImageVector = ImageVector.Builder("Theme", 24.dp, 24.dp, 24f, 24f)
-    .path(fill = SolidColor(Color.Black)) {
-        moveTo(12f, 4f)
-        arcTo(8f, 8f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 12f, y1 = 20f)
-        close()
-    }
-    .path(stroke = SolidColor(Color.Black), strokeLineWidth = 2f) {
-        moveTo(12f, 4f)
-        arcTo(8f, 8f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 11.99f, y1 = 4f)
-        close()
-    }
-    .build()
-
 /** A house: the root of a tree (the MQTT explorer's path bar). */
 val HomeGlyph: ImageVector = glyph("Home", 1.8f) {
     moveTo(4f, 11f)
@@ -477,9 +397,6 @@ val PinGlyph: ImageVector = glyph("Pin", 1.8f) {
     verticalLineTo(20f)
 }
 
-/** A puzzle piece: the MQTT explorer's plugins. */
-val PluginGlyph: ImageVector = pathGlyph("Plugin", "M4 6.5H8.25a2.5 2.5 0 1 1 5 0H17.5v4.25a2.5 2.5 0 1 1 0 5V20H4Z")
-
 /** A framed picture with a sun and a hill: "Insert image". */
 val ImageGlyph: ImageVector = glyph("Image") {
     roundRect(3f, 4f, 18f, 16f, 2f)
@@ -612,4 +529,144 @@ val PencilGlyph: ImageVector = pathGlyph(
     "Pencil",
     "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" +
         "m15 5 4 4",
+)
+
+// --- Lucide 1.72.0 (ISC, see licenses/Lucide.txt): one icon per row of Settings and of its Assistant screen (R39) ---
+
+/** Lucide "arrow-left-right": the direct connection. */
+val ArrowLeftRightGlyph: ImageVector = pathGlyph(
+    "ArrowLeftRight",
+    "M8 3 4 7l4 4M4 7h16m-4 14 4-4-4-4M20 17H4",
+    width = 2f,
+)
+
+/** Lucide "terminal": direct input into the terminal (the framed [TerminalGlyph] stays where it is used). */
+val LucideTerminalGlyph: ImageVector = pathGlyph("LucideTerminal", "M12 19h8M4 17l6-6-6-6", width = 2f)
+
+/** Lucide "inbox": incoming MQTT messages. */
+val InboxGlyph: ImageVector = pathGlyph(
+    "Inbox",
+    "M22 12h-6l-2 3h-4l-2-3H2" +
+        "M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z",
+    width = 2f,
+)
+
+/** Lucide "database": MQTT storage. */
+val DatabaseGlyph: ImageVector = pathGlyph(
+    "Database",
+    "M3 5a9 3 0 1 0 18 0 9 3 0 1 0-18 0" +
+        "M3 5v14a9 3 0 0 0 18 0V5" +
+        "M3 12a9 3 0 0 0 18 0",
+    width = 2f,
+)
+
+/** Lucide "puzzle": MQTT plugins. */
+val PuzzleGlyph: ImageVector = pathGlyph(
+    "Puzzle",
+    "M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z",
+    width = 2f,
+)
+
+/** Lucide "languages": the language. */
+val LanguagesGlyph: ImageVector = pathGlyph(
+    "Languages",
+    "m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1m14 20-5-10-5 10M14 18h6",
+    width = 2f,
+)
+
+/** Lucide "sun-moon": the theme. */
+val SunMoonGlyph: ImageVector = pathGlyph(
+    "SunMoon",
+    "M12 2v2" +
+        "M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715" +
+        "M16 12a4 4 0 0 0-4-4M19 5l-1.256 1.256M20 12h2",
+    width = 2f,
+)
+
+/** Lucide "user": the profile's name and colour. */
+val UserGlyph: ImageVector = pathGlyph(
+    "User",
+    "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" +
+        "M16 7a4 4 0 1 0-8 0 4 4 0 1 0 8 0",
+    width = 2f,
+)
+
+/** Lucide "log-out": forget the profile. */
+val LogOutGlyph: ImageVector = pathGlyph("LogOut", "m16 17 5-5-5-5M21 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", width = 2f)
+
+/** Lucide "info": the version row (the own [InfoGlyph] stays where it is used). */
+val LucideInfoGlyph: ImageVector = pathGlyph(
+    "LucideInfo",
+    "M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0M12 16v-4M12 8h.01",
+    width = 2f,
+)
+
+/** Lucide "file-text": components and licenses. */
+val FileTextGlyph: ImageVector = pathGlyph(
+    "FileText",
+    "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" +
+        "M14 2v5a1 1 0 0 0 1 1h5M10 9H8M16 13H8M16 17H8",
+    width = 2f,
+)
+
+/** Lucide "refresh-cw": the server check. */
+val RefreshCwGlyph: ImageVector = pathGlyph(
+    "RefreshCw",
+    "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5",
+    width = 2f,
+)
+
+/** Lucide "triangle-alert": the battery warning. */
+val TriangleAlertGlyph: ImageVector = pathGlyph(
+    "TriangleAlert",
+    "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01",
+    width = 2f,
+)
+
+/** Lucide "fingerprint-pattern": unlock with fingerprint. */
+val FingerprintPatternGlyph: ImageVector = pathGlyph(
+    "FingerprintPattern",
+    "M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4M14 13.12c0 2.38 0 6.38-1 8.88M17.29 21.02c.12-.6.43-2.3.5-3.02" +
+        "M2 12a10 10 0 0 1 18-6M2 16h.01M21.8 16c.2-2 .131-5.354 0-6M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2" +
+        "M8.65 22c.21-.66.45-1.32.57-2M9 6.8a6 6 0 0 1 9 5.2v2",
+    width = 2f,
+)
+
+/** Lucide "timer": lock after. */
+val TimerGlyph: ImageVector = pathGlyph(
+    "Timer",
+    "M10 2h4M12 14l3-3M20 14a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
+    width = 2f,
+)
+
+/** Lucide "eye-off": hide in recents. */
+val EyeOffGlyph: ImageVector = pathGlyph(
+    "EyeOff",
+    "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" +
+        "M14.084 14.158a3 3 0 0 1-4.242-4.242" +
+        "M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" +
+        "m2 2 20 20",
+    width = 2f,
+)
+
+/** Lucide "key-round": the SSH keys. */
+val KeyRoundGlyph: ImageVector = pathGlyph(
+    "KeyRound",
+    "M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" +
+        "M16.5 7.5h.01",
+    width = 2f,
+)
+
+/** Lucide "a-large-small": the chat's text size. */
+val ALargeSmallGlyph: ImageVector = pathGlyph(
+    "ALargeSmall",
+    "m15 16 2.536-7.328a1.02 1.02 1 0 1 1.928 0L22 16M15.697 14h5.606M2 16l4.039-9.69a.5.5 0 0 1 .923 0L11 16M3.304 13h6.392",
+    width = 2f,
+)
+
+/** Lucide "message-square": open the chat. */
+val MessageSquareGlyph: ImageVector = pathGlyph(
+    "MessageSquare",
+    "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z",
+    width = 2f,
 )

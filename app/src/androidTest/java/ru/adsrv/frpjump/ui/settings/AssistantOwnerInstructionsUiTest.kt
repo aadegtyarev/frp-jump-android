@@ -25,7 +25,7 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.settings.AppSettings
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 
-/** Settings › LLM assistant › Own instructions on the actual Settings screen; the original preferences are restored. */
+/** Settings › Assistant › Own instructions on the actual Assistant settings screen; the original preferences are restored. */
 @RunWith(AndroidJUnit4::class)
 class AssistantOwnerInstructionsUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -63,7 +63,7 @@ class AssistantOwnerInstructionsUiTest {
             vm = SettingsViewModel(app)
             models.put("owner-instructions-settings", vm)
         }
-        compose.setContent { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onChat = {}) } }
+        compose.setContent { FrpJumpTheme { AssistantSettingsScreen(vm, onBack = {}, onChat = {}) } }
     }
 
     private fun open() {
@@ -89,7 +89,7 @@ class AssistantOwnerInstructionsUiTest {
 
     @Test fun screenShowsFieldCounterHintSaveAndResetUncut() {
         show()
-        // The entry is in the LLM assistant group and says nothing about the text.
+        // The entry is on the Assistant screen and says nothing about the text.
         compose.onNodeWithTag("assistant_owner_entry").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.assistant_owner_not_set), useUnmergedTree = true).assertExists()
         open()

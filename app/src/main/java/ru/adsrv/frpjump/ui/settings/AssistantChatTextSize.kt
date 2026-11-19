@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.settings.ChatTextSize
+import ru.adsrv.frpjump.ui.ALargeSmallGlyph
 import ru.adsrv.frpjump.ui.AppTheme
 
 /** The chat's own text multiplier (1.0 = the system size), provided by the chat screen from Settings and read by [ChatFeedScale]. */
@@ -36,7 +37,7 @@ private fun ChatTextScaled(scale: Float, content: @Composable () -> Unit) {
 }
 
 /**
- * Settings › Chat › Text size: a stepped slider with the value, a small and a large "A" at its ends, and a live preview below
+ * Settings › Assistant › Text size: a stepped slider with the value, a small and a large "A" at its ends, and a live preview below
  * (a muted user line and an answer line) at the chosen size. The slider announces the value ("130%"); every change is saved at once.
  */
 @Composable
@@ -45,12 +46,9 @@ internal fun AssistantChatTextSizeSetting(percent: Int, onChange: (Int) -> Unit)
     val index = steps.indexOf(ChatTextSize.snap(percent.toDouble())).coerceAtLeast(0)
     val label = stringResource(R.string.chat_text_size)
     val value = stringResource(R.string.chat_text_size_value, steps[index])
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(label, color = AppTheme.colors.ink)
-            Text(value, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_text_size_value"))
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SettingRow(tile = { IconTile(ALargeSmallGlyph) }, label = label, onClick = null, value = value, valueChevron = false, valueTag = "chat_text_size_value")
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.chat_text_size_small), fontSize = 12.sp, color = AppTheme.colors.muted, modifier = Modifier.clearAndSetSemantics {})
             // The Slider itself is 44 dp tall; the row around it makes the touch area a full 48 dp.
             Box(Modifier.weight(1f).heightIn(min = 48.dp).testTag("chat_text_size_track"), contentAlignment = Alignment.Center) {
@@ -63,7 +61,7 @@ internal fun AssistantChatTextSizeSetting(percent: Int, onChange: (Int) -> Unit)
             Text(stringResource(R.string.chat_text_size_large), fontSize = 22.sp, color = AppTheme.colors.muted, modifier = Modifier.clearAndSetSemantics {})
         }
         ChatTextScaled(ChatTextSize.factor(steps[index])) {
-            Column(Modifier.testTag("chat_text_size_preview"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.padding(horizontal = 14.dp).testTag("chat_text_size_preview"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(R.string.chat_text_size_preview_user), color = AppTheme.colors.muted)
                 Text(stringResource(R.string.chat_text_size_preview_answer), style = MaterialTheme.typography.bodyLarge, color = AppTheme.colors.ink)
             }

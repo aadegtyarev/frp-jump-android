@@ -387,7 +387,7 @@ Quick access to the saved connections of every device.
 
 ### 6. Direct or through the server
 
-- Setting "Direct connection (P2P)", on by default.
+- Setting "Direct connection", on by default.
 - On: connecting shows "Trying direct…" for up to 10 s. Success shows
   "Direct".
 - Direct failed: the connection works through the server right away and
@@ -517,7 +517,7 @@ connection, not the SSH session. Hardware key events pass through in both
 modes. With direct input off, sticky Ctrl/Alt/Shift applies when the keyboard
 commits the text, not while it is still composing it.
 
-**History limit.** Settings → Terminal → History rows offers 500, 1000,
+**History limit.** Settings → Terminal → History lines offers 500, 1000,
 3000 and 10000, default 1000. This is the main Termux buffer limit including
 visible rows, not a guarantee of that many off-screen rows. Older files
 without the setting use 1000; invalid values/types are normalized without
@@ -656,17 +656,20 @@ else happens: no click for the program, no keyboard.
 
 ### 9. Settings
 
-Settings are grouped by purpose: profile (name and colour, forget profile); tunnels
-(direct connection, local port range); background (poll interval, battery);
-security (SSH keys: the phone's and an imported one, unlock with fingerprint, lock after); app (language, theme,
-version and update, MQTT plugins (scenario 12), components and licenses).
+Settings are grouped by purpose, in this order: tunnels (direct connection, local port range); background (server
+check, battery); security (unlock with fingerprint, lock after, hide in recents, SSH keys: the phone's and an imported one);
+terminal (history lines, direct input, text input); assistant (one row that opens the Assistant screen: the master switch,
+provider, tools, own instructions, limits, chat text size, open chat); MQTT (incoming messages, storage, plugins
+(scenario 12)); appearance (language, theme); the current profile (name and colour, then forget profile as the last, red
+row); about (version and update, components and licenses). Row labels are nouns or states, short and without a trailing
+period, each with its own icon; a long explanation shortened on a row lives in the screen or sheet the row opens.
 
 - Settings is a screen of the back stack, not a section of the bottom navigation: the gear in the Devices, Tunnels and
   Sessions headers opens it, its top bar has a back arrow ("Back" / «Назад») and the title, and there is no bottom navigation over it.
   Back (the arrow or the system Back) returns to the section it was opened from, as it was. There is only one Settings in the
   back stack: opening it while it is there returns to it and closes the screens above it. Screens opened from Settings (profile,
   SSH keys, the assistant's chat and provider, MQTT plugins, licenses and the rest) return to it on Back. Every in-app path into
-  Settings (the update announcement's "Show", the chat's "Set up" while the assistant is off) opens this same screen.
+  Settings (the update announcement's "Show", the chat's "Set up" while the assistant is off, which lands on the Assistant screen over Settings) opens this same screen.
 
 - "Forget profile": disconnects its tunnels, deletes the phone from that
   server (offline: local wipe only), wipes its credentials and cached lists.
@@ -914,7 +917,7 @@ the plain explorer still works.
 
 #### Controls and common tasks
 
-Settings → Plugins opens app-level switches and exceptions. In order:
+Settings → MQTT → Plugins opens app-level switches and exceptions. In order:
 
 | Stored id | Name | Purpose |
 | --- | --- | --- |
@@ -945,7 +948,7 @@ Settings → Plugins opens app-level switches and exceptions. In order:
   specific to the connection used to open the sheet. Presets are switches;
   own rules can be added, edited, reordered by drag and deleted with Undo.
   Template validation and publish warnings follow the MQTT contract.
-- To disable WB everywhere, use Settings → Plugins → its switch. To disable
+- To disable WB everywhere, use Settings → MQTT → Plugins → its switch. To disable
   it for one broker, use that explorer's ⋮ → Plugins → its switch. To enable
   it only for controllers, turn it off app-wide, then on for those
   connections. Reset an exception in the sheet or the plugin's Settings
@@ -1084,7 +1087,7 @@ consume settings and write v2 immediately:
 
 ## Optional LLM assistant
 
-The optional module is off by default. Settings exposes provider setup,
+The optional module is off by default. Settings has one Assistant row that opens the Assistant screen, where the master switch, provider setup,
 secure key storage, model discovery, effort and context limits, the owner's own
 instructions for the model (guidance only, sent with every message, never
 authority over permissions or confirmations), plus a Chat

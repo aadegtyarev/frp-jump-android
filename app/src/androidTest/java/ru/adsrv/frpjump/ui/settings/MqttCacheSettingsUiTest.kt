@@ -55,7 +55,7 @@ class MqttCacheSettingsUiTest {
             vm = SettingsViewModel(app)
             models.put("mqtt-cache-settings", vm)
         }
-        compose.setContent { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onChat = {}) } }
+        compose.setContent { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onAssistant = {}) } }
         compose.onNodeWithText(text(R.string.mqtt_cache_title)).performScrollTo().performClick()
         edit("mqtt_cache_bytes", "8192")
         edit("mqtt_cache_topics", "17")

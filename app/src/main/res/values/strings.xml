@@ -12,10 +12,16 @@
     <string name="js_stay">Stay</string>
     <string name="js_leave_text">Leave this page? Changes you made may not be saved.</string>
     <string name="save">Save</string>
-    <string name="assistant_title">LLM assistant</string>
-    <string name="assistant_enabled">Enable assistant module</string>
-    <string name="assistant_foundation_hint">Text chat · optional profile information</string>
-    <string name="assistant_provider_title">Assistant provider</string>
+    <string name="assistant_title">Assistant</string>
+    <string name="assistant_row_off">Off</string>
+    <string name="assistant_row_on_plain">On</string>
+    <string name="assistant_row_on">On · %s</string>
+    <string name="assistant_open_chat">Open chat</string>
+    <string name="settings_assistant_setup">Setup</string>
+    <string name="assistant_enabled">Assistant</string>
+    <string name="assistant_foundation_hint">Text chat and tools of your choice</string>
+    <string name="assistant_provider_title">Provider</string>
+    <string name="assistant_provider_row">%1$s · window %2$s</string>
     <string name="assistant_provider_stage_hint">Requests start only with Send or Fetch models.</string>
     <string name="assistant_provider_root">API root URL (usually ending in /v1)</string>
     <string name="assistant_provider_key">API key</string>
@@ -220,8 +226,8 @@
     <string name="battery_no_settings">This phone has no battery optimisation settings screen.</string>
 
     <!-- Direct or through the server -->
-    <string name="setting_direct">Direct connection (P2P)</string>
-    <string name="setting_direct_hint">Faster. If it does not work, connections go through the server.</string>
+    <string name="setting_direct">Direct connection</string>
+    <string name="setting_direct_hint">Faster; if it fails, via the server</string>
     <string name="direct_or_server">Direct or through the server</string>
     <string name="direct_failed_text">%s already works through the server. The network does not seem to let direct connections through.</string>
     <string name="direct_kept_text">%s is kept through the server on this network.</string>
@@ -554,7 +560,9 @@
     <!-- Settings -->
     <string name="settings_tunnels">Tunnels</string>
     <string name="settings_background">Background</string>
-    <string name="settings_app">App</string>
+    <string name="settings_mqtt">MQTT</string>
+    <string name="settings_about">About</string>
+    <string name="settings_appearance">Appearance</string>
     <string name="language">Language</string>
     <string name="language_system">System</string>
     <string name="language_russian" translatable="false">Русский</string>
@@ -570,7 +578,7 @@
         <item quantity="one">Use at least %d port.</item>
         <item quantity="other">Use at least %d ports.</item>
     </plurals>
-    <string name="background_poll">Check the server in the background</string>
+    <string name="background_poll">Server check</string>
     <string name="poll_off">Off</string>
     <plurals name="poll_seconds">
         <item quantity="one">%d s</item>
@@ -586,7 +594,7 @@
     <string name="ssh_keys">SSH keys</string>
     <string name="ssh_keys_hint">Add a key’s line to ~/.ssh/authorized_keys on the device, or choose “Use key login” in an SSH tab’s menu.</string>
     <string name="ssh_key_failed">Cannot make or read the SSH key: %s</string>
-    <string name="ssh_keys_both">Phone and imported</string>
+    <string name="ssh_keys_both">Phone key and imported</string>
     <string name="phone_key">Phone key</string>
     <string name="copy_phone_key">Copy the phone key</string>
     <string name="copy_imported_key">Copy the imported key</string>
@@ -654,15 +662,16 @@
 
     <!-- Stage 7: settings, lock, theme, terminal -->
     <string name="settings_security">Security</string>
-    <string name="background_poll_row_hint">While tunnels are open</string>
+    <string name="background_poll_row_hint">While tunnels are on</string>
     <string name="setting_app_lock">Unlock with fingerprint</string>
-    <string name="setting_app_lock_hint_after">Fingerprint or screen lock when the app opens. Lock after: %s. Tunnels keep running.</string>
+    <string name="setting_app_lock_hint_after">Lock after %s</string>
+    <string name="setting_app_lock_hint_immediately">Lock immediately</string>
     <string name="setting_lock_after">Lock after</string>
     <string name="lock_after_immediately">Immediately</string>
-    <string name="setting_lock_after_hint">Asks when the app starts from scratch and after this long out of sight. Tunnels keep the app running, so closing it is not a restart. After a window the app opened (photo or file picker, share, installer, browser) it waits at least 30 s.</string>
-    <string name="setting_app_lock_hint">Fingerprint or screen lock when the app opens. Tunnels keep running.</string>
-    <string name="setting_hide_in_recents">Hide in Recents</string>
-    <string name="setting_hide_in_recents_hint">No picture in Recents. May block screenshots.</string>
+    <string name="setting_lock_after_hint">Fingerprint or screen lock when the app opens. Tunnels keep running. Asks when the app starts from scratch and after this long out of sight. Tunnels keep the app running, so closing it is not a restart. After a window the app opened (photo or file picker, share, installer, browser) it waits at least 30 s.</string>
+    <string name="setting_app_lock_hint">Fingerprint or screen lock on open</string>
+    <string name="setting_hide_in_recents">Hide in recents</string>
+    <string name="setting_hide_in_recents_hint">No picture; may block screenshots</string>
     <string name="setting_app_lock_needs_screen_lock">Needs a screen lock on the phone</string>
     <string name="lock_needs_screen_lock_text">This phone has no screen lock. Set a PIN, pattern or password in the system settings, then turn this on.</string>
     <string name="lock_open_settings">Open settings</string>
@@ -677,7 +686,6 @@
     <string name="lock_title">frp-jump is locked</string>
     <string name="lock_text">Tunnels keep running.</string>
     <string name="lock_unlock">Unlock</string>
-    <string name="language_glyph">Aa</string>
     <string name="theme">Theme</string>
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
@@ -913,9 +921,9 @@
     <string name="mqtt_no_broker">No broker answers on port %1$d of %2$s</string>
     <string name="mqtt_no_common_version">The broker refused MQTT 5 and 3.1.1</string>
     <string name="mqtt_refused">The broker refused the connection</string>
-    <string name="mqtt_ingress_title">MQTT incoming limits</string>
-    <string name="mqtt_cache_title">MQTT storage</string>
-    <string name="mqtt_cache_row_hint">Stored names, values, history and overflow</string>
+    <string name="mqtt_ingress_title">Incoming messages</string>
+    <string name="mqtt_cache_title">Storage</string>
+    <string name="mqtt_cache_row_hint">Topics, values, history</string>
     <string name="mqtt_cache_apply_hint">For new explorer sessions. Close an existing session and wait for its Undo window to finish before creating a new one. Leaving the screen or reconnecting keeps the old limits.</string>
     <string name="mqtt_cache_accounting_hint">Logical owned cache budget: 256 bytes for the root and each new node, 2 bytes per topic-level UTF-16 unit, 64 bytes per history value, plus payload. Not total app memory; reader snapshots and MQTT library allocations are excluded. A rejected message leaves old data intact. Normal history rotation still removes its oldest entry.</string>
     <string name="mqtt_cache_bytes">Owned cache budget, bytes</string>
@@ -926,7 +934,7 @@
     <string name="mqtt_cache_missing">Cache messages rejected: %1$d. Values may be missing or outdated.</string>
     <string name="mqtt_cache_usage">Owned cache accounting: %1$d / %2$d bytes</string>
     <string name="mqtt_cache_stopped">Stored-data limits stopped this session. Refresh the tree, then retry, or change Settings and create a new session.</string>
-    <string name="mqtt_ingress_row_hint">Payload, queue capacity and overflow behavior</string>
+    <string name="mqtt_ingress_row_hint">Size, queue, overflow</string>
     <string name="mqtt_ingress_apply_hint">Applies to new MQTT explorer sessions. To apply to an existing session, close that session and open a new one. Leaving the screen or reconnecting does not apply new limits.</string>
     <string name="mqtt_ingress_accounting_hint">Per session. Queue accounting includes waiting and processing payload bytes, topic text (2 bytes per UTF-16 unit), and a fixed 256-byte charge per message. This is not a measurement of total app memory. No payload is truncated.</string>
     <string name="mqtt_ingress_payload">Maximum incoming payload, bytes</string>
@@ -1081,7 +1089,6 @@
     <string name="viewer_hand_over_failed">Could not prepare the file for another app: %s</string>
     <string name="files_hand_over_failed">Cannot pass %s to another app.</string>
     <string name="licenses">Components and licenses</string>
-    <string name="licenses_hint">The libraries in the app, their licenses and sources</string>
     <string name="licenses_count">%d components</string>
     <string name="licenses_sources">Sources</string>
     <string name="licenses_reading">Reading…</string>
@@ -1120,7 +1127,7 @@
     <string name="plugin_wirenboard">Wiren Board</string>
     <string name="plugin_wirenboard_hint">The WB tab: devices, values with units, switches</string>
     <string name="wb_tab_devices" translatable="false">WB</string>
-    <string name="plugins_row_hint">For MQTT · on: %1$d of %2$d</string>
+    <string name="plugins_row_hint">%1$d of %2$d on</string>
     <string name="plugins_row_hint_exceptions">· with exceptions</string>
     <string name="plugins_subtitle">For MQTT tunnels</string>
     <string name="plugins_footer">One tunnel can differ: \"⋮\" → \"Plugins…\" in its explorer</string>
@@ -1178,9 +1185,9 @@
     <string name="template_same_as_status">Same as the status template: leave it empty</string>
     <string name="settings_terminal">Terminal</string>
     <string name="setting_terminal_direct_input">Direct input</string>
-    <string name="setting_terminal_direct_input_hint">Send characters immediately, without keyboard composition. Off: the keyboard can buffer text and show suggestions.</string>
+    <string name="setting_terminal_direct_input_hint">Keys go straight to the terminal</string>
     <string name="terminal_text_input">Text input</string>
-    <string name="terminal_text_input_hint">Hold ⌨ in the terminal to open the editor. Also available in ⋮ → Text input.</string>
+    <string name="terminal_text_input_hint">Hold ⌨ to insert text</string>
     <string name="terminal_return_keys">Return to terminal keys</string>
     <string name="terminal_extra_keys_show">Show additional terminal keys</string>
     <string name="terminal_extra_keys_hide">Hide additional terminal keys</string>
@@ -1189,7 +1196,7 @@
     <string name="terminal_text_expand">Expand text editor</string>
     <string name="terminal_text_collapse">Collapse text editor</string>
     <string name="terminal_text_insert_failed">Could not insert text. The draft was kept.</string>
-    <string name="terminal_history_rows">History rows</string>
+    <string name="terminal_history_rows">History lines</string>
     <string name="terminal_history_hint">Buffer limit, including visible rows. Applies to new terminal tabs only; existing tabs keep their history.</string>
     <string name="terminal_text_insert_enter">Insert and press Enter</string>
     <string name="terminal_paste_enter_warning">This action also sends Enter after pasting, including when line breaks are removed.</string>
@@ -1230,13 +1237,14 @@
     <string name="assistant_owner_reset">Reset</string>
     <string name="assistant_owner_set">Set</string>
     <string name="assistant_owner_not_set">Not set</string>
-    <string name="chat_text_size">Chat text size</string>
+    <string name="chat_text_size">Text size</string>
     <string name="chat_text_size_value">%1$d%%</string>
     <string name="chat_text_size_small">A</string>
     <string name="chat_text_size_large">A</string>
     <string name="chat_text_size_preview_user">› check for updates</string>
     <string name="chat_text_size_preview_answer">Updates are available: 23 apt packages.</string>
     <string name="assistant_tools">Tools</string>
+    <string name="assistant_tools_row_hint">%1$d of %2$d on</string>
     <string name="assistant_tools_notice">Enabled tools send selected public text/images and private profile, device and tunnel information to your configured model when used. Web queries go to DuckDuckGo. Model token charges, including image analysis, apply. Changes apply to the next send; the current send may finish with its original tools. History is kept. Opening or changing tools makes no requests.</string>
     <string name="tool_search">Web search</string>
     <string name="tool_search_hint">Free, unofficial DuckDuckGo search; may be blocked.</string>
@@ -1280,7 +1288,7 @@
     <string name="tool_wait_for_progress">Setting up a wait…</string>
     <string name="tool_wait_for_receipt">Wait</string>
     <string name="assistant_limits_title">Limits</string>
-    <string name="assistant_limits_hint">Assistant, waits, terminal, tunnels</string>
+    <string name="assistant_limits_hint">Time, steps, waits</string>
     <string name="limit_waits_at_once">Waits at once</string>
     <string name="limit_wait_max_minutes">Longest wait, min</string>
     <string name="limit_event_replies">Event replies in a row</string>

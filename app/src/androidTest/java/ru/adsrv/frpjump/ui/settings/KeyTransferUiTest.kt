@@ -122,7 +122,7 @@ class KeyTransferUiTest {
             CompositionLocalProvider(
                 LocalActivityResultRegistryOwner provides owner,
                 LocalKeyTransferSeams provides KeyTransferSeams(identity = identity, files = files, rounds = 4),
-            ) { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onChat = {}) } }
+            ) { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onAssistant = {}) } }
         }
         compose.onNodeWithText(text(R.string.ssh_keys)).performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithText(text(R.string.ssh_keys_hint)).fetchSemanticsNodes().isNotEmpty() }

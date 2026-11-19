@@ -64,7 +64,7 @@ class AppLockAfterSettingsUiTest {
             vm = SettingsViewModel(app)
             models.put("lock-after-settings", vm)
         }
-        compose.setContent { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onChat = {}) } }
+        compose.setContent { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onAssistant = {}) } }
     }
 
     /** The five choices as the sheet words them, in [AppLockAfter] order. */
