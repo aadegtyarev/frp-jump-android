@@ -20,6 +20,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -159,10 +162,20 @@ class ConnectionCardAssistantTest {
     }
 
     @Test fun aDownCardHasAnOffSwitchAndMenuAndNoMainAction() {
+        var connected = 0
+        val counting = RowActions({ connected++ }, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, { false }, {}, {})
         card { androidx.compose.foundation.layout.Column {
-            ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(CMD, null))
+            ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = counting, assistant = AssistantMark(CMD, null))
         } }
-        compose.onNodeWithTag("card_switch", useUnmergedTree = true).assertIsDisplayed().assertIsOff().assertIsEnabled().assertHeightIsAtLeast(48.dp)
+        val toggle = compose.onNodeWithTag("card_switch", useUnmergedTree = true).assertIsDisplayed().assertIsOff().assertIsEnabled()
+        // The M3 Switch draws 52x32 dp, and the node's own bounds are that; its touch target is 48 dp tall (minimumInteractiveComponentSize),
+        // so the check is a tap 22 dp above the centre, outside the drawn 32 dp and inside the 48.
+        toggle.performTouchInput { click(Offset(center.x, center.y - 22.dp.toPx())) }
+        compose.waitForIdle()
+        org.junit.Assert.assertEquals("a tap 22 dp above the switch's centre turns it on", 1, connected)
+        toggle.performTouchInput { click(Offset(center.x, center.y + 22.dp.toPx())) }
+        compose.waitForIdle()
+        org.junit.Assert.assertEquals("a tap 22 dp below the switch's centre turns it on", 2, connected)
         compose.onNodeWithTag("card_menu", useUnmergedTree = true).assertIsDisplayed().assertWidthIsAtLeast(44.dp)
         compose.onNodeWithTag("card_main", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("card_on", useUnmergedTree = true).assertDoesNotExist()
