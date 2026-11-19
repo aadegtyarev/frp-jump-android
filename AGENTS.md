@@ -45,6 +45,10 @@
   Retained runs keep their recorded contracts; use fresh launches for new
   profiles or explicitly provide the protocol in an authorized retained follow-up.
 
+## Redesign requirements
+
+- For every FRP Jump redesign slice, read and follow [docs/redesign-requirements.md](docs/redesign-requirements.md), alongside the applicable contracts and instructions below. For this redesign, Terra implements and Sol independently reviews every slice, including UI slices; root orchestrates. This scoped role assignment overrides the default implementation and review roles below, which remain in effect elsewhere.
+
 ## Project-specific commands and conventions
 
 - Android/Kotlin/Jetpack Compose, Java 17; modules `app`, `agent-core`,

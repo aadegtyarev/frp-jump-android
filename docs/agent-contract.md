@@ -460,9 +460,8 @@ round trip or an HTML implementation.
 
 Settings → Assistant → Open chat opens a normal back-stack screen. Opening it
 restores local encrypted history off Main, without unsealing provider credentials
-or contacting the provider. Disabled, missing-model
-and unreadable setup explain the problem and link directly to Settings or
-provider setup. Recovery re-reads provider metadata without unsealing a key.
+or contacting the provider. While disabled, the chat explains that the assistant is off, disables the composer and Send, and links to Assistant settings, returning to the existing entry when present. Missing-model
+and unreadable setup explain the problem and link directly to provider setup. Recovery re-reads provider metadata without unsealing a key.
 
 Send explicitly owns one pending operation, including off-Main credential
 preparation and the HTTP request. Follow-ups reuse the same provider instance

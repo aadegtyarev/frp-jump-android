@@ -71,7 +71,6 @@ class TunnelsHeaderTest {
     private var count by mutableStateOf(2)
     private var busy by mutableStateOf(false)
     private var stopped = 0
-    private var gear = 0
 
     /** A 360 dp wide header, as on the narrowest phones; the font is the device's. */
     private fun host(widthDp: Int = 360) = compose.setContent {
@@ -83,7 +82,7 @@ class TunnelsHeaderTest {
                         onOpenSearch = { searching = true }, onCloseSearch = { searching = false; query = "" },
                         focusOnOpen = false, onFocused = {},
                         scopeOn = onlyOn && count > 0, filterOn = onlyOn && count > 0, count = count,
-                        onFilter = { onlyOn = it }, stopBusy = busy, onStopAll = { stopped++ }, onSettings = { gear++ },
+                        onFilter = { onlyOn = it }, stopBusy = busy, onStopAll = { stopped++ },
                     )
                 }
             }
@@ -99,22 +98,17 @@ class TunnelsHeaderTest {
         val capsule = bounds(TUNNELS_CAPSULE_TAG)
         val filter = bounds(TUNNELS_FILTER_TAG)
         val stop = bounds(TUNNELS_STOP_ALL_TAG)
-        val gear = bounds(ru.adsrv.frpjump.ui.SETTINGS_GEAR_TAG)
-        assertTrue("inside the 360 dp header: $search $gear", gear.right.value - search.left.value <= 360.5f)
+        compose.onNodeWithTag(ru.adsrv.frpjump.ui.SETTINGS_GEAR_TAG).assertDoesNotExist()
+        assertTrue("inside the 360 dp header: $search $capsule", capsule.right.value - search.left.value <= 360.5f)
         assertTrue("the pill is 36 dp or more: $search", search.height.value >= 35.5f)
         // The capsule is one container; its halves are side by side, each a touch target of 48 dp or more, in order.
         assertTrue("the halves are inside the capsule: $capsule $filter $stop", filter.left.value >= capsule.left.value - 0.5f && stop.right.value <= capsule.right.value + 0.5f && filter.right.value <= stop.left.value + 1.5f)
         assertTrue("the halves are 48 dp or more: $filter $stop", filter.height.value >= 47.5f && filter.width.value >= 47.5f && stop.height.value >= 47.5f && stop.width.value >= 47.5f)
         assertTrue("the halves share a row: $filter $stop", near(filter.cy(), stop.cy()))
-        if (fontScale < 1.5f) {
-            // One row, in this order.
-            assertTrue("search, capsule, gear on one row: $search $capsule $gear", near(search.cy(), capsule.cy()) && near(capsule.cy(), gear.cy()))
-            assertTrue("in order", search.right.value <= capsule.left.value + 0.5f && capsule.right.value <= gear.left.value + 0.5f)
+        if (near(search.cy(), capsule.cy())) {
+            assertTrue("search precedes capsule", search.right.value <= capsule.left.value + 0.5f)
         } else {
-            // Two rows: search and gear, then the capsule.
-            assertTrue("search and gear share the first row: $search $gear", near(search.cy(), gear.cy()))
-            assertTrue("the capsule is on the second row, below: $capsule $search", capsule.top.value >= search.bottom.value - 1f && capsule.top.value >= gear.bottom.value - 1f)
-            assertTrue("the gear is at the end of the first row: $gear", gear.right.value - search.left.value >= 359f)
+            assertTrue("capsule reflows below search", capsule.top.value >= search.bottom.value - 1f)
         }
         // The name of the search is whole on the pill.
         compose.onNodeWithText(text(R.string.connections_search_pill)).assertIsDisplayed()
@@ -195,9 +189,7 @@ class TunnelsHeaderTest {
         assertEquals(before, bounds(TUNNELS_STOP_ALL_TAG))
         compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).performClick()
         assertEquals(1, stopped)
-        // The gear opens settings.
-        compose.onNodeWithTag(ru.adsrv.frpjump.ui.SETTINGS_GEAR_TAG).performClick()
-        assertEquals(1, gear)
+        compose.onNodeWithTag(ru.adsrv.frpjump.ui.SETTINGS_GEAR_TAG).assertDoesNotExist()
     }
 
     private fun androidx.compose.ui.unit.DpRect.cy() = (top + bottom) / 2

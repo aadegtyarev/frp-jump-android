@@ -190,7 +190,7 @@ internal fun AssistantChatContent(
             if (setup != null) {
                 Text(stringResource(setup))
                 TextButton(onClick = onSetup, modifier = Modifier.testTag("chat_setup")) {
-                    Text(stringResource(if (!enabled) R.string.settings else R.string.assistant_provider_title))
+                    Text(stringResource(if (!enabled) R.string.chat_assistant_settings else R.string.assistant_provider_title))
                 }
             }
             state.historyProblem?.let { problem ->
@@ -317,7 +317,7 @@ internal fun AssistantChatContent(
                 // The draft the conversation holds now: a refused edit (too long, a run) shows as it was.
                 val live = conversation.state.value.draft
                 field = if (value.text == live) value else TextFieldValue(live, TextRange(live.length))
-            }, state = state, asking = asking, canSend = state.sendEnabled(setup == null), onSend = { following = true; conversation.send() }, onStop = conversation::stop,
+            }, state = state, asking = asking, canSend = state.sendEnabled(setup == null), enabled = enabled, onSend = { following = true; conversation.send() }, onStop = conversation::stop,
                 // In the compact (short, whole-screen scrolling) layout a tall field would reach beyond the visible part with the keyboard up and take
                 // Send, which sits in the middle of it, out of view: two lines there, the rest scrolls inside the field.
                 maxLines = if (compact) 2 else if (density.fontScale > 1.3f) 3 else 5)

@@ -19,7 +19,7 @@ connections, shared local ports, tunnel lifecycle, app settings, updates and
 universal UI rules. Users consume these through Devices, Tunnels, Sessions,
 Settings and the foreground notification. The bottom navigation lists Devices, Tunnels and Sessions; while the
 [assistant](#optional-llm-assistant) is on it adds a fourth item, "Assistant" / «Помощник». Settings is not a section of it: a gear
-(⚙, "Settings" / «Настройки») at the right end of the Devices, Tunnels and Sessions headers opens it over the section (scenario 9).
+(⚙, "Settings" / «Настройки») at the right end of the Devices header opens it over that section (scenario 9).
 Profile runtimes own each profile's
 server/session work; the application owns shared ports, sessions, settings and
 pending Undo actions. Screens are not the lifetime owners of running tunnels.
@@ -364,9 +364,8 @@ Quick access to the saved connections of every device.
   the others are asked again every 10 s; pull to refresh asks them all.
   Dots and buttons follow at once; the order of the devices does not move.
 - The header has no visible title (the bottom bar names the tab; TalkBack gets an invisible "Tunnels" heading). At 100% font it is one row:
-  the search, the capsule "● N | ⏻" and the gear. When they do not fit (a large font in a narrow window; decided by measuring, not by the
-  font scale) it is two rows: the search and the gear, then the capsule. Nothing is cut or broken inside a word. The Sessions header is
-  its title and the gear.
+  the search and the capsule "● N | ⏻". When they do not fit (a large font in a narrow window; decided by measuring, not by the
+  font scale) it is two rows: the search, then the capsule. Nothing is cut or broken inside a word. The Sessions header shows its title.
 - Search is always there, at any number of connections: a 36 dp pill "Search" / «Поиск». A tap expands it over the whole header (the other
   items hide) with "←" (closes: clears the query and collapses) and "✕" (clears the text); system Back closes it first. Its placeholder names the
   scope: "Search tunnels that are on" / «Поиск среди включённых» with the filter on, otherwise "Search all tunnels" / «Поиск по всем туннелям».
@@ -381,7 +380,7 @@ Quick access to the saved connections of every device.
   tonal accent fill; off, the list shows all. It is remembered (a UI choice in the settings file, with the other display choices) and on the
   first time. At 0 the list shows all. TalkBack: "Only tunnels that are on, N" / «Только включённые, N», a switch with its state.
 - Right half: "⏻" in red, Stop all. It disconnects every profile's tunnels, with Undo; a spinner while the servers are told. TalkBack:
-  "Turn off all tunnels, N" / «Выключить все туннели, N». The gear opens Settings.
+  "Turn off all tunnels, N" / «Выключить все туннели, N».
 - Nothing saved: "No saved tunnels yet. Open a device on Devices and tap
   “Tunnel”."
 
@@ -664,8 +663,7 @@ provider, tools, own instructions, limits, chat text size, open chat); MQTT (inc
 row); about (version and update, components and licenses). Row labels are nouns or states, short and without a trailing
 period, each with its own icon; a long explanation shortened on a row lives in the screen or sheet the row opens.
 
-- Settings is a screen of the back stack, not a section of the bottom navigation: the gear in the Devices, Tunnels and
-  Sessions headers opens it, its top bar has a back arrow ("Back" / «Назад») and the title, and there is no bottom navigation over it.
+- Settings is a screen of the back stack, not a section of the bottom navigation: the gear in the Devices header opens it, its top bar has a back arrow ("Back" / «Назад») and the title, and there is no bottom navigation over it.
   Back (the arrow or the system Back) returns to the section it was opened from, as it was. There is only one Settings in the
   back stack: opening it while it is there returns to it and closes the screens above it. Screens opened from Settings (profile,
   SSH keys, the assistant's chat and provider, MQTT plugins, licenses and the rest) return to it on Back. Every in-app path into
