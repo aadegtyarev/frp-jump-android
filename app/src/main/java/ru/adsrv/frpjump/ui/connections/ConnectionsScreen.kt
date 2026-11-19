@@ -6,6 +6,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -17,6 +21,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import ru.adsrv.frpjump.ui.AppModalBottomSheet
 import ru.adsrv.frpjump.ui.SheetHeader
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import kotlinx.coroutines.Dispatchers
@@ -162,7 +168,7 @@ fun ConnectionsScreen(
 }
 
 /** Shared production content; synthetic tests supply state and callbacks without activating profile runtimes. */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun ConnectionsContent(
     state: ConnectionsUiState, sessions: List<SessionOn>, grants: Map<GrantTarget, AssistantMark>,
@@ -173,21 +179,29 @@ internal fun ConnectionsContent(
 ) {
     val colors = AppTheme.colors
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     // "Disconnect all": the tunnels show down at once, with Undo. Only one still being restored is told
     // to its server now: then it spins until every server was asked (the line below tells the rest).
     var disconnecting by remember { mutableStateOf(false) }
 
     val restoring = state.restoring?.takeIf { it > 0 }
-    // Search: the header's pill expands to the whole header; ← closes it and clears the query, so does Back.
-    var searching by rememberSaveable { mutableStateOf(false) }
+    // Editing is transient; the applied query survives configuration changes and closing the editor.
+    var searching by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    var focusOnOpen by rememberSaveable { mutableStateOf(false) }
+    var focusOnOpen by remember { mutableStateOf(false) }
     val closeSearch = {
         searching = false
-        query = ""
         focusOnOpen = false
+        focusManager.clearFocus()
     }
     BackHandler(enabled = searching) { closeSearch() }
+    val imeVisible = WindowInsets.isImeVisible
+    var sawSearchIme by remember { mutableStateOf(false) }
+    LaunchedEffect(searching, imeVisible) {
+        if (!searching) sawSearchIme = false
+        else if (imeVisible) sawSearchIme = true
+        else if (sawSearchIme) closeSearch()
+    }
     var scope by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var filterOpen by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable(stateSaver = listSaver(save = { it.toList() }, restore = { it.toSet() })) { mutableStateOf(setOf<String>()) }
@@ -240,8 +254,8 @@ internal fun ConnectionsContent(
             },
             deviceFilter = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { selected = emptySet(); filterOpen = true }, modifier = Modifier.size(48.dp).background(colors.card, RoundedCornerShape(12.dp)).border(1.dp, colors.outline, RoundedCornerShape(12.dp)).testTag("tunnels_devices_filter")) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    IconButton(onClick = { selected = emptySet(); filterOpen = true }, modifier = Modifier.size(48.dp).testTag("tunnels_devices_filter")) {
+                        Box(Modifier.size(38.dp).background(colors.card, RoundedCornerShape(10.dp)).border(1.dp, colors.outline, RoundedCornerShape(10.dp)).testTag("tunnels_devices_filter_surface"), contentAlignment = Alignment.Center) {
                             Icon(ru.adsrv.frpjump.ui.DeviceGlyph, contentDescription = stringResource(R.string.tunnels_device_filter, scope.size / 2), tint = colors.ink)
                             if (scope.isNotEmpty()) Text("${scope.size / 2}", modifier = Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 3.dp), fontSize = 10.sp, color = colors.accent)
                         }
@@ -264,7 +278,9 @@ internal fun ConnectionsContent(
         PullToRefreshBox(
             isRefreshing = state.refreshing,
             onRefresh = onPull,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().pointerInput(searching) {
+                if (searching) awaitEachGesture { awaitFirstDown(requireUnconsumed = false); closeSearch() }
+            },
         ) {
             LazyColumn(
                 Modifier.fillMaxSize(),
