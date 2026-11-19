@@ -428,6 +428,20 @@ class AssistantEntryNavTest {
         compose.waitUntil(10_000) { compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.EditableText].text == quote + "what is this" }
     }
 
+    @Test fun aTunnelPrefixFromTheSwipeReachesTheDraftAndTheQuestionGoesAfterIt() {
+        host()
+        val tunnel = ru.adsrv.frpjump.connections.Connection("c1", "alpha", 80, ru.adsrv.frpjump.ports.PortKind.WEB, customName = "panel")
+        val prefix = ru.adsrv.frpjump.ui.connections.askDraft(compose.activity, tunnel)
+        compose.runOnUiThread { nav.askAssistant(app, prefix) }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        compose.waitUntil(10_000) { runCatching { draft == prefix }.getOrDefault(false) }
+        compose.waitUntil(10_000) {
+            compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange] == TextRange(prefix.length)
+        }
+        compose.onNodeWithTag("chat_input").performTextInput("status")
+        compose.waitUntil(10_000) { draft == prefix + "status" }
+    }
+
     @Test fun noSelectionJustOpensTheChat() {
         host()
         compose.runOnUiThread { app.assistantQuote.value = null; nav.openAssistant() }

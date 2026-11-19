@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -429,19 +430,7 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
                 if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY && activity?.isChangingConfigurations != true) vm.screenGone()
             }.also(entry.lifecycle::addObserver)
         }
-        // A terminal selection waits in the app only until this chat takes it (at once); from then on it is the chat's, in memory, and
-        // goes after the draft once the saved draft has loaded and no Send runs. It never outlives the chat: a Back drops it with the model.
-        val waiting by app.assistantQuote.collectAsStateWithLifecycle()
-        LaunchedEffect(waiting) { if (waiting != null) vm.hold(app.assistantQuote.getAndUpdate { null }) }
-        val held by vm.heldQuote.collectAsStateWithLifecycle()
-        val chat by vm.conversation.state.collectAsStateWithLifecycle()
-        LaunchedEffect(held, chat.loading, chat.busy, chat.clearing, chat.restoring, chat.sending) {
-            val text = held ?: return@LaunchedEffect
-            if (chat.loading || chat.busy || chat.clearing || chat.restoring || chat.sending) return@LaunchedEffect
-            vm.heldQuote.value = null
-            // Refused (the history cannot be read, too long): the chat shows its own notice for that.
-            vm.conversation.appendToDraft(text)
-        }
+        ApplyAssistantQuote(app.assistantQuote, vm)
         ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
             // Off: the assistant's own settings screen (the master switch is there), over Settings.
             if (!app.settings.assistantAvailability.enabled) { nav.popBackStack(); nav.openSettings(); nav.navigate(Routes.ASSISTANT_SETTINGS) { launchSingleTop = true } }
@@ -470,6 +459,33 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
 }
 
 /**
+ * A terminal selection or a tunnel's opening words wait in [quotes] only until this chat takes them (at once); from then on they are the
+ * chat's, in memory, and go after the draft as soon as the draft can take them, so the owner sees them before sending anything. They never
+ * outlive the chat: a Back drops them with the model.
+ *
+ * "Can take" is what typing needs: not while the saved chat loads or a Send runs (the composer is off then and Send cannot be pressed).
+ * A Clear that waits for its Undo does not hold them back: the composer is free and Send works in that window, so a quote kept out of the
+ * draft would be missing from the very next message; the conversation merges what is quoted then into the restored or the new draft
+ * (see [ru.adsrv.frpjump.assistant.AssistantConversation.reloadHistory] and deleteHistory). A refusal that is not final (the state moved
+ * between the check and the call) keeps the quote and tries again at the next change; only a final one (the history cannot be read, the
+ * result too long: the chat shows its own notice) drops it.
+ */
+@Composable
+internal fun ApplyAssistantQuote(quotes: MutableStateFlow<String?>, vm: ru.adsrv.frpjump.ui.settings.AssistantChatViewModel) {
+    val waiting by quotes.collectAsStateWithLifecycle()
+    LaunchedEffect(waiting) { if (waiting != null) vm.hold(quotes.getAndUpdate { null }) }
+    val held by vm.heldQuote.collectAsStateWithLifecycle()
+    val chat by vm.conversation.state.collectAsStateWithLifecycle()
+    LaunchedEffect(held, chat.loading, chat.busy, chat.sending, chat.historyProblem) {
+        val text = held ?: return@LaunchedEffect
+        if (chat.loading || chat.busy || chat.sending) return@LaunchedEffect
+        if (vm.conversation.appendToDraft(text)) { vm.heldQuote.value = null; return@LaunchedEffect }
+        val now = vm.conversation.state.value
+        if (now.problem == ru.adsrv.frpjump.assistant.chat.ChatProblem.TOO_LONG || now.historyProblem == ru.adsrv.frpjump.assistant.ChatHistoryProblem.READ) vm.heldQuote.value = null
+    }
+}
+
+/**
  * Opens the chat over the current screen, so Back returns to it. There is only ever one chat entry (one conversation on one history file
  * and one run slot): when the chat is already on the back stack, the screens above it are popped to reach it and its conversation goes on
  * untouched. (A Send does not depend on this: it outlives the screen, see [ru.adsrv.frpjump.assistant.AssistantChatOwner].)
@@ -480,8 +496,10 @@ internal fun NavHostController.openAssistant() {
 }
 
 /** A terminal selection (or none) for the chat draft, then the chat: the existing one when it is open (see [openAssistant]). */
-internal fun NavHostController.askAssistant(app: FrpJumpApp, quote: String?) {
-    app.assistantQuote.value = quote
+internal fun NavHostController.askAssistant(app: FrpJumpApp, quote: String?) = askAssistant(app.assistantQuote, quote)
+
+internal fun NavHostController.askAssistant(quotes: MutableStateFlow<String?>, quote: String?) {
+    quotes.value = quote
     openAssistant()
 }
 

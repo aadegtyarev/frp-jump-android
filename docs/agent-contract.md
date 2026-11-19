@@ -69,8 +69,10 @@ One chat screen, one conversation, reached three ways; the entry changes nothing
 
 There is only ever one chat entry: opening it while it is already open (from the navigation, Settings or the terminal menu, also from
 screens that were opened over it) returns to that chat by closing the screens above it, so
-its conversation, its saved history and a running Send are never doubled or stopped. A waiting terminal quote is taken by the chat at
-once and kept in memory only; it goes after the draft once the saved draft has loaded and no Send runs, and it is dropped with the chat
+its conversation, its saved history and a running Send are never doubled or stopped. A waiting terminal quote or a tunnel's opening words (Tunnels ✦ "Ask the assistant") is taken by the chat at
+once and kept in memory only; it goes after the draft as soon as the saved draft has loaded and no Send runs, also while a Clear waits for its
+Undo (the composer is free and Send works then, so the owner must see it before sending; it is merged as "quoted during the clear" below),
+and it is dropped with the chat
 screen if the owner leaves first (an attempt that goes on does not keep it). If the history cannot be read the chat's own "could not restore history" notice shows and the quote is not added.
 
 Whichever entry opened the chat, the app lock, Stop, "For session" lasting for the tunnel's open period, "For this connection" being remembered, a disabled
