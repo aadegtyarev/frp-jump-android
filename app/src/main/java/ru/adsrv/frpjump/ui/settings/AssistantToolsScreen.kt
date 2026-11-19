@@ -22,8 +22,8 @@ import ru.adsrv.frpjump.ui.LightbulbGlyph
 import ru.adsrv.frpjump.ui.WrenchGlyph
 
 @Composable
-internal fun AssistantToolsEntry(onTools: () -> Unit) {
-    SettingRow(tile = { IconTile(WrenchGlyph) }, label = stringResource(R.string.assistant_tools),
+internal fun AssistantToolsEntry(hint: String? = null, onTools: () -> Unit) {
+    SettingRow(tile = { IconTile(WrenchGlyph) }, label = stringResource(R.string.assistant_tools), hint = hint,
         modifier = Modifier.testTag("assistant_tools_entry"), onClick = onTools) { Chevron() }
 }
 

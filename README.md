@@ -252,7 +252,7 @@ list while it is on screen.
 | Profile | App | Tunnels | Polls |
 | --- | --- | --- | --- |
 | current | visible | any | every 2 s |
-| current | closed | up | at Settings > "Check the server in the background": Off (default), 30 s, 1 min, 5 min, 15 min |
+| current | closed | up | at Settings > "Server check": Off (default), 30 s, 1 min, 5 min, 15 min |
 | other | any | up | at the same background setting |
 | any | any | none yet, recorded up before a kill or reboot | every 5 s until they run |
 | any | closed (or other) | none | never |
@@ -273,7 +273,7 @@ row goes once the exemption is granted.
 
 ## Direct or through the server
 
-With "Direct connection (P2P)" on (the default) every tunnel has an xtcp
+With "Direct connection" on (the default) every tunnel has an xtcp
 visitor that punches a peer-to-peer path and hands each connection to the
 stcp visitor (through the server) when there is none within 500 ms, so a
 connection never waits for the outcome.
@@ -377,13 +377,19 @@ is locked messages are dropped, and locking clears those waiting.
 
 ## Settings
 
-Grouped as the mockup: the current profile (name and colour, forget),
-tunnels (direct connection, local ports), background (server checks,
-battery), security (the SSH keys, unlock with fingerprint, hide in Recents) and the
-app (language, theme, version, components and licenses). Rows show their value; local ports, the
-check interval, the SSH keys, language and theme open a sheet.
+Grouped as the mockup, in this order: tunnels (direct connection, local ports), background
+(server check, battery), security (unlock with fingerprint, lock after, hide in recents, SSH keys),
+terminal (history lines, direct input, text input), assistant (one row opening the Assistant
+screen, see below), MQTT (incoming messages, storage, plugins), appearance (language, theme), the
+current profile (name and colour, forget profile, last and in red) and about (version, components
+and licenses). Rows are nouns or states with a short line under them; each has its own Lucide icon.
+Rows show their value; local ports, the server check, the lock interval, the SSH keys, the history
+lines, language and theme open a sheet. With a large font, or when label and value do not fit one
+line, the value goes under the label in the accent colour and only the chevron stays at the right.
+The Assistant screen (master switch; provider, tools, own instructions, limits; chat text size,
+open chat) is opened from the Assistant row and returns to Settings on Back.
 
-- Direct connection (P2P): see above; off is one `stcp` visitor per tunnel
+- Direct connection: see above; off is one `stcp` visitor per tunnel
   bound directly, as `frp-jump-client set-p2p off`, with no attempts and
   no notifications. Switching it reloads frpc (connections through the
   server stay; direct ones end). A `relay_only` saved by 0.2.0-beta1 and
@@ -436,7 +442,7 @@ check interval, the SSH keys, language and theme open a sheet.
   absence from then, so the 30 s rule still holds. If the screen lock is
   removed later, the next prompt turns the setting off rather than lock
   the owner out, and says so.
-- Hide in Recents (off by default, apart from the lock): Recents shows no
+- Hide in recents (off by default, apart from the lock): Recents shows no
   picture of the app, `setRecentsScreenshotEnabled(false)` on Android 13+
   and `FLAG_SECURE` before that. `FLAG_SECURE` blocks screenshots, and so
   does the Android 13+ call on some phones; with it off, screenshots work.
@@ -541,7 +547,7 @@ on Connect, so before the login is known to work); Cancel saves nothing. A
 field showing a saved password takes a fill only once it is tapped, so
 filling in the user name leaves the saved password alone.
 
-Settings → Terminal → History rows selects 500, 1000 (default), 3000 or
+Settings → Terminal → History lines selects 500, 1000 (default), 3000 or
 10000 total main-buffer rows, including the visible screen. Only new or
 explicitly replaced tabs take the new limit; existing tabs and automatic
 reconnects keep their buffer and text; see the

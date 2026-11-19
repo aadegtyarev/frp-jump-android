@@ -100,7 +100,7 @@ The same thing is called the same way on every screen:
 
 ## Incoming-message limits
 
-Settings → MQTT incoming limits edits three per-explorer limits and the
+Settings → MQTT → Incoming messages edits three per-explorer limits and the
 overflow action. Values are saved only after validation and a successful
 storage write; the form stays open on failure. Units in the form are bytes.
 
@@ -141,7 +141,7 @@ rules, SSH paste and clipboard policies are unchanged.
 
 ## Stored-data limits
 
-Settings → MQTT storage configures the owned cache of each new explorer:
+Settings → MQTT → Storage configures the owned cache of each new explorer:
 
 | Limit | Default | Valid range |
 | --- | --- | --- |
@@ -586,7 +586,7 @@ Text, JSON and Hex are built-in payload views. The shipped plugins are
 (a devices view). Both default on at app level. With both off the generic
 explorer remains functional, and no plugin changes Tree.
 
-Settings → **Plugins** provides app-level on/off switches and lists
+Settings → MQTT → **Plugins** provides app-level on/off switches and lists
 connection exceptions. A connection's **Plugins…** sheet opens from its
 edit sheet or the explorer's "⋮"; its own on/off setting wins over the app
 setting. Resetting to **As in Settings** removes the exception. Presets and

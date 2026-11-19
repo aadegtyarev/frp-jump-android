@@ -47,8 +47,8 @@ and safety warnings; visual minimalism must not remove them.
 
 One chat screen, one conversation, reached three ways; the entry changes nothing about what the chat does.
 
-- Settings → LLM assistant → Chat.
-- The bottom navigation's item after the sections (Devices, Tunnels, Sessions), "Assistant" / «Помощник» (the ✦ sparkles icon, also on the Settings «Чат» row). It is shown only while the module is on,
+- Settings → Assistant → Open chat.
+- The bottom navigation's item after the sections (Devices, Tunnels, Sessions), "Assistant" / «Помощник» (the ✦ sparkles icon, also on the Settings «Помощник» row). It is shown only while the module is on,
   appears and disappears with the setting without a restart, and opens the chat over the current section; Back returns to that
   section. All the labels stay whole in both languages, in landscape, at 200% font and in a 320 dp wide window (the label size steps
   down to a floor, tracking is tight, nothing is cut). The item opens a screen and is never selected, so it is announced as a button,
@@ -83,7 +83,7 @@ tools do, when the model calls them in a Send. It never types into terminal tabs
 
 ### Settings flow
 
-Settings → LLM assistant enables or disables the experimental module. It is
+Settings → Assistant (the one Assistant row opens this screen; its first row, "Assistant") enables or disables the experimental module. It is
 **off by default**, including upgrades from versions without this setting.
 The preference is committed before the switch reports success. A failed
 write retains the previous preference and shows an error. A malformed new
@@ -91,11 +91,11 @@ flag falls back to off without resetting unrelated settings. The opposite holds
 for the confirmation value ([below](#confirmation-of-changing-calls)): a
 malformed value falls back to ask (requests on).
 
-Settings → LLM assistant → Own instructions holds the owner's own text for
+Settings → Assistant → Own instructions holds the owner's own text for
 the model ([Owner's own instructions](#owners-own-instructions)); it is empty by
 default and only guidance.
 
-Settings → LLM assistant → Chat text size sets the size of the chat's text apart
+Settings → Assistant → Text size sets the size of the chat's text apart
 from the system one: 90, 100, 115, 130, 150, 175 or 200 percent (default 100) of the
 system font size, applied to the conversation feed only (answers, the user's
 messages, the tool block and status lines); the top bar, the message field and
@@ -105,7 +105,7 @@ settings file, omitted at 100; a missing, non-numeric or malformed value reads a
 It is a display preference only: it changes no prompt, request, permission or
 confirmation, and makes no request.
 
-Settings → LLM assistant → Assistant provider configures one external
+Settings → Assistant → Provider configures one external
 OpenAI-compatible provider. Chat is available next to provider setup. SSH
 commands require their own default-off tool switch; so does starting and stopping a saved
 tunnel (creating, reconfiguring and deleting tunnels is **not available**). Enabling the module, opening settings or saving a provider
@@ -234,7 +234,7 @@ Keystore-backed credential; its observable snapshot contains metadata only.
 
 ### Provider settings and credentials
 
-From Settings → LLM assistant → Assistant provider, enter the API root and key,
+From Settings → Assistant → Provider, enter the API root and key,
 then enter a model ID or use Fetch models and select one. Save commits the form;
 model discovery is not required to enter a manual model ID.
 
@@ -381,7 +381,7 @@ described in [Automatic working summaries](#automatic-working-summaries).
 ### Owner's own instructions
 
 The owner can give the assistant standing instructions of their own (style,
-language, preferences) in Settings → LLM assistant → Own instructions. The
+language, preferences) in Settings → Assistant → Own instructions. The
 screen has a multiline field with a character counter (at most 2,000 UTF-16
 units, spoken as "N of M characters" and shown in the error color at the cap),
 Save, Reset and a short hint that the text goes to the provider with every
@@ -456,7 +456,7 @@ Formatting changes neither the stored turns nor provider requests or
 continuation, and never truncates an answer. Display is not a source-Markdown
 round trip or an HTML implementation.
 
-Settings → LLM assistant → Chat opens a normal back-stack screen. Opening it
+Settings → Assistant → Open chat opens a normal back-stack screen. Opening it
 restores local encrypted history off Main, without unsealing provider credentials
 or contacting the provider. Disabled, missing-model
 and unreadable setup explain the problem and link directly to Settings or
@@ -699,7 +699,7 @@ does not waive that conditional safety requirement.
 
 ### Tool switches
 
-Settings → LLM assistant → Tools has one independent persisted switch per
+Settings → Assistant → Tools has one independent persisted switch per
 available tool of the [tool table](#tool-table) and, above them, the app-wide
 confirmation switch ("Ask before changing commands", on by default). Today the
 tool switches are Web search (`web_search`), Read page (`read_page`), Inspect
@@ -846,7 +846,7 @@ settings and provider commits is described in [Run authority](#run-authority).
 ### Confirmation of changing calls
 
 Before a call whose effect changes something runs, the owner is asked, unless
-the app-wide switch (Settings → LLM assistant → Tools → "Ask before changing
+the app-wide switch (Settings → Assistant → Tools → "Ask before changing
 commands") is off, a For session grant covers that call's tool on that call's connection, or a remembered "For this connection" permission does.
 The order at a call: the switch is off, a session grant covers it, a remembered permission covers it, else ask.
 The effect is the tool's catalog effect; for a tool built on an operation the

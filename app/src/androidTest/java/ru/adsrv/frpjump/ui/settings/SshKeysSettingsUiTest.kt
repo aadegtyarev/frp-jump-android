@@ -94,7 +94,7 @@ class SshKeysSettingsUiTest {
         }
         compose.setContent {
             CompositionLocalProvider(LocalShareText provides { _, line, title -> shared.add(line to title); Unit }) {
-                FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onChat = {}) }
+                FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onAssistant = {}) }
             }
         }
     }

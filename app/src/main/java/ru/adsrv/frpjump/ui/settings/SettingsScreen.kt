@@ -17,6 +17,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,7 +43,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -92,27 +100,32 @@ import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.PortGlyph
 import ru.adsrv.frpjump.ui.HistoryGlyph
-import ru.adsrv.frpjump.ui.TerminalGlyph
+import ru.adsrv.frpjump.ui.LucideTerminalGlyph
 import ru.adsrv.frpjump.ui.KeyboardGlyph
-import ru.adsrv.frpjump.ui.ServerGlyph
 import ru.adsrv.frpjump.ui.AssistantGlyph
-import ru.adsrv.frpjump.ui.InfoGlyph
-import ru.adsrv.frpjump.ui.WarnGlyph
-import ru.adsrv.frpjump.ui.FileGlyph
-import ru.adsrv.frpjump.ui.PluginGlyph
+import ru.adsrv.frpjump.ui.LucideInfoGlyph
+import ru.adsrv.frpjump.ui.TriangleAlertGlyph
+import ru.adsrv.frpjump.ui.FileTextGlyph
+import ru.adsrv.frpjump.ui.ArrowLeftRightGlyph
+import ru.adsrv.frpjump.ui.DatabaseGlyph
+import ru.adsrv.frpjump.ui.InboxGlyph
+import ru.adsrv.frpjump.ui.LanguagesGlyph
+import ru.adsrv.frpjump.ui.LogOutGlyph
+import ru.adsrv.frpjump.ui.PuzzleGlyph
+import ru.adsrv.frpjump.ui.SunMoonGlyph
+import ru.adsrv.frpjump.ui.UserGlyph
+import ru.adsrv.frpjump.ui.RefreshCwGlyph
+import ru.adsrv.frpjump.ui.TimerGlyph
+import ru.adsrv.frpjump.ui.KeyRoundGlyph
+import ru.adsrv.frpjump.ui.FingerprintPatternGlyph
 import ru.adsrv.frpjump.ui.plugins.PluginsScreen
 import ru.adsrv.frpjump.ui.ChoiceSheet
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.EyeOffGlyph
-import ru.adsrv.frpjump.ui.FingerprintGlyph
 import ru.adsrv.frpjump.ui.CopyGlyph
-import ru.adsrv.frpjump.ui.KeyGlyph
 import ru.adsrv.frpjump.ui.ShareGlyph
 import ru.adsrv.frpjump.ssh.SshKeySlot
 import ru.adsrv.frpjump.ui.ssh.keyTitle
-import ru.adsrv.frpjump.ui.RepeatGlyph
-import ru.adsrv.frpjump.ui.SwapGlyph
-import ru.adsrv.frpjump.ui.ThemeGlyph
 import androidx.compose.ui.graphics.vector.ImageVector
 import ru.adsrv.frpjump.ui.MainButton
 import ru.adsrv.frpjump.ui.SecretField
@@ -120,7 +133,6 @@ import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.profiles.ForgetProfileDialog
 import ru.adsrv.frpjump.ui.profiles.ForgetState
 import ru.adsrv.frpjump.ui.profiles.ProfileItem
-import ru.adsrv.frpjump.ui.profiles.ProfileTile
 import ru.adsrv.frpjump.ui.shortTime
 import ru.adsrv.frpjump.update.UpdateState
 import java.time.Instant
@@ -129,8 +141,9 @@ import java.time.Instant
 private enum class Open { PORTS, POLL, LOCK_AFTER, SSH_KEY, LANGUAGE, THEME, HISTORY, FORGET, NEEDS_SCREEN_LOCK, UPDATE }
 
 /**
- * Settings as the mockup groups them: profile, tunnels, background,
- * security, app. Rows show their value; rarely changed ones open a sheet.
+ * Settings as the mockup groups them: tunnels, background, security, terminal, assistant, MQTT,
+ * appearance, profile, about (R39). Rows show their value; rarely changed ones open a sheet;
+ * the assistant has its own screen ([AssistantSettingsScreen]).
  */
 @Composable
 fun SettingsScreen(
@@ -142,36 +155,16 @@ fun SettingsScreen(
     onForget: (id: String) -> Unit,
     /** The back arrow of the stack screen; null shows none. */
     onBack: (() -> Unit)?,
-    onChat: () -> Unit,
+    /** Opens the Assistant settings screen. */
+    onAssistant: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
     val assistantProvider by vm.assistantProvider.collectAsStateWithLifecycle()
-    var toolsSetup by rememberSaveable { mutableStateOf(false) }
-    var providerSetup by rememberSaveable { mutableStateOf(false) }
-    var ownerSetup by rememberSaveable { mutableStateOf(false) }
-    var limitsSetup by rememberSaveable { mutableStateOf(false) }
     var open by rememberSaveable { mutableStateOf<Open?>(null) }
     // Above the licenses' early return, so the settings come back scrolled where they were.
     val scroll = rememberScrollState()
-    if (toolsSetup) {
-        AssistantToolsRoute(vm.tools, onBack = { toolsSetup = false })
-        return
-    }
-    if (limitsSetup) {
-        AssistantLimitsScreen(settings.assistantLimits, onChange = vm::setAssistantLimits, onBack = { limitsSetup = false })
-        return
-    }
-    if (ownerSetup) {
-        AssistantOwnerInstructionsScreen(settings.assistantOwnerInstructions, onSave = vm::setAssistantOwnerInstructions, onBack = { ownerSetup = false })
-        return
-    }
-    if (providerSetup) {
-        AssistantProviderScreen(assistantProvider, settings.assistantLimits, vm::setAssistantLimits, onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
-            onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() }, onBack = { providerSetup = false })
-        return
-    }
     // Components and licenses: a screen of its own over the settings.
     var licenses by rememberSaveable { mutableStateOf(false) }
     if (licenses) {
@@ -251,17 +244,9 @@ fun SettingsScreen(
             }
             Text(stringResource(R.string.settings), fontSize = 24.sp, fontWeight = FontWeight.Bold)
         }
-        profile?.let {
-            ProfileGroup(
-                profile = it,
-                forget = forget?.takeIf { f -> f.id == it.id },
-                onEdit = { onEditProfile(it.id) },
-                onForget = { open = Open.FORGET },
-            )
-        }
         Group(stringResource(R.string.settings_tunnels)) {
             SwitchRow(
-                tile = { IconTile(SwapGlyph) },
+                tile = { IconTile(ArrowLeftRightGlyph) },
                 label = stringResource(R.string.setting_direct),
                 hint = stringResource(R.string.setting_direct_hint),
                 checked = settings.direct,
@@ -272,18 +257,73 @@ fun SettingsScreen(
                 tile = { IconTile(PortGlyph) },
                 label = stringResource(R.string.local_ports),
                 onClick = { open = Open.PORTS },
-            ) { ValueChevron("${settings.localPortFirst}–${settings.localPortLast}") }
+                value = "${settings.localPortFirst}–${settings.localPortLast}",
+            )
+        }
+        Group(stringResource(R.string.settings_background)) {
+            SettingRow(
+                tile = { IconTile(RefreshCwGlyph) },
+                label = stringResource(R.string.background_poll),
+                hint = stringResource(R.string.background_poll_row_hint),
+                onClick = { open = Open.POLL },
+                value = pollLabel(settings.backgroundPoll),
+            )
+            if (!batteryExempt) {
+                RowDivider()
+                BatteryRow()
+            }
+        }
+        Group(stringResource(R.string.settings_security)) {
+            SwitchRow(
+                tile = { IconTile(FingerprintPatternGlyph) },
+                label = stringResource(R.string.setting_app_lock),
+                hint = when {
+                    settings.appLock && settings.appLockAfter.ms == 0L -> stringResource(R.string.setting_app_lock_hint_immediately)
+                    settings.appLock -> stringResource(R.string.setting_app_lock_hint_after, lockAfterLabel(settings.appLockAfter))
+                    screenLock -> stringResource(R.string.setting_app_lock_hint)
+                    else -> stringResource(R.string.setting_app_lock_needs_screen_lock)
+                },
+                hintColor = if (screenLock || settings.appLock) colors.muted else colors.warning,
+                checked = settings.appLock,
+                busy = lockBusy,
+                onChange = onAppLock,
+            )
+            if (settings.appLock) {
+                RowDivider()
+                SettingRow(
+                    tile = { IconTile(TimerGlyph) },
+                    label = stringResource(R.string.setting_lock_after),
+                    onClick = { open = Open.LOCK_AFTER },
+                    value = lockAfterLabel(settings.appLockAfter),
+                )
+            }
+            RowDivider()
+            SwitchRow(
+                tile = { IconTile(EyeOffGlyph) },
+                label = stringResource(R.string.setting_hide_in_recents),
+                hint = stringResource(R.string.setting_hide_in_recents_hint),
+                checked = settings.hideInRecents,
+                onChange = vm::setHideInRecents,
+            )
+            RowDivider()
+            SettingRow(
+                tile = { IconTile(KeyRoundGlyph) },
+                label = stringResource(R.string.ssh_keys),
+                hint = sshKeysSummary(state) ?: "…",
+                hintColor = if (state.sshPublicKeyError != null) colors.error else colors.muted,
+                onClick = { open = Open.SSH_KEY },
+            ) { Chevron() }
         }
         Group(stringResource(R.string.settings_terminal)) {
             SettingRow(
                 tile = { IconTile(HistoryGlyph) },
                 label = stringResource(R.string.terminal_history_rows),
-                hint = stringResource(R.string.terminal_history_hint),
                 onClick = { open = Open.HISTORY },
-            ) { ValueChevron(settings.terminalHistoryRows.toString()) }
+                value = settings.terminalHistoryRows.toString(),
+            )
             RowDivider()
             SwitchRow(
-                tile = { IconTile(TerminalGlyph) },
+                tile = { IconTile(LucideTerminalGlyph) },
                 label = stringResource(R.string.setting_terminal_direct_input),
                 hint = stringResource(R.string.setting_terminal_direct_input_hint),
                 checked = settings.terminalDirectInput,
@@ -298,108 +338,36 @@ fun SettingsScreen(
             ) {}
         }
         Group(stringResource(R.string.assistant_title)) {
-            AssistantChatEntry(onChat)
-            RowDivider()
-            AssistantToolsEntry { toolsSetup = true }
-            RowDivider()
-            AssistantOwnerInstructionsEntry(settings.assistantOwnerInstructions) { ownerSetup = true }
-            RowDivider()
-            AssistantLimitsEntry { limitsSetup = true }
-            RowDivider()
-            AssistantModuleSetting(settings.assistantEnabled, vm::setAssistantEnabled)
-            RowDivider()
-            SettingRow(tile = { IconTile(ServerGlyph) }, label = stringResource(R.string.assistant_provider_title),
-                hint = if (assistantProvider.problem != null) stringResource(R.string.assistant_provider_read_failed)
-                    else assistantProvider.settings?.model?.takeIf { it.isNotBlank() } ?: stringResource(R.string.assistant_provider_not_selected),
-                onClick = { providerSetup = true }) { Chevron() }
-            RowDivider()
-            AssistantChatTextSizeSetting(settings.assistantChatTextSize, vm::setAssistantChatTextSize)
-        }
-        Group(stringResource(R.string.settings_background)) {
+            val model = assistantProvider.settings?.model?.takeIf { it.isNotBlank() }
             SettingRow(
-                tile = { IconTile(RepeatGlyph) },
-                label = stringResource(R.string.background_poll),
-                hint = stringResource(R.string.background_poll_row_hint),
-                onClick = { open = Open.POLL },
-            ) { ValueChevron(pollLabel(settings.backgroundPoll)) }
-            if (!batteryExempt) {
-                RowDivider()
-                BatteryRow()
-            }
-        }
-        Group(stringResource(R.string.settings_security)) {
-            SettingRow(
-                tile = { IconTile(KeyGlyph) },
-                label = stringResource(R.string.ssh_keys),
-                hint = sshKeysSummary(state) ?: "…",
-                hintColor = if (state.sshPublicKeyError != null) colors.error else colors.muted,
-                onClick = { open = Open.SSH_KEY },
-            ) { Chevron() }
-            RowDivider()
-            SwitchRow(
-                tile = { IconTile(FingerprintGlyph) },
-                label = stringResource(R.string.setting_app_lock),
+                tile = { IconTile(AssistantGlyph) },
+                label = stringResource(R.string.assistant_title),
                 hint = when {
-                    settings.appLock -> stringResource(R.string.setting_app_lock_hint_after, lockAfterLabel(settings.appLockAfter))
-                    screenLock -> stringResource(R.string.setting_app_lock_hint)
-                    else -> stringResource(R.string.setting_app_lock_needs_screen_lock)
+                    !settings.assistantEnabled -> stringResource(R.string.assistant_row_off)
+                    model != null -> stringResource(R.string.assistant_row_on, model)
+                    else -> stringResource(R.string.assistant_row_on_plain)
                 },
-                hintColor = if (screenLock || settings.appLock) colors.muted else colors.warning,
-                checked = settings.appLock,
-                busy = lockBusy,
-                onChange = onAppLock,
-            )
-            if (settings.appLock) {
-                RowDivider()
-                SettingRow(
-                    tile = { IconTile(FingerprintGlyph) },
-                    label = stringResource(R.string.setting_lock_after),
-                    onClick = { open = Open.LOCK_AFTER },
-                ) { ValueChevron(lockAfterLabel(settings.appLockAfter)) }
-            }
-            RowDivider()
-            SwitchRow(
-                tile = { IconTile(EyeOffGlyph) },
-                label = stringResource(R.string.setting_hide_in_recents),
-                hint = stringResource(R.string.setting_hide_in_recents_hint),
-                checked = settings.hideInRecents,
-                onChange = vm::setHideInRecents,
-            )
+                modifier = Modifier.testTag("settings_assistant_entry"),
+                onClick = onAssistant,
+            ) { Chevron() }
         }
-        Group(stringResource(R.string.settings_app)) {
-            // Read again with every new language: it may also be set in the system's app settings.
-            val locales = LocalConfiguration.current.locales
-            val language = remember(locales) { currentAppLanguage() }
+        Group(stringResource(R.string.settings_mqtt)) {
             SettingRow(
-                tile = { GlyphTile(stringResource(R.string.language_glyph)) },
-                label = stringResource(R.string.language),
-                onClick = { open = Open.LANGUAGE },
-            ) { ValueChevron(languageLabel(language)) }
-            RowDivider()
-            SettingRow(
-                tile = { IconTile(ThemeGlyph) },
-                label = stringResource(R.string.theme),
-                onClick = { open = Open.THEME },
-            ) { ValueChevron(themeLabel(settings.theme)) }
-            RowDivider()
-            VersionRow(update, onCheck = vm::checkForUpdates, onUpdate = { open = Open.UPDATE })
-            RowDivider()
-            SettingRow(
-                tile = { IconTile(PluginGlyph) },
+                tile = { IconTile(InboxGlyph) },
                 label = stringResource(R.string.mqtt_ingress_title),
                 hint = stringResource(R.string.mqtt_ingress_row_hint),
                 onClick = { mqttLimits = true },
             ) { Chevron() }
             RowDivider()
             SettingRow(
-                tile = { IconTile(PluginGlyph) },
+                tile = { IconTile(DatabaseGlyph) },
                 label = stringResource(R.string.mqtt_cache_title),
                 hint = stringResource(R.string.mqtt_cache_row_hint),
                 onClick = { mqttCache = true },
             ) { Chevron() }
             RowDivider()
             SettingRow(
-                tile = { IconTile(PluginGlyph) },
+                tile = { IconTile(PuzzleGlyph) },
                 label = stringResource(R.string.plugins_title),
                 hint = pluginsSummary?.let { p ->
                     stringResource(R.string.plugins_row_hint, p.on, p.total) +
@@ -407,11 +375,39 @@ fun SettingsScreen(
                 } ?: "…",
                 onClick = { plugins = true },
             ) { Chevron() }
+        }
+        Group(stringResource(R.string.settings_appearance)) {
+            // Read again with every new language: it may also be set in the system's app settings.
+            val locales = LocalConfiguration.current.locales
+            val language = remember(locales) { currentAppLanguage() }
+            SettingRow(
+                tile = { IconTile(LanguagesGlyph) },
+                label = stringResource(R.string.language),
+                onClick = { open = Open.LANGUAGE },
+                value = languageLabel(language),
+            )
             RowDivider()
             SettingRow(
-                tile = { IconTile(FileGlyph) },
+                tile = { IconTile(SunMoonGlyph) },
+                label = stringResource(R.string.theme),
+                onClick = { open = Open.THEME },
+                value = themeLabel(settings.theme),
+            )
+        }
+        profile?.let {
+            ProfileGroup(
+                profile = it,
+                forget = forget?.takeIf { f -> f.id == it.id },
+                onEdit = { onEditProfile(it.id) },
+                onForget = { open = Open.FORGET },
+            )
+        }
+        Group(stringResource(R.string.settings_about)) {
+            VersionRow(update, onCheck = vm::checkForUpdates, onUpdate = { open = Open.UPDATE })
+            RowDivider()
+            SettingRow(
+                tile = { IconTile(FileTextGlyph) },
                 label = stringResource(R.string.licenses),
-                hint = stringResource(R.string.licenses_hint),
                 onClick = { licenses = true },
             ) { Chevron() }
         }
@@ -510,13 +506,6 @@ fun SettingsScreen(
     }
 }
 
-/** Shared entry used by Settings and the isolated navigation component check. */
-@Composable
-internal fun AssistantChatEntry(onChat: () -> Unit) {
-    SettingRow(tile = { IconTile(AssistantGlyph) }, label = stringResource(R.string.chat_title),
-        modifier = Modifier.testTag("assistant_chat_entry"), onClick = onChat) { Chevron() }
-}
-
 /**
  * "Version 0.2.0 · frpc 0.70.0", as the mockup: with a newer release, its
  * version and an "Update" pill that opens [UpdateSheet]; otherwise when it
@@ -534,7 +523,7 @@ private fun VersionRow(update: UpdateState, onCheck: () -> Unit, onUpdate: () ->
         else -> stringResource(R.string.update_check_hint)
     }
     SettingRow(
-        tile = { IconTile(InfoGlyph) },
+        tile = { IconTile(LucideInfoGlyph) },
         label = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME, BuildConfig.FRPC_VERSION),
         hint = hint,
         hintColor = if (available == null && update.checkError != null) colors.error else colors.muted,
@@ -589,20 +578,13 @@ internal fun IconTile(icon: ImageVector, background: Color = AppTheme.colors.til
     }
 }
 
-/** A 34 dp tile with a glyph, as the mockup's rows start. */
-@Composable
-internal fun GlyphTile(glyph: String, background: Color = AppTheme.colors.tile, ink: Color = AppTheme.colors.ink) {
-    Box(
-        Modifier
-            .size(34.dp)
-            .background(background, RoundedCornerShape(10.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(glyph, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ink)
-    }
-}
-
-/** A row: tile, label with an optional hint, and what is on the right (value, chevron, switch). */
+/**
+ * A row: tile, label with an optional hint, and what is on the right (value, chevron, switch).
+ * [value] is shown at the right before a chevron; when the label and the value do not fit one line each
+ * (a large font, a narrow screen: measured, not guessed) the value goes under the label in the accent
+ * colour instead of squeezing it, and only the chevron stays at the right. A label never breaks
+ * inside a word: it gets smaller until its words fit ([WordText]).
+ */
 @Composable
 internal fun SettingRow(
     tile: @Composable () -> Unit,
@@ -613,23 +595,76 @@ internal fun SettingRow(
     hintColor: Color = AppTheme.colors.muted,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
-    trailing: @Composable () -> Unit,
+    value: String? = null,
+    /** A chevron after [value]; none when the row does nothing. */
+    valueChevron: Boolean = true,
+    /** A test tag for the value's text. */
+    valueTag: String? = null,
+    trailing: @Composable () -> Unit = {},
 ) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        tile()
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(label, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = labelColor)
-            hint?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = hintColor) }
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val base = LocalTextStyle.current
+    BoxWithConstraints {
+        val stacked = value != null && run {
+            val labelWidth = measurer.measure(label, base.merge(TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium)), maxLines = 1).size.width
+            val valueWidth = measurer.measure(value!!, base.merge(TextStyle(fontSize = 14.sp)), maxLines = 1).size.width
+            // Row padding, tile, the gaps, the value's gap to the chevron and the chevron itself.
+            val around = with(density) { (14 + 14 + 34 + 12 + 12 + 8 + 24).dp.toPx() }
+            labelWidth + valueWidth + around > constraints.maxWidth
         }
-        trailing()
+        Row(
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            tile()
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                WordText(label, 15f, 20f, FontWeight.Medium, labelColor)
+                if (stacked) Text(value!!, fontSize = 14.sp, lineHeight = 19.sp, color = AppTheme.colors.accent, modifier = valueTag?.let { Modifier.testTag(it) } ?: Modifier)
+                hint?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = hintColor) }
+            }
+            if (value != null) {
+                if (!stacked) Text(value, fontSize = 14.sp, color = AppTheme.colors.muted, maxLines = 1, modifier = valueTag?.let { Modifier.testTag(it) } ?: Modifier)
+                if (valueChevron) Chevron()
+            }
+            trailing()
+        }
+    }
+}
+
+/**
+ * Text that wraps at spaces but not inside a word: when a word is wider than the line, the text gets a little smaller (at most to
+ * [MIN_WORD_SCALE], so the owner's chosen size is kept); if the word still does not fit, it breaks at a syllable with a hyphen.
+ */
+@Composable
+private fun WordText(text: String, size: Float, lineHeight: Float, weight: FontWeight?, color: Color) {
+    var scale by remember(text) { mutableFloatStateOf(1f) }
+    val atFloor = scale <= MIN_WORD_SCALE
+    Text(
+        text,
+        fontSize = (size * scale).sp,
+        lineHeight = (lineHeight * scale).sp,
+        fontWeight = weight,
+        color = color,
+        style = if (atFloor) TextStyle(lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto) else TextStyle.Default,
+        onTextLayout = { if (!atFloor && it.breaksWord()) scale = (scale - 0.05f).coerceAtLeast(MIN_WORD_SCALE) },
+    )
+}
+
+/** The smallest a label gets before a word breaks with a hyphen. */
+internal const val MIN_WORD_SCALE = 0.85f
+
+/** True when a line ends inside a word (not at a space or after a hyphen). */
+private fun TextLayoutResult.breaksWord(): Boolean {
+    val text = layoutInput.text.text
+    return (0 until lineCount - 1).any { line ->
+        val end = getLineEnd(line, visibleEnd = false)
+        end in 1 until text.length && !text[end - 1].isWhitespace() && !text[end].isWhitespace() && text[end - 1] != '-'
     }
 }
 
@@ -667,37 +702,20 @@ internal fun SwitchRow(
 @Composable
 internal fun Chevron() = Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AppTheme.colors.faint)
 
-@Composable
-private fun ValueChevron(value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(value, fontSize = 14.sp, color = AppTheme.colors.muted, maxLines = 1)
-        Chevron()
-    }
-}
-
-/** The current profile: its name and colour, and "Forget profile" with its progress or failure. */
+/** The current profile: its name and colour, and "Forget profile" (last, red) with its progress or failure. */
 @Composable
 private fun ProfileGroup(profile: ProfileItem, forget: ForgetState?, onEdit: () -> Unit, onForget: () -> Unit) {
     val colors = AppTheme.colors
     Group(stringResource(R.string.settings_profile_group, profile.name)) {
         SettingRow(
-            tile = { ProfileTile(profile.letter, profile.color, size = 34.dp) },
+            tile = { IconTile(UserGlyph) },
             label = stringResource(R.string.name_and_color),
             hint = profile.server?.let { stringResource(R.string.profile_server, it.host, it.deviceName) },
             onClick = onEdit,
         ) { Chevron() }
         RowDivider()
         SettingRow(
-            tile = {
-                Box(
-                    Modifier
-                        .size(34.dp)
-                        .background(colors.errorContainer, RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.onErrorContainer, modifier = Modifier.size(18.dp))
-                }
-            },
+            tile = { IconTile(LogOutGlyph, colors.errorContainer, colors.onErrorContainer) },
             label = stringResource(R.string.forget_profile),
             labelColor = colors.error,
             hint = forget?.error ?: stringResource(R.string.forget_profile_hint),
@@ -723,7 +741,7 @@ private fun BatteryRow() {
     val context = LocalContext.current
     val colors = AppTheme.colors
     SettingRow(
-        tile = { IconTile(WarnGlyph, colors.warningContainer, colors.onWarningContainer) },
+        tile = { IconTile(TriangleAlertGlyph, colors.warningContainer, colors.onWarningContainer) },
         label = stringResource(R.string.battery),
         hint = stringResource(R.string.battery_hint),
         onClick = { askBatteryExemption(context) },

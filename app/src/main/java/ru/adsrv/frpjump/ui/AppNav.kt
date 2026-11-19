@@ -89,6 +89,7 @@ internal object Routes {
     const val SETTINGS = "settings"
     const val CHAT = "assistant/chat"
     const val PROVIDER = "assistant/provider"
+    const val ASSISTANT_SETTINGS = "assistant/settings"
     const val STORAGE = "storage"
     const val REMOVED = "removed"
     const val WEB = "web/{profile}/{name}/{port}/{target}/{https}"
@@ -403,7 +404,7 @@ fun AppNav() {
                 // The next profile, if any; else enroll.
                 onForget = { id -> profilesVm.forget(id) { scope.launch { nav.replaceAll(routeFor(app)) } } },
                 onBack = { nav.popBackStack() },
-                onChat = { nav.openAssistant() },
+                onAssistant = { nav.navigate(Routes.ASSISTANT_SETTINGS) { launchSingleTop = true } },
             )
         }
     }
@@ -442,7 +443,8 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
             vm.conversation.appendToDraft(text)
         }
         ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
-            if (!app.settings.assistantAvailability.enabled) { nav.popBackStack(); nav.openSettings() }
+            // Off: the assistant's own settings screen (the master switch is there), over Settings.
+            if (!app.settings.assistantAvailability.enabled) { nav.popBackStack(); nav.openSettings(); nav.navigate(Routes.ASSISTANT_SETTINGS) { launchSingleTop = true } }
             else nav.navigate(Routes.PROVIDER)
         }, onOpenTerminal = { nav.navigate(Routes.terminal(it)) })
     }
@@ -458,6 +460,12 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
             onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
             onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() },
             onBack = { nav.popBackStack() })
+    }
+    composable(Routes.ASSISTANT_SETTINGS) { entry ->
+        // Shares Settings' model while Settings is on the back stack (as the provider screen does); else its own.
+        val owner = remember(entry) { runCatching { nav.getBackStackEntry(Routes.SETTINGS) }.getOrDefault(entry) }
+        val vm = viewModel<SettingsViewModel>(owner) { SettingsViewModel(app) }
+        ru.adsrv.frpjump.ui.settings.AssistantSettingsScreen(vm, onBack = { nav.popBackStack() }, onChat = { nav.openAssistant() })
     }
 }
 

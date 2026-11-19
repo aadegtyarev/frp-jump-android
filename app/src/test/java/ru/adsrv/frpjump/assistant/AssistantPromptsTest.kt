@@ -336,7 +336,7 @@ class AssistantPromptsTest {
     }
 
     @Test fun `only the Send path and the settings and prompt wiring mention the owner text so permission code cannot read it`() {
-        val allowed = setOf("AppSettings.kt", "AssistantOwnerInstructions.kt", "AssistantOwnerInstructionsScreen.kt", "SettingsScreen.kt", "SettingsViewModel.kt",
+        val allowed = setOf("AppSettings.kt", "AssistantOwnerInstructions.kt", "AssistantOwnerInstructionsScreen.kt", "AssistantSettingsScreen.kt", "SettingsViewModel.kt",
             "RunOwnership.kt", "TurnRunner.kt")
         val hits = File("src/main/java").walkTopDown().filter { it.isFile && it.extension == "kt" }
             .filter { Regex("(?i)ownerInstructions").containsMatchIn(it.readText()) }.map { it.name }.toSet()

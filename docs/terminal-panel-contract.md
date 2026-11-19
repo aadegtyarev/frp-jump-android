@@ -151,7 +151,7 @@ those limits rather than treating layout checks as device validation.
 
 ## Terminal history setting
 
-- Settings → Terminal → History rows offers 500, 1000, 3000 and 10000.
+- Settings → Terminal → History lines offers 500, 1000, 3000 and 10000.
   Default: 1000, including older settings without this value.
 - Preserve a valid stored choice. Invalid/unknown values or types fall back to
   1000 without discarding unrelated settings.
