@@ -1264,7 +1264,8 @@
     <string name="mqtt_login_not_saved">Не удалось сохранить данные входа. После повторного открытия сессии их может потребоваться ввести снова.</string>
     <string name="mqtt_login_not_removed">Не удалось удалить сохранённые данные входа. Прежние данные могут оставаться на телефоне.</string>
     <string name="chat_title">Чат</string>
-    <string name="chat_disabled">Ассистент выключен. Включите его в настройках.</string>
+    <string name="chat_assistant_settings">Настройки помощника</string>
+    <string name="chat_disabled">Помощник выключен. Включите его в настройках.</string>
     <string name="chat_setup">Настройте провайдера и выберите модель.</string>
     <string name="chat_omitted">Часть контекста разговора пропущена.</string>
     <string name="chat_assistant_says">Помощник:</string>

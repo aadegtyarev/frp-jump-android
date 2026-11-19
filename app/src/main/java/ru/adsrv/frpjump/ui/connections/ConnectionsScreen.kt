@@ -99,7 +99,6 @@ fun ConnectionsScreen(
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenFiles: (targetId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
-    onSettings: () -> Unit,
     /** Opens the assistant chat with this draft (nothing is sent); null while the assistant is off: no such menu item and no such swipe. */
     onAskAssistant: ((draft: String) -> Unit)? = null,
 ) {
@@ -170,7 +169,6 @@ fun ConnectionsScreen(
             onFilter = setOnlyOn,
             stopBusy = disconnecting,
             onStopAll = disconnectAll,
-            onSettings = onSettings,
             modifier = Modifier.statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
         )
         PullToRefreshBox(

@@ -15,6 +15,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -22,6 +23,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -166,6 +168,37 @@ class AssistantEntryNavTest {
         compose.waitUntil(10_000) { route == Routes.DEVICES }
         compose.onNodeWithTag("screen_devices").assertIsDisplayed()
         assertEquals(0, settingsEntries())
+    }
+
+    @Test fun disabledChatReturnsToSameAssistantSettingsAndBothEntriesReopenChat() {
+        host(startAssistant = false)
+        compose.runOnUiThread { nav.openSettings(); nav.navigate(Routes.ASSISTANT_SETTINGS) }
+        compose.waitUntil(10_000) { route == Routes.ASSISTANT_SETTINGS }
+        val settings = compose.runOnUiThread { nav.getBackStackEntry(Routes.ASSISTANT_SETTINGS) }
+        compose.onNodeWithTag("assistant_chat_entry").performScrollTo().performClick()
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        compose.onNodeWithText(text(R.string.chat_disabled)).assertIsDisplayed()
+        compose.onNodeWithTag("chat_input").assertIsNotEnabled()
+        compose.onNodeWithTag("chat_send").assertIsNotEnabled()
+        compose.onNodeWithTag("chat_setup").performClick()
+        compose.waitUntil(10_000) { route == Routes.ASSISTANT_SETTINGS }
+        assertSame(settings, compose.runOnUiThread { nav.getBackStackEntry(Routes.ASSISTANT_SETTINGS) })
+        assertEquals(1, settingsEntries())
+        assertEquals(0, chatEntries())
+        assistant(true)
+        compose.onNodeWithTag("assistant_chat_entry").performScrollTo().performClick()
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        compose.waitUntil(10_000) { runCatching { !compose.onNodeWithTag("chat_input").fetchSemanticsNode().config.contains(SemanticsProperties.Disabled) }.getOrDefault(false) }
+        compose.onNodeWithTag("chat_input").performTextInput("Shared draft")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+        if (runCatching { compose.onNodeWithTag("chat_back").assertIsDisplayed() }.isFailure) compose.onNodeWithTag("chat_back").performScrollTo()
+        compose.onNodeWithTag("chat_back").performClick()
+        compose.waitUntil(10_000) { route == Routes.ASSISTANT_SETTINGS }
+        compose.runOnUiThread { nav.popBackStack(Routes.DEVICES, inclusive = false) }
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
+        openFromNav()
+        compose.waitUntil(10_000) { runCatching { draft == "Shared draft" }.getOrDefault(false) }
     }
 
     @Test fun theChatIsOpenedOnceWhateverIsAboveIt() {

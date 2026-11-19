@@ -1455,6 +1455,8 @@ class AssistantChatScreenTest {
     @Test fun disabledSetupHasDirectRecovery() {
         settings.update { it.copy(assistantEnabled = false) }
         install()
+        input().assertIsNotEnabled()
+        button("chat_send").assertIsNotEnabled()
         button("chat_setup").assertIsDisplayed().performClick()
         compose.onNodeWithText("Synthetic provider setup").assertExists()
         compose.runOnIdle { assertEquals(0, calls) }

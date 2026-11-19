@@ -68,7 +68,6 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.LocalAppLocked
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.SearchGlyph
-import ru.adsrv.frpjump.ui.SettingsGear
 
 const val TUNNELS_HEADING_TAG = "tunnels_heading"
 const val TUNNELS_SEARCH_TAG = "tunnels_search"
@@ -88,8 +87,8 @@ private const val SEARCH_ROOM_DP = 130
 /**
  * The Tunnels tab's header, with no visible title (the bottom bar names the tab; TalkBack gets an invisible heading).
  *
- * Collapsed: one row, [search pill][capsule][gear], the capsule being "● N | ⏻" (see [OnCapsule]). When they do not fit (a large font in a
- * narrow window; decided by measuring) two rows: search and gear, then the capsule. Expanded ([searching]): the field takes the whole header, with ← (close) and ✕ (clear).
+ * Collapsed: one row, [search pill][capsule], the capsule being "● N | ⏻" (see [OnCapsule]). When they do not fit (a large font in a
+ * narrow window; decided by measuring) two rows: search, then the capsule. Expanded ([searching]): the field takes the whole header, with ← (close) and ✕ (clear).
  *
  * [filterOn] is what the filter does now (the choice, and something is on); [count] is the tunnels that are on. The whole capsule is disabled
  * at 0, in its place, so the header never moves.
@@ -109,7 +108,6 @@ fun TunnelsHeader(
     onFilter: (Boolean) -> Unit,
     stopBusy: Boolean,
     onStopAll: () -> Unit,
-    onSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val title = stringResource(R.string.tab_connections)
@@ -122,43 +120,32 @@ fun TunnelsHeader(
             HeaderRows(
                 search = { SearchPill(onOpenSearch) },
                 capsule = { OnCapsule(filterOn, count, onFilter, stopBusy, onStopAll) },
-                gear = { SettingsGear(onSettings) },
             )
         }
     }
 }
 
-/** Lays the three items out by measuring: one row when the search keeps its room, otherwise two (see [TunnelsHeader]). */
+/** Lays search and the capsule on one row when there is room, otherwise reflows the capsule below. */
 @Composable
-private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -> Unit, gear: @Composable () -> Unit) {
-    Layout(content = { search(); capsule(); gear() }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
+private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -> Unit) {
+    Layout(content = { search(); capsule() }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
         val maxWidth = constraints.maxWidth
         val gap = 8.dp.roundToPx()
-        val loose = Constraints(maxWidth = maxWidth)
-        val capsuleItem = measurables[1].measure(loose)
-        val gearItem = measurables[2].measure(loose)
+        val capsuleItem = measurables[1].measure(Constraints(maxWidth = maxWidth))
         val naturalSearch = measurables[0].maxIntrinsicWidth(Constraints.Infinity)
         val searchWants = maxOf(naturalSearch, (SEARCH_ROOM_DP.dp.toPx() * (16.sp.toPx() / 16.dp.toPx())).roundToInt())
-        val oneRow = searchWants + capsuleItem.width + gearItem.width + 2 * gap <= maxWidth
-        if (oneRow) {
-            val searchWidth = maxWidth - capsuleItem.width - gearItem.width - 2 * gap
-            val searchItem = measurables[0].measure(Constraints.fixedWidth(searchWidth))
-            val height = maxOf(searchItem.height, capsuleItem.height, gearItem.height)
+        if (searchWants + capsuleItem.width + gap <= maxWidth) {
+            val searchItem = measurables[0].measure(Constraints.fixedWidth(maxWidth - capsuleItem.width - gap))
+            val height = maxOf(searchItem.height, capsuleItem.height)
             layout(maxWidth, height) {
-                var x = 0
-                for (item in listOf(searchItem, capsuleItem, gearItem)) {
-                    item.placeRelative(x, (height - item.height) / 2)
-                    x += item.width + gap
-                }
+                searchItem.placeRelative(0, (height - searchItem.height) / 2)
+                capsuleItem.placeRelative(searchItem.width + gap, (height - capsuleItem.height) / 2)
             }
         } else {
-            val searchWidth = (maxWidth - gearItem.width - gap).coerceAtLeast(0)
-            val searchItem = measurables[0].measure(Constraints.fixedWidth(searchWidth))
-            val first = maxOf(searchItem.height, gearItem.height)
-            layout(maxWidth, first + capsuleItem.height) {
-                searchItem.placeRelative(0, (first - searchItem.height) / 2)
-                gearItem.placeRelative(maxWidth - gearItem.width, (first - gearItem.height) / 2)
-                capsuleItem.placeRelative(0, first)
+            val searchItem = measurables[0].measure(Constraints.fixedWidth(maxWidth))
+            layout(maxWidth, searchItem.height + capsuleItem.height) {
+                searchItem.placeRelative(0, 0)
+                capsuleItem.placeRelative(0, searchItem.height)
             }
         }
     }

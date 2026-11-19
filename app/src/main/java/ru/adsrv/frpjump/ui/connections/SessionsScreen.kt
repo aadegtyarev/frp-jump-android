@@ -51,7 +51,6 @@ import ru.adsrv.frpjump.sessions.sessionHidden
 import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.ui.SectionTitleRow
-import ru.adsrv.frpjump.ui.SettingsGear
 
 /**
  * The Sessions tab: the open terminal sessions, then the MQTT explorer
@@ -70,7 +69,6 @@ fun SessionsScreen(
     profileColors: Map<String, String>,
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
-    onSettings: () -> Unit,
     /** The assistant's own sessions: listed in a group of their own while the owner has them not as tabs. Null: none (tests). */
     assistant: ru.adsrv.frpjump.assistant.AssistantSessions? = null,
 ) {
@@ -107,7 +105,7 @@ fun SessionsScreen(
             SectionTitleRow(
                 stringResource(R.string.tab_sessions),
                 Modifier.fillMaxWidth().padding(start = 4.dp, top = 20.dp, bottom = 8.dp),
-            ) { SettingsGear(onSettings) }
+            ) {}
         }
         if (list.isEmpty() && explorers.isEmpty() && mine.isEmpty()) {
             item(key = "empty") {

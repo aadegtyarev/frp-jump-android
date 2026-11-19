@@ -34,7 +34,7 @@ import ru.adsrv.frpjump.ui.StopGlyph
  */
 @Composable
 internal fun ChatComposer(
-    field: TextFieldValue, onValueChange: (TextFieldValue) -> Unit, state: ChatState, asking: Boolean, canSend: Boolean,
+    field: TextFieldValue, onValueChange: (TextFieldValue) -> Unit, state: ChatState, asking: Boolean, canSend: Boolean, enabled: Boolean,
     onSend: () -> Unit, onStop: () -> Unit, maxLines: Int, modifier: Modifier = Modifier,
 ) {
     if (asking) {
@@ -44,7 +44,7 @@ internal fun ChatComposer(
     val colors = AppTheme.colors
     val shape = RoundedCornerShape(26.dp)
     OutlinedTextField(
-        value = field, onValueChange = onValueChange, enabled = state.fieldEnabled, shape = shape,
+        value = field, onValueChange = onValueChange, enabled = enabled && state.fieldEnabled, shape = shape,
         placeholder = { Text(stringResource(R.string.chat_message)) },
         trailingIcon = { ComposerAction(state, canSend, onSend, onStop) },
         minLines = 1, maxLines = maxLines, modifier = modifier.fillMaxWidth().testTag("chat_input"),

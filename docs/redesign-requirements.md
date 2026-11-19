@@ -1,0 +1,35 @@
+# FRP Jump redesign requirements
+
+These 20 rules apply to every redesign slice and its review. They record approved direction, not evidence that later slices are implemented or verified. Existing surface contracts and their security, privacy, data-retention and lifecycle guarantees remain normative. Resolve unapproved interaction, layout and implementation details through each slice's contract and review; gallery suggestions alone do not approve additional changes.
+
+## Scope and architecture
+
+1. Redesign Devices, Tunnels, Sessions, Settings, assistant entry and context, and gestures on those lists. Devices selects a device, Tunnels manages access, and Sessions returns to started work.
+2. Keep Terminal, Files, Web and MQTT as they are except for separately approved narrow routing changes; check opening and return when a route changes. A possible hidden-files empty-state fix is a proposal, not approval to change Files.
+3. State and operations remain owned by existing layers, under the [operations surface contract](contracts/surfaces/operations.md). UI and LLM tools consume shared operations and state where already provided; UI owns presentation, selection, navigation and feedback. The assistant receives only already permitted tools and data; references do not grant authority or introduce credentials, data access or capabilities.
+4. Each decision or rule has one authoritative owner. Extract shared logic with the same semantics into reusable functions or modules at that owning layer, and have callers consume them rather than duplicate it across layers. Keep UI- and LLM-specific concerns out of shared logic. Moving a control or adding bulk actions must not create another execution path.
+5. Favor fast delivery and readable, compact code following existing architecture and APIs. Handle realistic failures and preserve contract and security invariants; avoid speculative fallbacks, abstractions and defenses for impossible or unsupported cases. This does not reduce required checks or widen scope.
+
+## Design principles
+
+6. Use the fewest elements and understandable steps that achieve the task. Give each task one clear home, show each detail once, and avoid duplicate controls unless an approved shortcut adds value and uses the same action and form.
+7. Keep frequent actions in context and rare actions in menus. Show scope before bulk actions; retain the existing top Undo notice and required warnings for irreversible actions. Make filters visible and easy to reset.
+8. Reuse FRP Jump's Roboto, palette, glyphs, shapes, notices and forms; equivalent actions look and behave alike. Use familiar mobile patterns and normal app sizing. Preserve approved R39 Settings order, appearance, controls and values.
+9. Make state suggest the next step: provide useful empty, loading and error states, retain input on save failure, distinguish status without color, and preserve accessibility, progress and safety feedback.
+
+## Settled slice direction
+
+10. General Settings opens from the gear on Devices; contextual paths such as the update announcement remain available. Back retains the invoking device profile and list.
+11. Settings and bottom navigation open the same assistant chat. When off, hide bottom and contextual entries; Settings can open that chat with an explanation, disabled composer and a route back to assistant settings. Preserve history, drafts and lifecycle under the existing privacy guarantees.
+12. Tunnels has one list across profiles. Device navigation selects the profile and device; preserve search, active filtering, favorites, permission marks and Undo. The device filter opens as a bottom sheet with search and checkbox multiselect; show the selection count and provide single-tap reset. Keep each device group name visible when filtered; hide empty groups in the general list and give a selected empty device one add action. The active toggle/count and power action remain visible and refer to the same scope. As acceptance for this slice, the approved mock shows a single-row toolbar with a compact square device picker and expanding search; validate reflow and accessibility at large font.
+13. Reuse the tunnel form with SSH and port 22 as the approved default. Active SSH's folder opens existing Files; the off-state menu retains its Files entry.
+14. Devices supports online filtering, search and favorites without duplicate entries; label and icon editing reuse the existing form. Retain the profile-name treatment. Tunnel management belongs on Tunnels.
+15. Sessions supports search, opening a session, closing one or selected sessions with existing Undo, and assistant sessions. Closing a session leaves its tunnel on. A tunnel's Terminal action creates a session at zero, opens the one at one, and offers a choice at several.
+16. On Devices and Tunnels, a right swipe reveals favorite without executing it. On Devices, Tunnels and Sessions, a left swipe reveals Ask Assistant without executing it; long press starts multi-selection. Preserve vertical scrolling and system Back.
+17. Context entries use the shared chat and attach one or more identifiable objects to the next message. Provide a stable context slot, show and allow removal of context, and keep the question field as a question rather than prefilling an object title; never send automatically or change permissions. History reflects what was sent, and the context clears from the next message.
+18. Multi-selection actions affect exactly the selected active tunnels or selected sessions, with one Undo. Select all targets the current list.
+
+## Delivery and verification
+
+19. Root orchestrates scope, acceptance and closure; Terra implements and Sol independently reviews every slice, including UI slices. One coherent slice is one PR. Before implementation, inspect the worktree and agree and record any required feature contract. Review each slice top-down across every affected layer and entry point, not only the diff, for fragmented or overengineered logic and the architecture boundary; review the diff and Gitleaks results before pushing.
+20. Run focused logic and changed-screen tests and required repository gates, covering complete changed paths, immediate transitions, visible outcomes and steps. Check portrait, narrow screens and long names; check landscape, large font and keyboard when relevant. Broaden checks for shared navigation, security, stored data or authority. After merge, verify the matched commit on main, repeat relevant checks and inspect changed-screen screenshots; release the slice and verify the downloaded APK and checksum under repository release authorization rules. Start the next slice after the previous release is confirmed. Report actual evidence and limits, never unrun checks or releases as complete.

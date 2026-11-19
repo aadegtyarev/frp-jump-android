@@ -1213,6 +1213,7 @@
     <string name="mqtt_login_not_saved">Could not save the login. You may need to enter it again after reopening this session.</string>
     <string name="mqtt_login_not_removed">Could not remove the saved login. The previous login may still be stored on this phone.</string>
     <string name="chat_title">Chat</string>
+    <string name="chat_assistant_settings">Assistant settings</string>
     <string name="chat_disabled">The assistant is off. Enable it in Settings.</string>
     <string name="chat_setup">Set up a provider and select a model.</string>
     <string name="chat_omitted">Some conversation context was omitted.</string>

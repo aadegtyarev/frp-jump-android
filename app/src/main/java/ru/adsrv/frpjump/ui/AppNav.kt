@@ -294,7 +294,6 @@ fun AppNav() {
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                     onOpenFiles = { nav.navigate(Routes.files(it)) },
                     onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
-                    onSettings = { nav.openSettings() },
                     onAskAssistant = if (assistantEnabledNow(app)) ({ draft -> nav.askAssistant(app, draft) }) else null,
                 )
             }
@@ -310,7 +309,6 @@ fun AppNav() {
                     profileColors = profilesState.index.profiles.associate { it.id to it.color },
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                     onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
-                    onSettings = { nav.openSettings() },
                     assistant = app.assistantSessions,
                 )
             }
@@ -433,7 +431,13 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
         ApplyAssistantQuote(app.assistantQuote, vm)
         ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
             // Off: the assistant's own settings screen (the master switch is there), over Settings.
-            if (!app.settings.assistantAvailability.enabled) { nav.popBackStack(); nav.openSettings(); nav.navigate(Routes.ASSISTANT_SETTINGS) { launchSingleTop = true } }
+            if (!app.settings.assistantAvailability.enabled) {
+                if (!nav.popBackStack(Routes.ASSISTANT_SETTINGS, inclusive = false)) {
+                    nav.popBackStack()
+                    nav.openSettings()
+                    nav.navigate(Routes.ASSISTANT_SETTINGS) { launchSingleTop = true }
+                }
+            }
             else nav.navigate(Routes.PROVIDER)
         }, onOpenTerminal = { nav.navigate(Routes.terminal(it)) })
     }
