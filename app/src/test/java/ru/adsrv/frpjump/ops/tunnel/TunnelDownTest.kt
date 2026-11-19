@@ -102,6 +102,27 @@ class TunnelDownTest {
         assertEquals(listOf(web, ssh), stopped)
     }
 
+    @Test fun `selected tunnels share Undo and do not affect other profiles or devices`() = runBlocking {
+        op()(TunnelDownTarget.Selected(setOf(ssh, elsewhere)))
+        assertEquals(mapOf(UndoKind.DISCONNECTED to 2), counts)
+        assertEquals(setOf("dev-a:22"), PendingUndo.darkTunnels(pending.hidden.value, "p1"))
+        assertEquals(setOf("dev-a:22"), PendingUndo.darkTunnels(pending.hidden.value, "p2"))
+        undoOnNotice!!.invoke()
+        assertTrue(pending.hidden.value.isEmpty())
+        pending.commitAll()
+        assertTrue(stopped.isEmpty())
+    }
+
+    @Test fun `stale selected refs are not queued or later disconnected`() = runBlocking {
+        val down = TunnelRef("p1", "dev-a", 443)
+        val gone = TunnelRef("gone", "dev-a", 22)
+        op()(TunnelDownTarget.Selected(setOf(ssh, down, gone)))
+        assertEquals(mapOf(UndoKind.DISCONNECTED to 1), counts)
+        assertEquals(setOf("dev-a:22"), PendingUndo.darkTunnels(pending.hidden.value, "p1"))
+        expire()
+        assertEquals(listOf(ssh), stopped)
+    }
+
     @Test fun `a profile takes all its tunnels under one notice`() = runBlocking {
         var result: OpResult<Unit>? = null
         val job = undispatched(TunnelDownTarget.Profile("p1")) { result = it }

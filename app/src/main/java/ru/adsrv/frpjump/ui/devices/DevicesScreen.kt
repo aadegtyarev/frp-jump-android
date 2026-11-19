@@ -31,6 +31,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import ru.adsrv.frpjump.ui.AppDropdownMenu
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -101,7 +105,7 @@ fun DevicesScreen(
     vm: DevicesViewModel,
     profiles: List<ProfileItem>,
     onProfiles: () -> Unit,
-    onOpen: (String) -> Unit,
+    onOpen: (String, String) -> Unit,
     onTunnels: () -> Unit,
     onSettings: () -> Unit,
 ) {
@@ -137,6 +141,7 @@ fun DevicesScreen(
         focusOnOpen = false
     }
     BackHandler(enabled = searching) { closeSearch() }
+    var editDevice by remember(state.profile) { mutableStateOf<Pair<DeviceRow, Boolean>?>(null) }
     // Another profile shown: its list is not filtered by the old query.
     var searchedProfile by rememberSaveable { mutableStateOf(current?.id) }
     LaunchedEffect(current?.id) {
@@ -184,7 +189,12 @@ fun DevicesScreen(
             } else state.error?.let { error ->
                 Text(error.userText(), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             }
-            DeviceRows(state, query, openRow, vm::pull, onOpen, onDisconnect = { device -> current?.let { vm.actions.disconnectDevice(it.id, device) } })
+            DeviceRows(state, query, openRow, vm::pull, onOpen = { device -> state.profile?.let { onOpen(it, device) } }, onEdit = { device, label -> editDevice = device to label }, onDisconnect = { device -> state.profile?.let { vm.actions.disconnectDevice(it, device) } })
+        }
+    }
+    editDevice?.let { (device, label) ->
+        state.profile?.let { profile ->
+            DeviceDisplaySheet(device = device, focusLabel = label, onSave = { change, done -> vm.saveDisplay(profile, device.name, change, done) }, onDismiss = { editDevice = null })
         }
     }
 }
@@ -286,7 +296,7 @@ private fun RemovedElsewhereLine(removed: List<ProfileItem>, onClick: () -> Unit
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DeviceRows(state: DevicesUiState, query: String, openRow: OpenRow, onPull: () -> Unit, onOpen: (String) -> Unit, onDisconnect: (String) -> Unit) {
+private fun DeviceRows(state: DevicesUiState, query: String, openRow: OpenRow, onPull: () -> Unit, onOpen: (String) -> Unit, onEdit: (DeviceRow, Boolean) -> Unit, onDisconnect: (String) -> Unit) {
     val listState = rememberLazyListState()
     LaunchedEffect(listState, openRow) {
         snapshotFlow { listState.isScrollInProgress }.collect { if (it) openRow.close() }
@@ -345,6 +355,7 @@ private fun DeviceRows(state: DevicesUiState, query: String, openRow: OpenRow, o
                         // Open: a tap puts it back; closed, it opens the card as before.
                         onClick = { if (open) openRow.close() else onOpen(device.name) },
                         onDisconnect = { onDisconnect(device.name) }.takeIf { ports.isNotEmpty() },
+                        onEdit = if (state.display) ({ label -> onEdit(device, label) }) else null,
                     )
                 }
             }
@@ -380,7 +391,7 @@ private fun DisconnectDeviceButton(device: String, onClick: () -> Unit) {
  * TalkBack as an action of the row, since the swipe is not.
  */
 @Composable
-private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit, onDisconnect: (() -> Unit)?) {
+private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit, onDisconnect: (() -> Unit)?, onEdit: ((Boolean) -> Unit)?) {
     val colors = AppTheme.colors
     val disconnectLabel = stringResource(R.string.disconnect_device_tunnels, device.name)
     val stateText = when {
@@ -413,7 +424,7 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
         Row(
             Modifier
                 .padding(horizontal = 14.dp, vertical = 12.dp)
-                .clearAndSetSemantics { contentDescription = spoken },
+                .semantics { contentDescription = spoken },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -443,6 +454,16 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
                 })
             }
             if (device.disabled) Chip(stringResource(R.string.device_disabled), colors.errorContainer, colors.onErrorContainer)
+            onEdit?.let { edit ->
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
+                    AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.device_menu_label)) }, onClick = { menu = false; edit(true) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.device_menu_icon)) }, onClick = { menu = false; edit(false) })
+                    }
+                }
+            }
         }
     }
 }

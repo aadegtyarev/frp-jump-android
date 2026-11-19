@@ -233,6 +233,9 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         onDone()
     }
 
+    /** Disconnect exactly the selected tunnels through the common Undo owner. */
+    fun disconnectSelected(tunnels: Set<TunnelRef>) = asked { tunnelDown(TunnelDownTarget.Selected(tunnels)).say() }
+
     /** Every tunnel of [profile] up now (the power button on the Devices tab's bar), with Undo. Main thread. */
     fun disconnectProfile(profile: String) = asked { tunnelDown(TunnelDownTarget.Profile(profile)).say() }
 

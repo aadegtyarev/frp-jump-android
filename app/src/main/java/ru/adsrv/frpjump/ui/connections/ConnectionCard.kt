@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.ripple
@@ -80,6 +81,7 @@ import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.AssistantGlyph
 import ru.adsrv.frpjump.ui.CopyGlyph
+import ru.adsrv.frpjump.ui.FolderGlyph
 import ru.adsrv.frpjump.ui.GlobeGlyph
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.RssGlyph
@@ -115,6 +117,7 @@ fun ConnectionCard(
     /** The card is swiped aside ([ru.adsrv.frpjump.ui.devices.SwipeReveal]): a tap on it puts it back instead of acting. */
     revealed: Boolean = false,
     onCloseReveal: () -> Unit = {},
+    onSelect: (() -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     val c = row.connection
@@ -160,10 +163,10 @@ fun ConnectionCard(
                     Modifier.combinedClickable(
                         onClickLabel = if (revealed) null else cardTapLabel(row, sessions),
                         onClick = { if (revealed) onCloseReveal() else actions.tap(row) },
-                        onLongClick = whenOpen { if (hasMenu(row)) onMenu(true) },
+                        onLongClick = whenOpen { if (onSelect != null) onSelect() else if (hasMenu(row)) onMenu(true) },
                     )
                 } else if (hasMenu(row)) {
-                    Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { openMenu() }) }
+                    Modifier.pointerInput(onSelect) { detectTapGestures(onLongPress = { if (onSelect != null) onSelect() else openMenu() }) }
                 } else {
                     Modifier
                 },
@@ -264,6 +267,11 @@ fun ConnectionCard(
                     itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (link) MainActionLink(row, sessions, name, whenOpen { actions.main(row) })
+                    if (link && row.saved && c.kind == PortKind.SSH) {
+                        IconButton(onClick = whenOpen { actions.files(row) }, modifier = Modifier.testTag("card_files")) {
+                            Icon(FolderGlyph, contentDescription = stringResource(R.string.files))
+                        }
+                    }
                     if (assistant != null) {
                         AssistantMarkLine(row, name, assistant, onForgetAssistant, revealed, onCloseReveal) { text -> context.notice(text, NoticeKind.DONE) }
                     }

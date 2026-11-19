@@ -10,6 +10,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import ru.adsrv.frpjump.devices.DisplayChange
+import ru.adsrv.frpjump.devices.DisplayFailure
+import ru.adsrv.frpjump.devices.displayFailure
+import ru.adsrv.frpjump.ui.userMessage
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.connections.onTunnelsCount
 import ru.adsrv.frpjump.devices.DeviceDirectory
@@ -24,7 +31,9 @@ import java.time.Instant
 
 data class DevicesUiState(
     /** Null until the first answer or the cached list. */
+    val profile: String? = null,
     val devices: List<DeviceRow>? = null,
+    val display: Boolean = false,
     val refreshing: Boolean = false,
     val error: DomainError? = null,
     /** Set once a refresh of an old list failed: when the server last answered. */
@@ -96,6 +105,21 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
     }
 
     /** Gone with its screen: the list is no longer wanted for it. */
+    /** Saves display data through the selected profile's existing device directory. */
+    fun saveDisplay(profile: String, device: String, change: DisplayChange, done: (DisplayFailure?) -> Unit) {
+        val runtime = app.profiles.runtime(profile) ?: return done(DisplayFailure.Other(ru.adsrv.frpjump.locale.Texts.get(ru.adsrv.frpjump.R.string.profile_gone)))
+        viewModelScope.launch {
+            val failure = try {
+                withContext(Dispatchers.IO) { runtime.devices.setDisplay(device, change) }
+                null
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                displayFailure(e, change) { it.userMessage() }
+            }
+            done(failure)
+        }
+    }
+
     override fun onCleared() {
         directory.value?.want(this, false)
     }
@@ -117,7 +141,9 @@ internal fun devicesUiState(information: ru.adsrv.frpjump.profiles.ProfileInform
     val list = part?.devices ?: DeviceList()
     val ports = tunnelPorts(part?.tunnels?.tunnels.orEmpty())
     return DevicesUiState(
+        profile = part?.id,
         devices = list.devices?.let { tunnelsFirst(it, ports) },
+        display = list.display,
         refreshing = busy,
         error = list.error,
         // A list restored at start is not a failure yet: no banner until a fetch fails.

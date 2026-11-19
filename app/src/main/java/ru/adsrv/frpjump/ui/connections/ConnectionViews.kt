@@ -542,7 +542,7 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
             if (row.saved && kind == PortKind.SSH) item(R.string.open_in_ssh_app, actions.sshApp)
         }
         // Down, the tunnel is brought up once the login is given.
-        if (row.saved && kind == PortKind.SSH) item(R.string.files, actions.files)
+        if (row.saved && kind == PortKind.SSH && row.tunnel == null) item(R.string.files, actions.files)
         // Terminal logs in at once with what is remembered: another user or method is chosen here.
         if (row.saved && kind == PortKind.SSH) item(R.string.terminal_change_login, actions.changeLogin)
         if (row.saved && kind == PortKind.SSH && actions.offersKeyLogin(row)) item(R.string.key_login, actions.keyLogin)

@@ -26,7 +26,6 @@ import ru.adsrv.frpjump.ui.Routes
 import ru.adsrv.frpjump.ui.askAssistant
 import ru.adsrv.frpjump.ui.assistantRoutes
 import ru.adsrv.frpjump.ui.openAssistant
-import ru.adsrv.frpjump.ui.openDeviceCard
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -171,7 +170,7 @@ class TerminalAskAssistantTest {
                 nav = rememberNavController()
                 NavHost(nav, Routes.DEVICES) {
                     composable(Routes.DEVICES) { Box(Modifier.testTag("screen_devices")) { Text("devices") } }
-                    composable(Routes.DEVICE) { Box(Modifier.testTag("screen_device")) { Text("device card") } }
+                    composable(Routes.CONNECTIONS) { Box(Modifier.testTag("screen_tunnels")) { Text("tunnels") } }
                     composable(Routes.TERMINAL) { terminal() }
                     assistantRoutes(nav, app)
                 }
@@ -233,14 +232,14 @@ class TerminalAskAssistantTest {
         assertEquals(1, chatEntries())
     }
 
-    @Test fun chatThenADeviceCardThenTheTerminalThenAskReachesTheOneChatWithTheQuote() {
+    @Test fun chatThenTunnelsThenTheTerminalThenAskReachesTheOneChatWithTheQuote() {
         startNav()
         compose.runOnUiThread { nav.openAssistant() }
         compose.waitUntil(10_000) { route == Routes.CHAT }
         val chat = compose.runOnUiThread { nav.getBackStackEntry(Routes.CHAT) }
-        // A notification tap: the device card over the chat; from it a terminal tab.
-        compose.runOnUiThread { nav.openDeviceCard("synthetic-device") }
-        compose.waitUntil(10_000) { route == Routes.DEVICE }
+        // Tunnels over the chat; from it a terminal tab.
+        compose.runOnUiThread { nav.navigate(Routes.CONNECTIONS) }
+        compose.waitUntil(10_000) { route == Routes.CONNECTIONS }
         compose.runOnUiThread { nav.navigate(Routes.terminal(1)) }
         compose.waitUntil(10_000) { route == Routes.TERMINAL }
         selectInTab("SYNTH_TOKEN_43")
@@ -252,7 +251,7 @@ class TerminalAskAssistantTest {
         val expected = ChatQuote.block("SYNTH_TOKEN_43", compose.activity.getString(R.string.chat_quote_truncated))!!
         compose.waitUntil(10_000) { runCatching { draft == expected }.getOrDefault(false) }
         assertNull(app.assistantQuote.value)
-        // Back leaves to where the chat was opened from, not to the terminal or the card.
+        // Back leaves to where the chat was opened from, not to the terminal or Tunnels.
         compose.onNodeWithTag("chat_back").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { route == Routes.DEVICES }
         assertEquals(0, chatEntries())

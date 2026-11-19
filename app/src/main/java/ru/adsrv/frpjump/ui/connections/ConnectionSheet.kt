@@ -67,6 +67,9 @@ import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.Segmented
 import java.util.UUID
 
+/** Default for a new tunnel; editing always starts from the saved connection. */
+internal fun newConnectionDraft() = ConnectionDraft(PortKind.SSH, "22", "")
+
 /**
  * "New connection" to [device] (or "Change connection" for [editing]) as
  * the mockup's bottom sheet: kind, port with presets, name, then HTTPS for
@@ -90,7 +93,7 @@ fun ConnectionSheet(
 ) {
     val colors = AppTheme.colors
     val context = LocalContext.current
-    val start = remember(editing) { editing?.let(::draftOf) ?: ConnectionDraft(PortKind.WEB, "80", "") }
+    val start = remember(editing) { editing?.let(::draftOf) ?: newConnectionDraft() }
     var kind by rememberSaveable { mutableStateOf(start.kind) }
     var portText by rememberSaveable { mutableStateOf(start.portText) }
     var name by rememberSaveable { mutableStateOf(start.name) }

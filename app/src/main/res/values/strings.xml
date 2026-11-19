@@ -1583,4 +1583,11 @@
     <string name="limit_skills_list">Skills list per request, characters</string>
     <string name="confirm_skill_old_description">Old description</string>
     <string name="confirm_skill_old_requires">Old requirements</string>
+    <string name="tunnels_device_filter">Devices: %1$d</string>
+    <string name="tunnels_filter_reset">Clear filter</string>
+    <string name="tunnels_select_all">Select all</string>
+    <string name="tunnels_stop_selected">Stop selected: %1$d</string>
+    <string name="tunnels_selected_count">Selected: %1$d</string>
+    <string name="tunnels_add_for">Add tunnel to %1$s · %2$s</string>
+    <string name="tunnels_device_empty">No tunnels for this device yet.</string>
 </resources>

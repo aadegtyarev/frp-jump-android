@@ -94,10 +94,12 @@ class TunnelsFavoritesTest {
 
     private var connections by mutableStateOf(listOf(pi, z2m, panel))
     private var assistantOn by mutableStateOf(true)
+    private var selected by mutableStateOf(emptySet<String>())
     private var favoriteCalls = 0
     private var tapCalls = 0
     private var connectCalls = 0
     private var asked: String? = null
+    private var filesRow: String? = null
     private val scroll = androidx.compose.foundation.ScrollState(0)
 
     private fun toggle(id: String) { connections = connections.map { if (it.id == id) it.copy(favorite = !it.favorite) else it } }
@@ -109,7 +111,7 @@ class TunnelsFavoritesTest {
                 val ui = remember { ConnectionUi() }
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val actions = RowActions(
-                    { connectCalls++ }, {}, { tapCalls++ }, {}, {}, {}, {}, {}, {}, {}, {}, {}, { false }, {}, {},
+                    { connectCalls++ }, {}, { tapCalls++ }, {}, {}, {}, {}, { filesRow = it.key }, {}, {}, {}, {}, { false }, {}, {},
                     favorite = { row -> favoriteCalls++; toggle(row.connection.id) },
                     ask = if (assistantOn) ({ row -> asked = askDraft(context, row.connection) }) else null,
                 )
@@ -118,7 +120,9 @@ class TunnelsFavoritesTest {
                 Box(Modifier.background(AppTheme.colors.ground).systemBarsPadding().fillMaxSize().verticalScroll(scroll)) {
                     Box(Modifier.fillMaxWidth().height(2400.dp)) {
                         LazyColumn(Modifier.fillMaxSize().closesOpenRow(openRow), contentPadding = PaddingValues(16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-                            tunnelRows(view, ConnectionsUiState(), emptyList(), emptyMap(), ui, actions, {}, openRow)
+                            tunnelRows(view, ConnectionsUiState(), emptyList(), emptyMap(), ui, actions, {}, openRow,
+                                selected = selected, onSelect = { selected = selected + it },
+                                onToggle = { selected = if (it in selected) selected - it else selected + it })
                         }
                     }
                 }
@@ -163,6 +167,24 @@ class TunnelsFavoritesTest {
         // A card in a device group shows no star and no device.
         compose.onNode(hasAnyAncestor(hasTestTag(cardTag(z2m))) and hasText("z2m"), useUnmergedTree = true).assertExists()
         shot("tunnels-favorites-group")
+    }
+
+    @Test fun selectionShowsRealCardsAndOneAccessibleTogglePerRow() {
+        selected = setOf("p1/c1")
+        host()
+        compose.onNodeWithContentDescription("Pi shell · alpha · ").assertExists()
+        shot("tunnels-selection")
+        compose.onNodeWithContentDescription("Pi shell · alpha · ").performClick()
+        assertEquals(emptySet<String>(), selected)
+        assertEquals(0, tapCalls)
+    }
+
+    @Test fun inactiveSshKeepsFilesInMenu() {
+        host()
+        bring(pi)
+        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(pi))) and hasTestTag("card_menu"), useUnmergedTree = true).performClick()
+        compose.onNodeWithText(text(R.string.files)).assertExists().performClick()
+        assertEquals("p1/c1", filesRow)
     }
 
     @Test fun aSwipeRightRevealsTheStarAndOnlyItsTapRunsIt() {

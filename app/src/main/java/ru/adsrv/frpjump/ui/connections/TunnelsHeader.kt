@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -109,17 +110,25 @@ fun TunnelsHeader(
     stopBusy: Boolean,
     onStopAll: () -> Unit,
     modifier: Modifier = Modifier,
+    deviceFilter: (@Composable () -> Unit)? = null,
 ) {
     val title = stringResource(R.string.tab_connections)
     Box(modifier.fillMaxWidth()) {
         // The heading screen readers land on: invisible and tiny.
         Box(Modifier.size(1.dp).testTag(TUNNELS_HEADING_TAG).semantics(mergeDescendants = true) { heading(); contentDescription = title })
         if (searching) {
-            SearchField(query, onQuery, onCloseSearch, focusOnOpen, onFocused, scopeOn)
+            Column {
+                SearchField(query, onQuery, onCloseSearch, focusOnOpen, onFocused, scopeOn)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    deviceFilter?.invoke()
+                    OnCapsule(filterOn, count, onFilter, stopBusy, onStopAll)
+                }
+            }
         } else {
             HeaderRows(
                 search = { SearchPill(onOpenSearch) },
                 capsule = { OnCapsule(filterOn, count, onFilter, stopBusy, onStopAll) },
+                deviceFilter = deviceFilter,
             )
         }
     }
@@ -127,25 +136,30 @@ fun TunnelsHeader(
 
 /** Lays search and the capsule on one row when there is room, otherwise reflows the capsule below. */
 @Composable
-private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -> Unit) {
-    Layout(content = { search(); capsule() }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
+private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -> Unit, deviceFilter: (@Composable () -> Unit)?) {
+    Layout(content = { search(); capsule(); deviceFilter?.invoke() }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
         val maxWidth = constraints.maxWidth
         val gap = 8.dp.roundToPx()
         val capsuleItem = measurables[1].measure(Constraints(maxWidth = maxWidth))
+        val filterItem = measurables.getOrNull(2)?.measure(Constraints(maxWidth = maxWidth))
+        val filterWidth = filterItem?.let { it.width + gap } ?: 0
         val naturalSearch = measurables[0].maxIntrinsicWidth(Constraints.Infinity)
-        val searchWants = maxOf(naturalSearch, (SEARCH_ROOM_DP.dp.toPx() * (16.sp.toPx() / 16.dp.toPx())).roundToInt())
-        if (searchWants + capsuleItem.width + gap <= maxWidth) {
-            val searchItem = measurables[0].measure(Constraints.fixedWidth(maxWidth - capsuleItem.width - gap))
-            val height = maxOf(searchItem.height, capsuleItem.height)
+        val searchWants = maxOf(naturalSearch, ((if (deviceFilter == null) SEARCH_ROOM_DP else 96).dp.toPx() * (16.sp.toPx() / 16.dp.toPx())).roundToInt())
+        if (searchWants + filterWidth + capsuleItem.width + gap <= maxWidth) {
+            val searchItem = measurables[0].measure(Constraints.fixedWidth((maxWidth - filterWidth - capsuleItem.width - gap).coerceAtLeast(0)))
+            val height = maxOf(searchItem.height, capsuleItem.height, filterItem?.height ?: 0)
             layout(maxWidth, height) {
                 searchItem.placeRelative(0, (height - searchItem.height) / 2)
-                capsuleItem.placeRelative(searchItem.width + gap, (height - capsuleItem.height) / 2)
+                filterItem?.placeRelative(searchItem.width + gap, (height - filterItem.height) / 2)
+                capsuleItem.placeRelative(searchItem.width + gap + filterWidth, (height - capsuleItem.height) / 2)
             }
         } else {
-            val searchItem = measurables[0].measure(Constraints.fixedWidth(maxWidth))
-            layout(maxWidth, searchItem.height + capsuleItem.height) {
+            val searchItem = measurables[0].measure(Constraints.fixedWidth((maxWidth - filterWidth).coerceAtLeast(0)))
+            val firstHeight = maxOf(searchItem.height, filterItem?.height ?: 0)
+            layout(maxWidth, firstHeight + capsuleItem.height) {
                 searchItem.placeRelative(0, 0)
-                capsuleItem.placeRelative(0, searchItem.height)
+                filterItem?.placeRelative(searchItem.width + gap, 0)
+                capsuleItem.placeRelative(0, firstHeight)
             }
         }
     }

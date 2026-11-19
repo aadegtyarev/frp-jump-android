@@ -55,8 +55,6 @@ import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.ui.connections.ConnectionsScreen
 import ru.adsrv.frpjump.ui.connections.ConnectionsViewModel
 import ru.adsrv.frpjump.ui.connections.SessionsScreen
-import ru.adsrv.frpjump.ui.devices.DeviceCardScreen
-import ru.adsrv.frpjump.ui.devices.DeviceCardViewModel
 import ru.adsrv.frpjump.ui.devices.DevicesScreen
 import ru.adsrv.frpjump.ui.devices.DevicesViewModel
 import ru.adsrv.frpjump.ui.enroll.EnrollScreen
@@ -86,7 +84,6 @@ internal object Routes {
     const val DEVICES = "devices"
     const val CONNECTIONS = "connections"
     const val SESSIONS = "sessions"
-    const val DEVICE = "device/{name}"
     const val SETTINGS = "settings"
     const val CHAT = "assistant/chat"
     const val PROVIDER = "assistant/provider"
@@ -101,7 +98,6 @@ internal object Routes {
     fun files(id: Int) = "files/$id"
     fun terminal(id: Int) = "terminal/$id"
     fun profile(id: String) = "profile/$id"
-    fun device(name: String) = "device/${Uri.encode(name)}"
     fun web(profile: String, name: String, localPort: Int, target: Int, https: Boolean) =
         "web/$profile/${Uri.encode(name)}/$localPort/$target/$https"
 
@@ -279,17 +275,22 @@ fun AppNav() {
                     vm = viewModel { DevicesViewModel(app) },
                     profiles = profiles,
                     onProfiles = { sheet = true },
-                    onOpen = { nav.navigate(Routes.device(it)) },
+                    onOpen = { profile, name ->
+                        nav.openDeviceTunnels(profile, name)
+                    },
                     onTunnels = { nav.goToTab(Tab.CONNECTIONS) },
                     onSettings = { nav.openSettings() },
                 )
             }
             if (sheet) ProfileListSheet(profilesVm, nav, app, onDismiss = { sheet = false })
         }
-        composable(Routes.CONNECTIONS) {
+        composable(Routes.CONNECTIONS) { entry ->
+            val scopeRequest by entry.savedStateHandle.getStateFlow<ArrayList<String>?>(TUNNEL_SCOPE, null).collectAsStateWithLifecycle()
             TabFrame(Tab.CONNECTIONS, nav) {
                 ConnectionsScreen(
                     vm = viewModel { ConnectionsViewModel(app) },
+                    scopeRequest = scopeRequest,
+                    onScopeConsumed = { entry.savedStateHandle[TUNNEL_SCOPE] = null },
                     onOpenWeb = { nav.navigate(webRoute(it)) },
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                     onOpenFiles = { nav.navigate(Routes.files(it)) },
@@ -312,19 +313,6 @@ fun AppNav() {
                     assistant = app.assistantSessions,
                 )
             }
-        }
-        composable(Routes.DEVICE) { entry ->
-            val name = entry.arguments?.getString("name").orEmpty()
-            val vm = viewModel { DeviceCardViewModel(app, name) }
-            DeviceCardScreen(
-                vm = vm,
-                onBack = { nav.popBackStack() },
-                onOpenWeb = { nav.navigate(webRoute(it)) },
-                onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
-                onOpenFiles = { nav.navigate(Routes.files(it)) },
-                onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
-                onAskAssistant = if (assistantEnabledNow(app)) ({ draft -> nav.askAssistant(app, draft) }) else null,
-            )
         }
         composable(Routes.TERMINAL) { entry ->
             val profilesState by app.profiles.state.collectAsStateWithLifecycle()
@@ -507,9 +495,6 @@ internal fun NavHostController.askAssistant(quotes: MutableStateFlow<String?>, q
     openAssistant()
 }
 
-/** A device's card, over whatever is shown (the Devices screen's own entry; tests use it too). */
-internal fun NavHostController.openDeviceCard(name: String) = navigate(Routes.device(name)) { popUpTo(Routes.DEVICE) { inclusive = true } }
-
 /** Whether Settings > LLM assistant is on, followed live. */
 @Composable
 internal fun assistantEnabledNow(app: FrpJumpApp): Boolean {
@@ -526,7 +511,7 @@ internal fun TabFrame(selected: Tab, nav: NavHostController, content: @Composabl
     val assistant = assistantEnabledNow(app)
     val activity by app.assistantActivity.collectAsStateWithLifecycle()
     Scaffold(
-        bottomBar = { BottomNav(selected, onAssistant = if (assistant) ({ nav.openAssistant() }) else null, assistantActivity = activity) { if (it != selected) nav.goToTab(it) } },
+        bottomBar = { BottomNav(selected, onAssistant = if (assistant) ({ nav.openAssistant() }) else null, assistantActivity = activity) { if (it != selected || it == Tab.CONNECTIONS) nav.goToTab(it) } },
         snackbarHost = { SnackbarHost(snackbars) },
         containerColor = AppTheme.colors.ground,
         contentWindowInsets = WindowInsets(0),
@@ -573,11 +558,25 @@ private fun TakeUpdateAnnouncement() {
     LaunchedEffect(update.announce) { if (update.announce != null) updater.announced() }
 }
 
+internal const val TUNNEL_SCOPE = "tunnel_scope"
+private fun NavHostController.requestTunnelScope(scope: ArrayList<String>) {
+    getBackStackEntry(Routes.CONNECTIONS).savedStateHandle[TUNNEL_SCOPE] = scope
+}
+
+/** Opens the shared Tunnels tab for exactly the device in the rendered profile. */
+internal fun NavHostController.openDeviceTunnels(profile: String, device: String) {
+    goToTab(Tab.CONNECTIONS)
+    requestTunnelScope(arrayListOf(profile, device))
+}
+
 /** Switches tabs: one entry per tab on top of Devices, each keeping its state; Back leads to Devices. */
-private fun NavHostController.goToTab(tab: Tab) = navigate(Routes.of(tab)) {
-    popUpTo(Routes.DEVICES) { saveState = true }
-    launchSingleTop = true
-    restoreState = true
+private fun NavHostController.goToTab(tab: Tab) {
+    navigate(Routes.of(tab)) {
+        popUpTo(Routes.DEVICES) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+    if (tab == Tab.CONNECTIONS) requestTunnelScope(arrayListOf())
 }
 
 /** The web view of [row]'s tunnel. */
