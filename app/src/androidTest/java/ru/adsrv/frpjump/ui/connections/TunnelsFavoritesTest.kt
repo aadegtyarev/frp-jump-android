@@ -163,7 +163,7 @@ class TunnelsFavoritesTest {
         // The favourite is above the device groups and says its device; the others stay under their devices.
         assertTrue(top(pi) < top(panel))
         assertTrue(top(pi) < top(z2m))
-        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(pi))) and hasContentDescription("Pi shell, ${text(R.string.favorite_spoken)} · alpha"), useUnmergedTree = true).assertExists()
+        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(pi))) and hasContentDescription("Pi shell, ${text(R.string.favorite_spoken)}"), useUnmergedTree = true).assertExists()
         // A card in a device group shows no star and no device.
         compose.onNode(hasAnyAncestor(hasTestTag(cardTag(z2m))) and hasText("z2m"), useUnmergedTree = true).assertExists()
         shot("tunnels-favorites-group")
@@ -172,9 +172,9 @@ class TunnelsFavoritesTest {
     @Test fun selectionShowsRealCardsAndOneAccessibleTogglePerRow() {
         selected = setOf("p1/c1")
         host()
-        compose.onNodeWithContentDescription("Pi shell · alpha · ").assertExists()
+        compose.onNodeWithContentDescription("Pi shell · alpha · p1").assertExists()
         shot("tunnels-selection")
-        compose.onNodeWithContentDescription("Pi shell · alpha · ").performClick()
+        compose.onNodeWithContentDescription("Pi shell · alpha · p1").performClick()
         assertEquals(emptySet<String>(), selected)
         assertEquals(0, tapCalls)
     }
@@ -202,7 +202,7 @@ class TunnelsFavoritesTest {
         assertEquals(1, favoriteCalls)
         // It moved into the favourites group: by device name (alpha's Pi shell, then beta's z2m), above panel.
         assertTrue(top(z2m) < top(panel))
-        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(z2m))) and hasContentDescription("z2m, ${text(R.string.favorite_spoken)} · beta"), useUnmergedTree = true).assertExists()
+        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(z2m))) and hasContentDescription("z2m, ${text(R.string.favorite_spoken)}"), useUnmergedTree = true).assertExists()
         // And off again from the same swipe: the button now takes it out.
         swipeCard(z2m, toRight = true)
         compose.waitForIdle()
@@ -302,6 +302,6 @@ class TunnelsFavoritesTest {
         tap("menu_favorite")
         compose.waitForIdle()
         assertEquals(1, favoriteCalls)
-        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(panel))) and hasContentDescription("panel, ${text(R.string.favorite_spoken)} · alpha"), useUnmergedTree = true).assertExists()
+        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(panel))) and hasContentDescription("panel, ${text(R.string.favorite_spoken)}"), useUnmergedTree = true).assertExists()
     }
 }

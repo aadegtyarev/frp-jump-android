@@ -129,10 +129,10 @@ class TunnelsHeaderTest {
         compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertIsDisplayed()
         compose.onNodeWithTag(ru.adsrv.frpjump.ui.SETTINGS_GEAR_TAG).assertDoesNotExist()
         // The placeholder names the scope: the tunnels that are on, then all of them.
-        compose.onNodeWithText(text(R.string.connections_search_scope_on)).assertIsDisplayed()
+        assertTrue(compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).fetchSemanticsNode().config[SemanticsProperties.ContentDescription].single().contains(text(R.string.connections_search_scope_on)))
         shot("tunnels-header-search")
         onlyOn = false
-        compose.onNodeWithText(text(R.string.connections_search_scope_all)).assertIsDisplayed()
+        assertTrue(compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).fetchSemanticsNode().config[SemanticsProperties.ContentDescription].single().contains(text(R.string.connections_search_scope_all)))
         compose.onNodeWithTag(TUNNELS_SEARCH_CLEAR_TAG).assertDoesNotExist()
         compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).performTextInput("kitchen")
         assertEquals("kitchen", query)

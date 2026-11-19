@@ -20,6 +20,13 @@ class TunnelScopeTest {
         assertEquals("22", newConnectionDraft().portText)
     }
 
+    @Test fun `duplicate profile names keep unique identity`() {
+        val names = mapOf("a" to "Home", "b" to "Home", "c" to "Work")
+        assertEquals("Home · a", profileLabel("a", names))
+        assertEquals("Home · b", profileLabel("b", names))
+        assertEquals("Work", profileLabel("c", names))
+    }
+
     @Test fun `same device name in different profiles stays separate`() {
         val first = DeviceGroup("a", "router", null, emptyList())
         val second = DeviceGroup("b", "router", null, emptyList())
