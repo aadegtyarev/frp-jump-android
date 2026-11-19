@@ -316,7 +316,7 @@ private fun OnCapsule(on: Boolean, count: Int, onFilter: (Boolean) -> Unit, busy
             Row(
                 Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth()
+                    .widthIn(min = TOUCH_TARGET)
                     .padding(vertical = margin)
                     .heightIn(min = CAPSULE_HEIGHT)
                     .clip(leftShape)
@@ -349,7 +349,7 @@ private fun OnCapsule(on: Boolean, count: Int, onFilter: (Boolean) -> Unit, busy
                     .fillMaxHeight()
                     .padding(vertical = margin)
                     .heightIn(min = CAPSULE_HEIGHT)
-                    .fillMaxWidth()
+                    .widthIn(min = TOUCH_TARGET)
                     .clip(rightShape)
                     .indication(rightSource, ripple()),
                 contentAlignment = Alignment.Center,

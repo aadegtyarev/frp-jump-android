@@ -302,7 +302,11 @@ private fun NoLockDialog(body: Int, go: Int, onGo: () -> Unit, onCancel: () -> U
 @Composable
 private fun NoAutofill() {
     val view = LocalView.current
-    SideEffect { view.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS }
+    // On the dialog's content view and on the dialog's own layout above it: the content view's own value is reset by Compose.
+    SideEffect {
+        view.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        (view.parent as? View)?.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    }
 }
 
 /** Both a passphrase dialog's window and the activity's (see [SecureWindow]) are secure while it is up. */

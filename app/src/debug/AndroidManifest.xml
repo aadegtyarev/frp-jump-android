@@ -7,5 +7,11 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode|locale|layoutDirection"
             android:windowSoftInputMode="adjustResize"
             tools:node="merge" />
+        <!-- Same for the host of tests that need a FragmentActivity (the key transfer asks for a screen lock through it). -->
+        <activity
+            android:name="androidx.fragment.app.FragmentActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode|locale|layoutDirection"
+            android:windowSoftInputMode="adjustResize"
+            tools:node="merge" />
     </application>
 </manifest>

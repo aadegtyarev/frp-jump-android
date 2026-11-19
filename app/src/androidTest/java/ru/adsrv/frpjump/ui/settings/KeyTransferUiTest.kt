@@ -6,7 +6,6 @@ import android.os.SystemClock
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
@@ -49,7 +48,7 @@ import ru.adsrv.frpjump.ui.SecretField
  */
 @RunWith(AndroidJUnit4::class)
 class KeyTransferUiTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<androidx.fragment.app.FragmentActivity>()
     private val app get() = compose.activity.application as FrpJumpApp
     private fun text(id: Int) = compose.activity.getString(id)
     private val pass = "correct horse battery"
@@ -112,6 +111,15 @@ class KeyTransferUiTest {
         app.sshKeys.replacePhoneKey(original)
     }
 
+    /**
+     * The real activity window, set on the main thread: the test's recomposition scope resumes a flow on whatever thread its
+     * background read finished on (production's scope is the main one), and a window is touched on the main thread only.
+     */
+    private val window = object : SecureWindow {
+        private val real by lazy { AndroidSecureWindow(compose.activity.window) }
+        override fun secure(on: Boolean) = compose.runOnUiThread { real.secure(on) }
+    }
+
     private fun phoneLine() = app.sshKeys.publicLine(app.sshKeyComment())
 
     private fun show() {
@@ -121,7 +129,7 @@ class KeyTransferUiTest {
         compose.setContent {
             CompositionLocalProvider(
                 LocalActivityResultRegistryOwner provides owner,
-                LocalKeyTransferSeams provides KeyTransferSeams(identity = identity, files = files, rounds = 4),
+                LocalKeyTransferSeams provides KeyTransferSeams(identity = identity, window = window, files = files, rounds = 4),
             ) { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onAssistant = {}) } }
         }
         compose.onNodeWithText(text(R.string.ssh_keys)).performScrollTo().performClick()
@@ -129,7 +137,8 @@ class KeyTransferUiTest {
     }
 
     private fun tap(id: Int) {
-        compose.onNodeWithText(text(id)).performScrollTo().performClick()
+        // The buttons of the dialogs: not in anything that scrolls.
+        compose.onNodeWithText(text(id)).performClick()
         compose.waitForIdle()
     }
 
@@ -144,20 +153,25 @@ class KeyTransferUiTest {
     private fun activityFlags() = compose.activity.window.attributes.flags
     private fun activitySecure() = activityFlags() and WindowManager.LayoutParams.FLAG_SECURE != 0
 
+    /** The passphrase dialog: the one with a text field (the SSH keys sheet is a dialog window too). */
+    private val passphraseDialog get() = isDialog() and hasAnyDescendant(hasSetTextAction())
+
     /** FLAG_SECURE of the dialog's own window, read off the dialog's decor view. */
     private fun dialogSecure(): Boolean {
-        val view = compose.onNode(isDialog()).fetchSemanticsNode().root as View
+        val view = compose.onNode(passphraseDialog).fetchSemanticsNode().root as View
         return (view.rootView.layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_SECURE != 0
     }
 
     /** The dialog's view or an ancestor of its content leaves the passphrase out of autofill. */
     private fun dialogLeftOutOfAutofill(): Boolean {
-        var v: View? = compose.onNode(isDialog()).fetchSemanticsNode().root as View
+        var v: View? = compose.onNode(passphraseDialog).fetchSemanticsNode().root as View
+        val seen = StringBuilder()
         while (v != null) {
+            seen.append(v.javaClass.simpleName).append('=').append(v.importantForAutofill).append(' ')
             if (v.importantForAutofill == View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS) return true
             v = v.parent as? View
         }
-        return false
+        throw AssertionError("no view up the dialog's chain is left out of autofill: $seen")
     }
 
     private fun shot(name: String) {
@@ -198,13 +212,13 @@ class KeyTransferUiTest {
         assertTrue("no password manager sees it", dialogLeftOutOfAutofill())
         type("short", "short")
         tap(R.string.key_export_save)
-        assertTrue(compose.onNodeWithTag("key-export-phrase-problem").isDisplayed())
+        assertTrue(compose.onNodeWithTag("key-export-phrase-problem").performScrollTo().isDisplayed())
         assertTrue(activitySecure())
         shot("k4-export-passphrase-problem")
         // The fields are emptied on submit: after a refusal both are typed again.
         type(pass, "$pass.")
         tap(R.string.key_export_save)
-        assertTrue("mismatch is refused", compose.onNodeWithTag("key-export-phrase-problem").isDisplayed())
+        assertTrue("mismatch is refused", compose.onNodeWithTag("key-export-phrase-problem").performScrollTo().isDisplayed())
         type(pass, pass)
         tap(R.string.key_export_save)
         compose.waitUntil(10_000) { files.written.isNotEmpty() }
@@ -305,7 +319,8 @@ class KeyTransferUiTest {
         assertEquals(listOf(IdentityPurpose.RESTORE), identity.asked)
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("key-transfer-outcome").fetchSemanticsNodes().isNotEmpty() }
         assertArrayEquals(blobOfPublicKeyLine(other.publicLine), blobOfPublicKeyLine(phoneLine()))
-        compose.onNodeWithText(keySummary(phoneLine())!!, substring = true).assertExists()
+        // The key's summary is in the sheet, in the outcome line and in the list: any of them.
+        compose.onAllNodesWithText(keySummary(phoneLine())!!, substring = true)[0].assertExists()
         shot("k4-restore-done")
     }
 
