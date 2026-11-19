@@ -72,6 +72,35 @@ class MqttCacheSettingsUiTest {
         compose.onNodeWithText(text(R.string.mqtt_cache_apply_hint)).assertExists()
     }
 
+    @Test fun systemBackReturnsFromBothMqttPagesToSettings() {
+        lateinit var vm: SettingsViewModel
+        var leftSettings = 0
+        compose.runOnUiThread {
+            vm = SettingsViewModel(app)
+            models.put("mqtt-back-settings", vm)
+        }
+        compose.setContent { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = { leftSettings++ }, onAssistant = {}) } }
+        for ((title, tag) in listOf(R.string.mqtt_cache_title to "mqtt_cache_bytes", R.string.mqtt_ingress_title to "mqtt_limit_payload")) {
+            compose.onNodeWithText(text(title)).performScrollTo().performClick()
+            compose.onNodeWithTag(tag).assertExists()
+            compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+            compose.onNodeWithTag(tag).assertDoesNotExist()
+            compose.onNodeWithText(text(R.string.settings)).assertExists()
+            compose.runOnIdle { assertEquals(0, leftSettings) }
+        }
+    }
+
+    @Test fun systemBackWaitsForPendingCacheSave() {
+        var completion: ((String?) -> Unit)? = null
+        var dismissed = 0
+        compose.setContent { FrpJumpTheme { MqttCacheScreen(MqttCacheLimits(), { _, done -> completion = done }, { dismissed++ }) } }
+        compose.onNodeWithText(text(R.string.save)).performClick()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.runOnIdle { assertEquals(0, dismissed); completion!!("failed") }
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.runOnIdle { assertEquals(1, dismissed) }
+    }
+
     @Test fun invalidRangesCannotQueueAWrite() {
         var saves = 0
         compose.setContent { FrpJumpTheme { MqttCacheScreen(MqttCacheLimits(), { _, _ -> saves++ }, {}) } }

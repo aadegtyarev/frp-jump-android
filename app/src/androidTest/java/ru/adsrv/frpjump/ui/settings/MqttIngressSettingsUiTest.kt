@@ -53,6 +53,17 @@ class MqttIngressSettingsUiTest {
         compose.runOnIdle { models.clear(); original?.let { old -> app.settings.update { old } } }
     }
 
+    @Test fun systemBackWaitsForPendingIngressSave() {
+        var completion: ((String?) -> Unit)? = null
+        var dismissed = 0
+        compose.setContent { FrpJumpTheme { MqttIngressScreen(MqttIngressLimits(), { _, done -> completion = done }, { dismissed++ }) } }
+        compose.onNodeWithText(text(R.string.save)).performClick()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.runOnIdle { assertEquals(0, dismissed); completion!!("failed") }
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.runOnIdle { assertEquals(1, dismissed) }
+    }
+
     @Test fun actualSettingsEntrySavesAllValuesAndReopensCommittedChoices() {
         lateinit var vm: SettingsViewModel
         compose.runOnUiThread {

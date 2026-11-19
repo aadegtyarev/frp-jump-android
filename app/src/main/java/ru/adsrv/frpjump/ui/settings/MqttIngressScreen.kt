@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -44,13 +45,15 @@ internal fun MqttIngressScreen(
     val n = messages.toIntOrNull()
     val limits = if (p == null || q == null || n == null) null else MqttIngressLimits(p, q, n, mode)
     val valid = limits != null && validMqttIngressLimits(limits)
+    val leave = { if (!busy) onBack() }
+    BackHandler(onBack = leave)
     FormScreen(
         title = stringResource(R.string.mqtt_ingress_title),
         action = stringResource(R.string.save),
         busy = busy,
         actionEnabled = valid,
         error = failure,
-        onBack = { if (!busy) onBack() },
+        onBack = leave,
         onAction = {
             if (valid && !busy) {
                 val owner = Any()
