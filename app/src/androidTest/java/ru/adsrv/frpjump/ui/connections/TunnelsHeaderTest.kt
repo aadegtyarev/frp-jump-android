@@ -79,7 +79,7 @@ class TunnelsHeaderTest {
                 Box(Modifier.width(widthDp.dp)) {
                     TunnelsHeader(
                         searching = searching, query = query, onQuery = { query = it },
-                        onOpenSearch = { searching = true }, onCloseSearch = { searching = false; query = "" },
+                        onOpenSearch = { searching = true }, onCloseSearch = { searching = false },
                         focusOnOpen = false, onFocused = {},
                         scopeOn = onlyOn && count > 0, filterOn = onlyOn && count > 0, count = count,
                         onFilter = { onlyOn = it }, stopBusy = busy, onStopAll = { stopped++ },
@@ -124,9 +124,9 @@ class TunnelsHeaderTest {
         compose.onNodeWithTag(TUNNELS_SEARCH_TAG).performClick()
         compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).assertIsDisplayed()
         compose.onNodeWithTag(TUNNELS_SEARCH_BACK_TAG).assertIsDisplayed()
-        // Filter and Stop remain reachable while search is open.
-        compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertIsDisplayed()
-        compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertIsDisplayed()
+        // Search occupies the header while editing.
+        compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertDoesNotExist()
         compose.onNodeWithTag(ru.adsrv.frpjump.ui.SETTINGS_GEAR_TAG).assertDoesNotExist()
         // The placeholder names the scope: the tunnels that are on, then all of them.
         assertTrue(compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).fetchSemanticsNode().config[SemanticsProperties.ContentDescription].single().contains(text(R.string.connections_search_scope_on)))
@@ -143,11 +143,12 @@ class TunnelsHeaderTest {
         assertEquals("", query)
         compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).assertIsDisplayed()
         compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).performTextInput("shell")
-        // ← clears the query and collapses.
+        // ← collapses and keeps the query applied.
         compose.onNodeWithTag(TUNNELS_SEARCH_BACK_TAG).performClick()
-        assertEquals("", query)
+        assertEquals("shell", query)
         compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).assertDoesNotExist()
         compose.onNodeWithTag(TUNNELS_SEARCH_TAG).assertIsDisplayed()
+        compose.onNodeWithText("shell").assertIsDisplayed()
         compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertIsDisplayed()
     }
 

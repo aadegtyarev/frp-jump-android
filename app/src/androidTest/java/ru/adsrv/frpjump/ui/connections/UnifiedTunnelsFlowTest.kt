@@ -112,6 +112,11 @@ class UnifiedTunnelsFlowTest {
         compose.onNodeWithText("Work device").performClick()
         compose.onNodeWithTag(TUNNELS_SEARCH_TAG).performClick()
         compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).performTextInput("SSH")
+        compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertDoesNotExist()
+        compose.onNodeWithTag("card_files").performTouchInput { click() }
+        compose.onNodeWithText("Back from Files").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(1, filesOpened) }
+        compose.onNodeWithText("SSH").assertExists()
         compose.onNodeWithTag(TUNNELS_FILTER_TAG).performClick()
         compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertIsDisplayed().performClick()
         compose.runOnIdle {

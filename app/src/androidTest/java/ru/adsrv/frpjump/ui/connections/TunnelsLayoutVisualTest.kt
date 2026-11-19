@@ -19,6 +19,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.getBoundsInRoot
 import org.junit.Assert.assertTrue
@@ -111,21 +112,31 @@ class TunnelsLayoutVisualTest {
         shot("tunnels-layout-empty-device")
     }
 
-    @Test fun expandedSearchKeepsControlsAccessibleWithKeyboard() {
+    @Test fun focusedSearchUsesFullWidthAndBlurKeepsQuery() {
         host(false)
+        val picker = compose.onNodeWithTag("tunnels_devices_filter").getBoundsInRoot()
+        val surface = compose.onNodeWithTag("tunnels_devices_filter_surface", useUnmergedTree = true).getBoundsInRoot()
+        assertTrue("picker touch target >= 48dp", (picker.bottom - picker.top).value >= 47.5f)
+        assertTrue("picker surface 38dp", kotlin.math.abs((surface.bottom - surface.top).value - 38f) < 1f)
+        shot("tunnels-search-idle")
         compose.onNodeWithTag(TUNNELS_SEARCH_TAG).performClick()
-        compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).assertIsDisplayed().performTextInput("SSH")
+        compose.onNodeWithTag(TUNNELS_SEARCH_CLEAR_TAG).assertIsDisplayed()
+        compose.onNodeWithTag("tunnels_devices_filter").assertDoesNotExist()
+        compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertDoesNotExist()
+        val edit = compose.onNodeWithTag("tunnels_search_edit").getBoundsInRoot()
+        assertTrue("focused search fills the toolbar", (edit.right - edit.left).value >= 310f)
+        android.os.SystemClock.sleep(500)
+        shot("tunnels-search-focused")
+        compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).performImeAction()
         compose.onNodeWithTag("tunnels_devices_filter").assertIsDisplayed()
         compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertIsDisplayed()
-        compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertIsDisplayed()
-        compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).performTextInput("SSH")
-        compose.onNodeWithTag(TUNNELS_SEARCH_CLEAR_TAG).assertIsDisplayed()
-        if (args.getString("composerOrientation") != "landscape" && (args.getString("composerFontScale") ?: "1.0").toFloat() < 1.5f) {
-            val field = compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).getBoundsInRoot()
-            assertTrue("search must leave usable typing width", (field.right - field.left).value >= 40f)
-        }
-        android.os.SystemClock.sleep(500)
-        shot("tunnels-layout-search-keyboard")
+        compose.onNodeWithText("SSH").assertExists()
+        shot("tunnels-search-blurred")
+        compose.onNodeWithTag(TUNNELS_SEARCH_TAG).performClick()
+        compose.onNodeWithTag(TUNNELS_SEARCH_CLEAR_TAG).performClick()
+        compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).assertIsDisplayed()
     }
 
     @Test fun multipleProfilesUseOneSectionHeadingPerProfile() {

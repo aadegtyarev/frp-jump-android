@@ -42,14 +42,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -116,26 +121,28 @@ fun TunnelsHeader(
     Box(modifier.fillMaxWidth()) {
         // The heading screen readers land on: invisible and tiny.
         Box(Modifier.size(1.dp).testTag(TUNNELS_HEADING_TAG).semantics(mergeDescendants = true) { heading(); contentDescription = title })
-        HeaderRows(
-            search = { if (searching) SearchField(query, onQuery, onCloseSearch, focusOnOpen, onFocused, scopeOn) else SearchPill(onOpenSearch) },
-            capsule = { OnCapsule(filterOn, count, onFilter, stopBusy, onStopAll) },
-            deviceFilter = deviceFilter,
-            searching = searching,
-        )
+        if (searching) {
+            SearchField(query, onQuery, onCloseSearch, focusOnOpen, onFocused, scopeOn)
+        } else {
+            HeaderRows(
+                search = { SearchPill(query, onOpenSearch) },
+                capsule = { OnCapsule(filterOn, count, onFilter, stopBusy, onStopAll) },
+                deviceFilter = deviceFilter,
+            )
+        }
     }
 }
 
 /** Lays search and the capsule on one row when there is room, otherwise reflows the capsule below. */
 @Composable
-private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -> Unit, deviceFilter: (@Composable () -> Unit)?, searching: Boolean) {
+private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -> Unit, deviceFilter: (@Composable () -> Unit)?) {
     Layout(content = { search(); capsule(); deviceFilter?.invoke() }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
         val maxWidth = constraints.maxWidth
         val gap = 8.dp.roundToPx()
         val capsuleItem = measurables[1].measure(Constraints(maxWidth = maxWidth))
         val filterItem = measurables.getOrNull(2)?.measure(Constraints(maxWidth = maxWidth))
         val filterWidth = filterItem?.let { it.width + gap } ?: 0
-        val naturalSearch = if (searching) 0 else measurables[0].maxIntrinsicWidth(Constraints.Infinity)
-        val searchWants = maxOf(naturalSearch, ((if (searching) 140 else if (deviceFilter == null) SEARCH_ROOM_DP else 96).dp.toPx() * (16.sp.toPx() / 16.dp.toPx())).roundToInt())
+        val searchWants = ((if (deviceFilter == null) SEARCH_ROOM_DP else 96).dp.toPx() * (16.sp.toPx() / 16.dp.toPx())).roundToInt()
         if (searchWants + filterWidth + capsuleItem.width + gap <= maxWidth) {
             val searchItem = measurables[0].measure(Constraints.fixedWidth((maxWidth - filterWidth - capsuleItem.width - gap).coerceAtLeast(0)))
             val height = maxOf(searchItem.height, capsuleItem.height, filterItem?.height ?: 0)
@@ -158,7 +165,7 @@ private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -
 
 /** The collapsed search: a 36 dp pill, "🔍 Search", with a touch target of 44 dp. A tap expands it. */
 @Composable
-private fun SearchPill(onClick: () -> Unit) {
+private fun SearchPill(query: String, onClick: () -> Unit) {
     val colors = AppTheme.colors
     val label = stringResource(R.string.connections_search)
     Box(
@@ -167,7 +174,7 @@ private fun SearchPill(onClick: () -> Unit) {
             .testTag(TUNNELS_SEARCH_TAG)
             .clip(CircleShape)
             .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
-            .semantics { contentDescription = label },
+            .semantics { contentDescription = if (query.isBlank()) label else "$label: $query" },
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(
@@ -181,7 +188,7 @@ private fun SearchPill(onClick: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(SearchGlyph, contentDescription = null, tint = colors.muted, modifier = Modifier.size(18.dp))
-            Text(stringResource(R.string.connections_search_pill), fontSize = 15.sp, color = colors.muted, maxLines = 1)
+            Text(query.ifBlank { stringResource(R.string.connections_search_pill) }, fontSize = 15.sp, color = if (query.isBlank()) colors.muted else colors.ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }
@@ -192,6 +199,8 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () ->
     val colors = AppTheme.colors
     val requester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    var hadFocus by remember { mutableStateOf(false) }
     val locked = LocalAppLocked.current
     val label = stringResource(R.string.connections_search)
     val hint = stringResource(if (scopeOn) R.string.connections_search_scope_on else R.string.connections_search_scope_all)
@@ -202,7 +211,7 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () ->
         keyboard?.show()
         onFocused()
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().testTag("tunnels_search_edit"), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose, modifier = Modifier.size(44.dp).testTag(TUNNELS_SEARCH_BACK_TAG)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.search_close), tint = colors.ink, modifier = Modifier.size(22.dp))
         }
@@ -223,9 +232,12 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () ->
                 textStyle = TextStyle(fontSize = 16.sp, color = colors.ink),
                 cursorBrush = SolidColor(colors.accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); focusManager.clearFocus() }),
                 modifier = Modifier
                     .weight(1f)
+                    .onFocusChanged { state ->
+                        if (state.isFocused) hadFocus = true else if (hadFocus) { hadFocus = false; onClose() }
+                    }
                     .focusRequester(requester)
                     .testTag(TUNNELS_SEARCH_FIELD_TAG)
                     .semantics { contentDescription = "$label. $hint" },
