@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -236,7 +239,7 @@ internal fun ConnectionsContent(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { selected = emptySet(); filterOpen = true }, modifier = Modifier.size(48.dp).background(colors.card, RoundedCornerShape(12.dp)).border(1.dp, colors.outline, RoundedCornerShape(12.dp)).testTag("tunnels_devices_filter")) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(ru.adsrv.frpjump.ui.DeviceGlyph, contentDescription = stringResource(R.string.tunnels_device_filter, scope.size / 2))
+                            Icon(ru.adsrv.frpjump.ui.DeviceGlyph, contentDescription = stringResource(R.string.tunnels_device_filter, scope.size / 2), tint = colors.ink)
                             if (scope.isNotEmpty()) Text("${scope.size / 2}", modifier = Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 3.dp), fontSize = 10.sp, color = colors.accent)
                         }
                     }
@@ -331,36 +334,67 @@ internal fun ConnectionsContent(
             selected = emptySet()
             val checked = scope.isNotEmpty() && inDeviceScope(scope, device)
             scope = ArrayList(if (checked) scope.chunked(2).filterNot { it == listOf(device.profile, device.name) }.flatten() else scope + listOf(device.profile, device.name))
-        }, onDismiss = { filterOpen = false })
+        }, onClear = { scope = arrayListOf(); selected = emptySet() }, onDismiss = { filterOpen = false })
 
 }
 
 /** Device filter uses the same profile/device identity as the list and routing. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun DeviceFilterSheet(devices: List<DeviceGroup>, profileNames: Map<String, String>, scope: List<String>, onToggle: (DeviceGroup) -> Unit, onDismiss: () -> Unit) {
+internal fun DeviceFilterSheet(devices: List<DeviceGroup>, profileNames: Map<String, String>, scope: List<String>, onToggle: (DeviceGroup) -> Unit, onClear: () -> Unit, onDismiss: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    AppModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = AppTheme.colors.card) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            SheetHeader(sheet, onDismiss = onDismiss) { Text(stringResource(R.string.tunnels_device_filter, scope.size / 2)) }
-            OutlinedTextField(query, { query = it }, label = { Text(stringResource(R.string.devices_search)) }, modifier = Modifier.fillMaxWidth().testTag("tunnels_filter_search"))
-            LazyColumn(Modifier.heightIn(max = 400.dp)) {
-                items(devices.filter { device ->
-                    val wanted = query.trim()
-                    ru.adsrv.frpjump.devices.searchMatches(device.name, wanted) ||
-                        ru.adsrv.frpjump.devices.searchMatches(device.device?.label, wanted) ||
-                        ru.adsrv.frpjump.devices.searchMatches(profileNames[device.profile], wanted)
-                }, key = { it.key }) { device ->
-                    val checked = scope.isNotEmpty() && inDeviceScope(scope, device)
-                    Row(Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle(device) }), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked, onCheckedChange = null)
-                        Text(device.name + " · " + profileNames[device.profile].orEmpty())
+    val colors = AppTheme.colors
+    val wanted = query.trim()
+    val matches = devices.filter { device ->
+        ru.adsrv.frpjump.devices.searchMatches(device.name, wanted) ||
+            ru.adsrv.frpjump.devices.searchMatches(device.device?.label, wanted) ||
+            ru.adsrv.frpjump.devices.searchMatches(profileNames[device.profile], wanted)
+    }.sortedWith(compareBy<DeviceGroup> { profileNames[it.profile].orEmpty() }.thenBy { it.profile }.thenBy { it.name.lowercase(java.util.Locale.ROOT) })
+    val multiProfile = devices.map { it.profile }.distinct().size > 1
+    AppModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = colors.card) {
+        Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 16.dp)) {
+            SheetHeader(sheet, onDismiss = onDismiss) {
+                Text(if (scope.isEmpty()) stringResource(R.string.tunnels_picker_all) else stringResource(R.string.tunnels_selected_count, scope.size / 2), fontWeight = FontWeight.SemiBold)
+            }
+            OutlinedTextField(query, { query = it }, label = { Text(stringResource(R.string.devices_search)) }, modifier = Modifier.fillMaxWidth().testTag("tunnels_filter_search"), singleLine = true)
+            LazyColumn(Modifier.weight(1f, fill = false).testTag("tunnels_filter_list")) {
+                matches.groupBy { it.profile }.forEach { (profile, entries) ->
+                    if (multiProfile) item(key = "profile/$profile") {
+                        Text(profileLabel(profile, profileNames), color = colors.muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, bottom = 4.dp).semantics { heading() })
+                    }
+                    items(entries, key = { it.key }) { device ->
+                        val checked = scope.isNotEmpty() && inDeviceScope(scope, device)
+                        val description = listOfNotNull(device.name, device.device?.label?.takeIf { it.isNotBlank() }, profileLabel(profile, profileNames).takeIf { multiProfile }).joinToString(" · ")
+                        Row(Modifier.fillMaxWidth().testTag("tunnels_filter_device_${device.key}").heightIn(min = 52.dp).toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle(device) }).clearAndSetSemantics {
+                            contentDescription = description
+                            role = Role.Checkbox
+                            toggleableState = ToggleableState(checked)
+                            onClick { onToggle(device); true }
+                        }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                                Text(device.name)
+                                device.device?.label?.takeIf { it.isNotBlank() }?.let { Text(it, color = colors.muted, fontSize = 12.sp) }
+                            }
+                            Checkbox(checked, onCheckedChange = null)
+                        }
                     }
                 }
+                if (matches.isEmpty()) item { Text(stringResource(R.string.devices_no_match, query.trim()), color = colors.muted, modifier = Modifier.padding(12.dp)) }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                if (scope.isNotEmpty()) TextButton(onClick = onClear, modifier = Modifier.testTag("tunnels_filter_clear")) { Text(stringResource(R.string.tunnels_picker_clear)) }
+                Button(onClick = onDismiss, modifier = Modifier.testTag("tunnels_filter_done")) { Text(stringResource(R.string.tunnels_picker_done)) }
             }
         }
     }
+}
+
+/** Profile names can collide, so retain their distinct identities in the UI. */
+internal fun profileLabel(id: String, names: Map<String, String>): String {
+    val name = names[id].orEmpty().ifBlank { id }
+    return if (names.count { it.value == name } > 1) "$name · $id" else name
 }
 
 /** One accessible checked target replaces the card's actions while selecting. */
@@ -405,6 +439,7 @@ const val TUNNELS_IN_ALL_TAG = "tunnels_in_all"
  * and, muted under it, its label, both wrapped and never cut; [profileColor]
  * as a bar before it when the tab shows more than one profile.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GroupHeader(group: DeviceGroup, profileColor: String?, first: Boolean, profileName: String? = null) {
     val colors = AppTheme.colors
@@ -437,10 +472,10 @@ private fun GroupHeader(group: DeviceGroup, profileColor: String?, first: Boolea
             )
         }
         DeviceTile(device?.icon, dot, size = 28.dp, ring = colors.ground)
-        Column(Modifier.weight(1f)) {
+        FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(0.dp), itemVerticalAlignment = Alignment.CenterVertically) {
             Text(group.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
-            profileName?.let { Text(it, fontSize = 13.sp, color = colors.muted) }
-            device?.label?.let { Text(it, fontSize = 13.sp, color = colors.muted) }
+            profileName?.let { Text("· $it", fontSize = 13.sp, color = colors.muted) }
+            device?.label?.takeIf { it.isNotBlank() }?.let { Text("· $it", fontSize = 13.sp, color = colors.muted) }
         }
     }
 }
@@ -477,30 +512,31 @@ internal fun LazyListScope.tunnelRows(
         items(view.favorites, key = { it.row.key }) { favorite ->
             val row = favorite.row
             val context = LocalContext.current
-            val selectionLabel = listOf(connectionLabel(context, row.connection), favorite.group.name, state.profileNames[favorite.group.profile].orEmpty()).joinToString(" · ")
+            val selectionLabel = listOf(connectionLabel(context, row.connection), favorite.group.name, profileLabel(favorite.group.profile, state.profileNames)).joinToString(" · ")
             SelectableTunnelRow(selectionLabel, selected.isNotEmpty(), row.key in selected, onToggle = { onToggle(row.key) }) {
-                TunnelCard(row, favorite.group.offline, favorite.group.name + state.profileNames[favorite.group.profile]?.let { " · $it" }.orEmpty(), state, sessions, grants, ui, actions, onForgetAssistant, openRow,
+                TunnelCard(row, favorite.group.offline, favorite.group.name + if (state.profileNames.size > 1) " · " + profileLabel(favorite.group.profile, state.profileNames) else "", state, sessions, grants, ui, actions, onForgetAssistant, openRow,
                     onSelect = onSelect?.let { select -> { select(row.key) } })
             }
         }
     }
     groups.forEachIndexed { index, group ->
         item(key = "device/${group.key}") {
-            val addLabel = stringResource(R.string.tunnels_add_for, group.name, state.profileNames[group.profile].orEmpty())
+            val addLabel = stringResource(R.string.tunnels_add_for, group.name, profileLabel(group.profile, state.profileNames))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { GroupHeader(group, state.colors[group.profile]?.takeIf { state.manyProfiles }, first = index == 0 && view.favorites.isEmpty(), profileName = state.profileNames[group.profile]) }
+                Box(Modifier.weight(1f)) { GroupHeader(group, state.colors[group.profile]?.takeIf { state.manyProfiles }, first = index == 0 && view.favorites.isEmpty(), profileName = if (state.profileNames.size > 1) profileLabel(group.profile, state.profileNames) else null) }
                 if (onAdd != null && scoped.any { it.profile == group.profile && it.name == group.name && it.rows.isNotEmpty() }) TextButton(onClick = { onAdd(group) }, modifier = Modifier.testTag("tunnels_add_${group.key}").semantics { contentDescription = addLabel }) { Text("+") }
             }
         }
         if (onAdd != null && group.rows.isEmpty() && scoped.none { it.profile == group.profile && it.name == group.name && it.rows.isNotEmpty() }) item(key = "empty/${group.key}") {
+            val addLabel = stringResource(R.string.tunnels_add_for, group.name, profileLabel(group.profile, state.profileNames))
             Column {
                 Text(stringResource(R.string.tunnels_device_empty), color = AppTheme.colors.muted)
-                TextButton(onClick = { onAdd(group) }) { Text(stringResource(R.string.new_connection)) }
+                TextButton(onClick = { onAdd(group) }, modifier = Modifier.semantics { contentDescription = addLabel }) { Text(stringResource(R.string.new_connection)) }
             }
         }
         items(group.rows, key = { it.key }) { row ->
             val context = LocalContext.current
-            val selectionLabel = listOf(connectionLabel(context, row.connection), group.name, state.profileNames[group.profile].orEmpty()).joinToString(" · ")
+            val selectionLabel = listOf(connectionLabel(context, row.connection), group.name, profileLabel(group.profile, state.profileNames)).joinToString(" · ")
             SelectableTunnelRow(selectionLabel, selected.isNotEmpty(), row.key in selected, onToggle = { onToggle(row.key) }) {
                 TunnelCard(row, group.offline, null, state, sessions, grants, ui, actions, onForgetAssistant, openRow,
                     onSelect = onSelect?.let { select -> { select(row.key) } })

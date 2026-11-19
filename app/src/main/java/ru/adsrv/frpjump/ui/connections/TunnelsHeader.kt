@@ -116,35 +116,26 @@ fun TunnelsHeader(
     Box(modifier.fillMaxWidth()) {
         // The heading screen readers land on: invisible and tiny.
         Box(Modifier.size(1.dp).testTag(TUNNELS_HEADING_TAG).semantics(mergeDescendants = true) { heading(); contentDescription = title })
-        if (searching) {
-            Column {
-                SearchField(query, onQuery, onCloseSearch, focusOnOpen, onFocused, scopeOn)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    deviceFilter?.invoke()
-                    OnCapsule(filterOn, count, onFilter, stopBusy, onStopAll)
-                }
-            }
-        } else {
-            HeaderRows(
-                search = { SearchPill(onOpenSearch) },
-                capsule = { OnCapsule(filterOn, count, onFilter, stopBusy, onStopAll) },
-                deviceFilter = deviceFilter,
-            )
-        }
+        HeaderRows(
+            search = { if (searching) SearchField(query, onQuery, onCloseSearch, focusOnOpen, onFocused, scopeOn) else SearchPill(onOpenSearch) },
+            capsule = { OnCapsule(filterOn, count, onFilter, stopBusy, onStopAll) },
+            deviceFilter = deviceFilter,
+            searching = searching,
+        )
     }
 }
 
 /** Lays search and the capsule on one row when there is room, otherwise reflows the capsule below. */
 @Composable
-private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -> Unit, deviceFilter: (@Composable () -> Unit)?) {
+private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -> Unit, deviceFilter: (@Composable () -> Unit)?, searching: Boolean) {
     Layout(content = { search(); capsule(); deviceFilter?.invoke() }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
         val maxWidth = constraints.maxWidth
         val gap = 8.dp.roundToPx()
         val capsuleItem = measurables[1].measure(Constraints(maxWidth = maxWidth))
         val filterItem = measurables.getOrNull(2)?.measure(Constraints(maxWidth = maxWidth))
         val filterWidth = filterItem?.let { it.width + gap } ?: 0
-        val naturalSearch = measurables[0].maxIntrinsicWidth(Constraints.Infinity)
-        val searchWants = maxOf(naturalSearch, ((if (deviceFilter == null) SEARCH_ROOM_DP else 96).dp.toPx() * (16.sp.toPx() / 16.dp.toPx())).roundToInt())
+        val naturalSearch = if (searching) 0 else measurables[0].maxIntrinsicWidth(Constraints.Infinity)
+        val searchWants = maxOf(naturalSearch, ((if (searching) 140 else if (deviceFilter == null) SEARCH_ROOM_DP else 96).dp.toPx() * (16.sp.toPx() / 16.dp.toPx())).roundToInt())
         if (searchWants + filterWidth + capsuleItem.width + gap <= maxWidth) {
             val searchItem = measurables[0].measure(Constraints.fixedWidth((maxWidth - filterWidth - capsuleItem.width - gap).coerceAtLeast(0)))
             val height = maxOf(searchItem.height, capsuleItem.height, filterItem?.height ?: 0)
@@ -195,7 +186,7 @@ private fun SearchPill(onClick: () -> Unit) {
     }
 }
 
-/** The expanded search over the whole header: ←, the field (its placeholder names the scope) and ✕. */
+/** Expanded search keeps the scope in the accessibility label and a short visible hint. */
 @Composable
 private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, focus: Boolean, onFocused: () -> Unit, scopeOn: Boolean) {
     val colors = AppTheme.colors
@@ -240,7 +231,7 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () ->
                     .semantics { contentDescription = "$label. $hint" },
                 decorationBox = { field ->
                     Box(contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text(hint, fontSize = 16.sp, color = colors.muted, maxLines = 2)
+                        if (query.isEmpty()) Text(stringResource(R.string.connections_search_pill), fontSize = 16.sp, color = colors.muted, maxLines = 1)
                         field()
                     }
                 },

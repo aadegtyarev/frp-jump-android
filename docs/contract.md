@@ -306,7 +306,7 @@ profile without re-enrollment.
 
 ### 5. Tunnels tab
 
-Tunnels is the single access-management list. Selecting a Devices row opens it filtered to that exact profile and device; the ordinary Tunnels entry opens the general list. A searchable bottom sheet selects multiple profile/device pairs and a single action clears the selection. Empty devices are hidden in the general list; a selected empty device offers one add action. Group headings retain device and profile identity, including when filtered. Files or a connection form returns to the invoking list and filters.
+Tunnels is the single access-management list. Selecting a Devices row opens it filtered to that exact profile and device; the ordinary Tunnels entry opens the general list. A searchable bottom sheet selects multiple profile/device pairs immediately. Each whole device row toggles its trailing checkbox and shows its label when present; the sheet groups by profile only when needed, and its fixed Clear and Done actions reset or close it. Empty devices are hidden in the general list; a selected empty device offers one add action. Group headings retain device and profile identity, including when filtered. Files or a connection form returns to the invoking list and filters.
 
 Long press starts tunnel selection; Select all selects the current list. Stop applies only to distinct selected active tunnels under the existing shared Undo notice. Their sessions remain alive until the notice expires; unrelated tunnels and their sessions are unaffected.
 
@@ -317,19 +317,17 @@ Quick access to the saved connections of every device.
   with its state as a dot in the corner in the Devices list's colours
   (online, online as of an old list, offline; no dot while its profile's
   list is not read, and then the generic glyph). After it comes the
-  device's whole name, wrapped and never cut. Under the name, a muted line
-  shows the device's label, whole and wrapped, taken from the profile's
-  last device list. No label, or a list not read yet, means no label line. The header identifies the profile by name and, with more than one profile, colour; devices of the same name in two profiles are two groups.
+  device's whole name and, when present, its label from the profile's last device list. With more than one profile, it also identifies the profile by name and colour. These share a compact line when they fit and reflow without cutting identifiers when they do not; devices of the same name in two profiles are two groups.
 - Order: first the group «★ Избранные» / "★ Favourites" (when a connection is a favourite and shown), then the devices by name, ignoring
   case, then profile order. Neither a tunnel's state nor a device's online state changes it, and nothing re-sorts on a visit, a pull or a
   state change. Within a group the connections keep their stored order; a tunnel up that no saved connection names is listed after them,
   under its device.
 - Favourites: any saved connection can be marked (the flag is stored with it, see "Stored on the phone"; a tunnel no connection names
-  cannot be). The first group lists the favourites of every profile, each card with «· device · profile» after its name (it has no device header
-  over it), in a fixed order: device name (ignoring case), then profile order, then the stored order. A favourite is listed there and
+  cannot be). The first group lists the favourites of every profile, each card with a separate muted device context below its title (and profile when needed), since it has no device header
+  over it, in a fixed order: device name (ignoring case), then profile order, then the stored order. A favourite is listed there and
   not again under its device, so nothing shows twice; an explicitly selected device retains its heading even if its matches are all favourites. The
   filter and the search apply to both alike: with the filter on only the favourites that are on appear in the first group. On every
-  favourite card a small muted ★ follows the name; TalkBack says "favourite" / «в избранном», not the glyph.
+  favourite card outside the favourites section a small muted ★ follows the name; inside the section its heading supplies the star. TalkBack says "favourite" / «в избранном», not the glyph.
   The flag is the owner's list order only: the assistant never sees it, it is not part of what the assistant's permissions are bound to,
   and changing it does not end a grant. It goes with its connection (delete, forgetting or removing its profile).
 - The card's "⋮" menu offers "Add to favourites" / «В избранное» or "Remove from favourites" / «Убрать из избранного», and, while the assistant is on, ✦ "Ask the assistant" / «Спросить помощника». A long press starts selection.
@@ -364,8 +362,7 @@ Quick access to the saved connections of every device.
 - The header has no visible title (the bottom bar names the tab; TalkBack gets an invisible "Tunnels" heading). At 100% font it is one row:
   the search, device picker and the capsule "● N | ⏻". When they do not fit (a large font in a narrow window; decided by measuring, not by the
   font scale) controls reflow onto two rows. Nothing is cut or broken inside a word. The Sessions header shows its title.
-- Search is always there, at any number of connections: a 36 dp pill "Search" / «Поиск». A tap expands it; the device picker and the filter/Stop capsule remain accessible on the next row with "←" (closes: clears the query and collapses) and "✕" (clears the text); system Back closes it first. Its placeholder names the
-  scope: "Search tunnels that are on" / «Поиск среди включённых» with the filter on, otherwise "Search all tunnels" / «Поиск по всем туннелям».
+- Search is always there, at any number of connections: a 36 dp pill "Search" / «Поиск». A tap expands it; the device picker and filter/Stop capsule remain accessible on the same row when they fit and reflow as needed, with "←" (closes: clears the query and collapses) and "✕" (clears the text); system Back closes it first. Its visible hint is short; the accessibility label names the scope: "Search tunnels that are on" / «Поиск среди включённых» with the filter on, otherwise "Search all tunnels" / «Поиск по всем туннелям».
   It matches the device name or its label (all its connections in the scope) or a connection's name, compared as in Devices search, within the
   shown scope; nothing found says so. When the scope shows nothing but tunnels that are off match, one line "In all: N · Show" / «Во всех: N ·
   Показать» turns the filter off.
