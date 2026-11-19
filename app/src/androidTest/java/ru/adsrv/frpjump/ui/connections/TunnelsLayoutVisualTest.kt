@@ -69,14 +69,14 @@ class TunnelsLayoutVisualTest {
         }
     }
 
-    private fun host(multi: Boolean) {
+    private fun host(multi: Boolean, emptyDevice: Boolean = false) {
         val device = DeviceRow("beelink", online = true, lastSeen = null, disabled = false, label = "красный")
         val connections = listOf(Connection("ssh", "beelink", 22, PortKind.SSH, favorite = true, user = "adegtyarev"), Connection("web", "beelink", 18765, PortKind.WEB, customName = "Макеты"))
         val tunnels = listOf(22, 18765).map { Tunnel("beelink", it, "synthetic-$it", 40000 + it, VisitorState(TunnelStatus.DIRECT)) }
         val rows = connectionRows("work", connections, TunnelsState(tunnels = tunnels))
         val groups = groupByDevice(rows, mapOf("work" to listOf(device)))
         val more = (1..16).map { DeviceGroup(if (multi && it > 8) "home" else "work", "device-${it.toString().padStart(2, '0')}", null, emptyList()) }
-        val devices = listOf(DeviceGroup("work", device.name, device, emptyList())) + more
+        val devices = listOf(DeviceGroup("work", device.name, device, emptyList()), DeviceGroup("work", "archive", null, emptyList())) + more
         val names = if (multi) mapOf("work" to "way.adsrv.ru", "home" to "Дом") else mapOf("work" to "way.adsrv.ru")
         val state = ConnectionsUiState(groups = groups, devices = devices, profileNames = names, loaded = true)
         compose.setContent {
@@ -84,7 +84,7 @@ class TunnelsLayoutVisualTest {
                 val ui = remember { ConnectionUi() }
                 val actions = remember { RowActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, { false }, {}, {}) }
                 Box(Modifier.widthIn(max = 400.dp).fillMaxHeight().background(AppTheme.colors.ground)) {
-                    ConnectionsContent(state, emptyList(), emptyMap(), ui, actions, null, {}, false, {}, {}, { it() }, {}, {}, {})
+                    ConnectionsContent(state, emptyList(), emptyMap(), ui, actions, if (emptyDevice) arrayListOf("work", "archive") else null, {}, false, {}, {}, { it() }, {}, {}, {})
                 }
             }
         }
@@ -102,6 +102,13 @@ class TunnelsLayoutVisualTest {
         compose.onNodeWithTag("tunnels_filter_device_work/beelink").assertIsDisplayed()
         compose.onNodeWithTag("tunnels_filter_done").assertIsDisplayed()
         shot("tunnels-picker-single")
+    }
+
+    @Test fun selectedEmptyDeviceUsesCompactCopyAndOneAddAction() {
+        host(false, emptyDevice = true)
+        compose.onNodeWithText(compose.activity.getString(ru.adsrv.frpjump.R.string.tunnels_device_empty)).assertIsDisplayed()
+        compose.onNodeWithText(compose.activity.getString(ru.adsrv.frpjump.R.string.tunnels_add_button)).assertIsDisplayed()
+        shot("tunnels-layout-empty-device")
     }
 
     @Test fun expandedSearchKeepsControlsAccessibleWithKeyboard() {

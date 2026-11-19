@@ -1642,8 +1642,9 @@
     <string name="tunnels_stop_selected">Отключить выбранные: %1$d</string>
     <string name="tunnels_selected_count">Выбрано: %1$d</string>
     <string name="tunnels_add_for">Добавить туннель: %1$s · %2$s</string>
-    <string name="tunnels_device_empty">У этого устройства пока нет туннелей.</string>
+    <string name="tunnels_device_empty">Туннелей пока нет.</string>
     <string name="tunnels_picker_all">Все устройства</string>
     <string name="tunnels_picker_done">Готово</string>
     <string name="tunnels_picker_clear">Сбросить</string>
+    <string name="tunnels_add_button">Добавить туннель</string>
 </resources>

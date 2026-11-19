@@ -244,7 +244,7 @@ fun SessionsPill(count: SessionCount) {
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         if (count.ended > 0) Box(Modifier.size(6.dp).background(c.error, CircleShape))
-        Text(total, fontSize = 12.sp, color = c.muted, maxLines = 1, softWrap = false)
+        Text(total, fontSize = 13.sp, color = c.muted, maxLines = 1, softWrap = false)
     }
 }
 
@@ -263,7 +263,7 @@ fun SessionKeys(count: SessionCount) {
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             KeyMark(slot, onTerm = false, describe = false)
-            Text(stringResource(if (slot == SshKeySlot.IMPORTED) R.string.key_name_imported else R.string.key_name_phone), fontSize = 12.sp, color = c.muted, maxLines = 1, softWrap = false)
+            Text(stringResource(if (slot == SshKeySlot.IMPORTED) R.string.key_name_imported else R.string.key_name_phone), fontSize = 13.sp, color = c.muted, maxLines = 1, softWrap = false)
         }
     }
 }

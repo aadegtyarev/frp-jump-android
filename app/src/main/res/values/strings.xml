@@ -1589,8 +1589,9 @@
     <string name="tunnels_stop_selected">Stop selected: %1$d</string>
     <string name="tunnels_selected_count">Selected: %1$d</string>
     <string name="tunnels_add_for">Add tunnel to %1$s · %2$s</string>
-    <string name="tunnels_device_empty">No tunnels for this device yet.</string>
+    <string name="tunnels_device_empty">No tunnels yet.</string>
     <string name="tunnels_picker_all">All devices</string>
     <string name="tunnels_picker_done">Done</string>
     <string name="tunnels_picker_clear">Clear</string>
+    <string name="tunnels_add_button">Add tunnel</string>
 </resources>

@@ -2,13 +2,16 @@ package ru.adsrv.frpjump.ui.connections
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.rememberModalBottomSheetState
 import ru.adsrv.frpjump.ui.AppModalBottomSheet
@@ -529,9 +532,13 @@ internal fun LazyListScope.tunnelRows(
         }
         if (onAdd != null && group.rows.isEmpty() && scoped.none { it.profile == group.profile && it.name == group.name && it.rows.isNotEmpty() }) item(key = "empty/${group.key}") {
             val addLabel = stringResource(R.string.tunnels_add_for, group.name, profileLabel(group.profile, state.profileNames))
-            Column {
-                Text(stringResource(R.string.tunnels_device_empty), color = AppTheme.colors.muted)
-                TextButton(onClick = { onAdd(group) }, modifier = Modifier.semantics { contentDescription = addLabel }) { Text(stringResource(R.string.new_connection)) }
+            Column(Modifier.padding(start = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.tunnels_device_empty), color = AppTheme.colors.muted, fontSize = 14.sp)
+                OutlinedButton(onClick = { onAdd(group) }, modifier = Modifier.semantics { contentDescription = addLabel },
+                    shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, AppTheme.colors.outline),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = AppTheme.colors.card, contentColor = AppTheme.colors.accent)) {
+                    Text(stringResource(R.string.tunnels_add_button))
+                }
             }
         }
         items(group.rows, key = { it.key }) { row ->

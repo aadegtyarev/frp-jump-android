@@ -185,13 +185,13 @@ fun ConnectionCard(
                     Text(
                         buildAnnotatedString {
                             append(shownTitle)
-                            if (favorite && deviceName == null) withStyle(SpanStyle(color = colors.muted, fontSize = 13.sp, fontWeight = FontWeight.Normal)) { append(" ★") }
+                            if (favorite && deviceName == null) withStyle(SpanStyle(color = colors.muted, fontSize = 14.sp, fontWeight = FontWeight.Normal)) { append(" ★") }
                         },
-                        fontSize = 16.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = if (favorite) Modifier.clearAndSetSemantics { contentDescription = "$shownTitle, $favoriteSpoken" } else Modifier,
                     )
-                    deviceName?.let { Text(it, fontSize = 12.sp, color = colors.muted) }
+                    deviceName?.let { Text(it, fontSize = 13.sp, color = colors.muted) }
                 }
                 // The switch, as in a VPN app: on while the tunnel is up or coming up. Off while it is being stopped or started (nothing to
                 // turn yet), and on a device offline while the tunnel is down.
@@ -215,7 +215,7 @@ fun ConnectionCard(
                 }
             }
             Column(Modifier.fillMaxWidth().alpha(if (unreachable) DIMMED else 1f).padding(start = 14.dp, end = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(details(row, sshMethod, withKind = title != null || !row.saved), fontSize = 13.sp, color = colors.muted)
+                Text(details(row, sshMethod, withKind = title != null || !row.saved), fontSize = 14.sp, color = colors.muted)
             // State and address on one line, in the body font with tabular digits; where both do not fit, the address goes to its own line
             // with no dot (the dot belongs to the address, [InlineFlow] never leaves it at a line end), and the sessions pill after them.
             InlineFlow {
@@ -226,7 +226,7 @@ fun ConnectionCard(
                         // No-break spaces: the arrow stays with its word.
                         if (choice && row.tunnel?.direct != DirectMode.KEPT) "${state.first}\u00A0\u00A0\u203A" else state.first,
                         color = ink,
-                        fontSize = 13.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = if (choice) {
                             val label = stringResource(R.string.direct_or_server)
@@ -235,16 +235,16 @@ fun ConnectionCard(
                     )
                 } else {
                     // Why it cannot be started, where it is.
-                    Text(stringResource(if (unreachable) R.string.state_device_offline else R.string.state_off), fontSize = 13.sp, color = colors.muted)
+                    Text(stringResource(if (unreachable) R.string.state_device_offline else R.string.state_off), fontSize = 14.sp, color = colors.muted)
                 }
                 row.tunnel?.let {
-                    FlowSeparator { Text("\u00B7", fontSize = 13.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics { }) }
-                    LocalAddress(it.localPort, modifier = Modifier, pinned = it.pinned, mono = false)
+                    FlowSeparator { Text("\u00B7", fontSize = 14.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics { }) }
+                    LocalAddress(it.localPort, size = 14, modifier = Modifier, pinned = it.pinned, mono = false)
                 }
                 SessionsPill(sessions)
                 SessionKeys(sessions)
             }
-                problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
+                problemOf(row)?.let { Text(it, color = colors.error, fontSize = 14.sp) }
             }
             if (link || assistant != null) {
                 // The main action as a link on the left, the assistant's mark on the right; at a large font they wrap, the link first.
@@ -257,7 +257,7 @@ fun ConnectionCard(
                     if (link) MainActionLink(row, sessions, name, whenOpen { actions.main(row) })
                     if (link && row.saved && c.kind == PortKind.SSH) {
                         IconButton(onClick = whenOpen { actions.files(row) }, modifier = Modifier.testTag("card_files")) {
-                            Icon(FolderGlyph, contentDescription = stringResource(R.string.files))
+                            Icon(FolderGlyph, contentDescription = stringResource(R.string.files), tint = colors.accent)
                         }
                     }
                     if (assistant != null) {
@@ -319,7 +319,7 @@ private fun MainActionLink(row: ConnectionRow, sessions: SessionCount, name: Str
         // In sp: the glyph keeps its size beside the text.
         if (glyph != null) Icon(glyph, contentDescription = null, tint = colors.accent, modifier = Modifier.size(with(LocalDensity.current) { 18.sp.toDp() }))
         // No-break space: the chevron stays with its word.
-        Text(if (copies) label else "$label\u00A0\u203A", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.accent, modifier = Modifier.weight(1f, fill = false))
+        Text(if (copies) label else "$label\u00A0\u203A", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = colors.accent, modifier = Modifier.weight(1f, fill = false))
     }
 }
 
@@ -383,7 +383,7 @@ private fun AssistantMarkLine(row: ConnectionRow, name: String, mark: AssistantM
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             Icon(AssistantGlyph, contentDescription = null, tint = colors.muted, modifier = Modifier.size(14.dp))
-            Text(text, fontSize = 13.sp, color = colors.muted)
+            Text(text, fontSize = 14.sp, color = colors.muted)
         }
     }
     if (sheet) {
