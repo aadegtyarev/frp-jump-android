@@ -140,7 +140,7 @@ class AssistantNotificationTest {
     }
 
     private val chatId = ("android-app://androidx.navigation/" + Routes.CHAT).hashCode()
-    private val deviceId = ("android-app://androidx.navigation/" + Routes.device("synthetic-device")).hashCode()
+    private val deviceId = ("android-app://androidx.navigation/" + "device/synthetic-device").hashCode()
 
     /** Navigation's own deep-link keys (NavController.handleDeepLink), as another app could send them to the exported activity. */
     private fun navKeys(ids: IntArray, withArgs: Boolean) = Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

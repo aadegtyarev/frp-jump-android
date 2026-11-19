@@ -71,7 +71,7 @@ accessibility, truthful waiting/error feedback or required safety warnings.
   undone, so Undo cannot apply; the owner can turn the question off app-wide, or for one connection with "For this connection").
 - Consistency: controls that do the same action look the same everywhere —
   same glyph, same kind of control, same placement relative to what they act
-  on (Stop is the same button on a connection row, a device card and
+  on (Stop is the same button on a connection row, a device row and
   the Devices top bar). Similar actions look alike, with only the difference
   that matters (a folder and a file tile share shape and size and differ by
   glyph and tint). A new control starts from an existing one, not from a
@@ -139,7 +139,7 @@ profile without re-enrollment.
   chip is the Tunnels section's link glyph and the number of the tunnels on in ALL profiles together, not only the shown one's, counted as the Tunnels filter counts them (distinct
   tunnels up or coming up, plus those being restored; tunnels whose disconnect waits for Undo are not counted); TalkBack reads it as "N tunnels" («N туннелей», plural
   forms kept), as a button that opens Tunnels. There
-  is no power button in this header: one profile's tunnels go down from a device row (swipe), the device card or Tunnels'
+  is no power button in this header: one profile's tunnels go down from a device row (swipe) or Tunnels'
   "Stop all". The switcher is never narrower than 126 dp at 100% font and 66 dp at 200% at 360 dp with one tunnel up.
 - The visible profile polls every 2 s while the app is open. Other profiles
   poll only while they have tunnels up, at the background interval.
@@ -185,17 +185,17 @@ profile without re-enrollment.
 - Pull to refresh; the banner goes away on the first good answer.
 - A device row with tunnels open swipes left to show the power button (the
   power glyph in red): it disconnects only that device's tunnels of
-  this profile, with Undo; the device card's bar has the same button. The row
+  this profile, with Undo. The row
   slides back on scroll, refresh, Back or a finger landing elsewhere on the
-  screen; a tap on a row still opens the card. TalkBack offers it as the row's action
+  screen; a tap opens Tunnels filtered to the row's profile and device. TalkBack offers it as the row's action
   "Stop tunnels of <device>"; rows without tunnels do not swipe.
 
-### 4. Device card and named connections
+### 4. Named connections
 
 - A connection is: device, port on the device, kind (web / SSH / TCP / MQTT), name,
   plus for web the HTTPS flag (not asked on 80, always HTTP, and 443, always
   HTTPS) and for SSH the user.
-- "New tunnel": pick kind, type a port or tap a preset (web: 80, 443,
+- "New tunnel" starts at SSH port 22; pick kind, type a port or tap a preset (web: 80, 443,
   8080, 1880, 3000; SSH: 22, 2222; TCP: 502, 5432; MQTT: 1883), give a name, and
   optionally "connect now".
 - Several connections to the same device and port are allowed under different
@@ -225,10 +225,8 @@ profile without re-enrollment.
   the failure, nor overwrite a later authentication/transport/device error.
   If another required visitor still has a startup failure, keep it visible.
   Existing SSH tabs are not evidence of listener recovery and are not reset.
-- The card's header shows the device's icon on a tile, then the whole name and
-  under it the whole label (wrapped, never cut). The top bar's "⋮" holds
-  «Подпись…» and «Значок…» (scenario 11).
-- Rename, change and delete a connection from the card or the Tunnels tab.
+- Device rows open the single Tunnels screen scoped to the exact profile and device. Its group heading identifies both; device display editing remains on the Devices row (scenario 11).
+- Rename, change and delete a connection from Tunnels.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
   first visit. A device answering an HTTPS connection in plain HTTP is
   told as such, with "Open over HTTP". If saving Trust in the certificate fails,
@@ -267,7 +265,7 @@ profile without re-enrollment.
   after the first refusal: "The device did not open port N: its agent did
   not answer. Check that frp-jump-client runs on the device." It
   recovers by itself once the device takes connections (checked every 10 s).
-- A tap anywhere on a connection's card (device card and Tunnels tab)
+- A tap anywhere on a connection's card on Tunnels
   does its main action, which the visible link names: connected, it
   opens (Terminal, Explore, Open) or, for TCP and a tunnel no connection
   names, copies the address; not connected, it connects, then does the
@@ -275,7 +273,7 @@ profile without re-enrollment.
   once opens the login dialog first. Taps while it is coming up open it
   once. Leaving the screen before it is up cancels the open (the tunnel
   stays). On a device offline now, a connection that is down has no tap
-  action and its switch is off (scenario 5); "⋮" and a long press work. The switch, "⋮", the main-action link and the other
+  action and its switch is off (scenario 5); "⋮" remains available and a long press starts selection. The switch, "⋮", the main-action link and the other
   buttons keep their own actions, and so does the state when it offers a choice ("Through the
   server ›"). While a connection is being disconnected the card has no
   action. TalkBack reads the card's action as the main action's label
@@ -294,7 +292,7 @@ profile without re-enrollment.
   commands and typing into tabs" / «Команды и ввод во вкладки помощника»; a tool that leaves a grant leaves its line at once; the date shows its year
   when it is not the current one), then
   "The assistant never types passwords." / «Пароли помощник не вводит никогда.» and the buttons "Ask again" / «Снова спрашивать» and "Close" /
-  «Закрыть». The mark and the sheet are the same on the device card and the Tunnels tab, for any profile, also while the tunnel is down and while the
+  «Закрыть». The mark and the sheet are shown on Tunnels for any profile, also while the tunnel is down and while the
   global switch is off (they state what is remembered). "Ask again" does what Forget did: it removes both lifetimes of that connection at once, with
   no confirmation (it narrows authority); they stop being used at once, on the tap, and if deleting the record fails the permission stays unused, the
   owner is told ("Could not save. The assistant already asks again; saving will be retried." / «Не удалось сохранить. Помощник уже спрашивает снова,
@@ -308,6 +306,10 @@ profile without re-enrollment.
 
 ### 5. Tunnels tab
 
+Tunnels is the single access-management list. Selecting a Devices row opens it filtered to that exact profile and device; the ordinary Tunnels entry opens the general list. A searchable bottom sheet selects multiple profile/device pairs and a single action clears the selection. Empty devices are hidden in the general list; a selected empty device offers one add action. Group headings retain device and profile identity, including when filtered. Files or a connection form returns to the invoking list and filters.
+
+Long press starts tunnel selection; Select all selects the current list. Stop applies only to distinct selected active tunnels under the existing shared Undo notice. Their sessions remain alive until the notice expires; unrelated tunnels and their sessions are unaffected.
+
 Quick access to the saved connections of every device.
 
 - Grouped by device. A group's header starts with the device tile from the
@@ -317,24 +319,20 @@ Quick access to the saved connections of every device.
   list is not read, and then the generic glyph). After it comes the
   device's whole name, wrapped and never cut. Under the name, a muted line
   shows the device's label, whole and wrapped, taken from the profile's
-  last device list. No label, or a list not read yet, means no line. With
-  more than one profile on the tab, the header also shows the
-  profile's colour; devices of the same name in two profiles are two groups.
+  last device list. No label, or a list not read yet, means no label line. The header identifies the profile by name and, with more than one profile, colour; devices of the same name in two profiles are two groups.
 - Order: first the group «★ Избранные» / "★ Favourites" (when a connection is a favourite and shown), then the devices by name, ignoring
   case, then profile order. Neither a tunnel's state nor a device's online state changes it, and nothing re-sorts on a visit, a pull or a
   state change. Within a group the connections keep their stored order; a tunnel up that no saved connection names is listed after them,
   under its device.
 - Favourites: any saved connection can be marked (the flag is stored with it, see "Stored on the phone"; a tunnel no connection names
-  cannot be). The first group lists the favourites of every profile, each card with «· device» after its name (it has no device header
+  cannot be). The first group lists the favourites of every profile, each card with «· device · profile» after its name (it has no device header
   over it), in a fixed order: device name (ignoring case), then profile order, then the stored order. A favourite is listed there and
-  not again under its device, so nothing shows twice, and a device whose connections are all favourites has no group of its own. The
+  not again under its device, so nothing shows twice; an explicitly selected device retains its heading even if its matches are all favourites. The
   filter and the search apply to both alike: with the filter on only the favourites that are on appear in the first group. On every
-  favourite card (here and on the device card) a small muted ★ follows the name; TalkBack says "favourite" / «в избранном», not the glyph.
+  favourite card a small muted ★ follows the name; TalkBack says "favourite" / «в избранном», not the glyph.
   The flag is the owner's list order only: the assistant never sees it, it is not part of what the assistant's permissions are bound to,
   and changing it does not end a grant. It goes with its connection (delete, forgetting or removing its profile).
-- The card's "⋮" menu (and a long press) has, besides the actions of the device card, "Add to favourites" / «В избранное» or "Remove from
-  favourites" / «Убрать из избранного», and, while the assistant is on, ✦ "Ask the assistant" / «Спросить помощника» (the device card has the
-  same items).
+- The card's "⋮" menu offers "Add to favourites" / «В избранное» or "Remove from favourites" / «Убрать из избранного», and, while the assistant is on, ✦ "Ask the assistant" / «Спросить помощника». A long press starts selection.
 - Swipes on a saved connection's card, as on a Devices row (a swipe reveals a button; nothing runs by the swipe, only the button's tap does,
   and then the card slides back): to the left ✦ "Ask the assistant" opens the assistant's chat with the draft «Про туннель <name> (<device>): » /
   "About tunnel <name> (<device>): " after what is already typed; nothing is sent. This side is absent while the assistant is off. To the
@@ -342,7 +340,7 @@ Quick access to the saved connections of every device.
   open card (it puts it back instead of acting) or anywhere else closes it. The swipes are horizontal only, so the list's vertical scroll
   and pull to refresh work; a touch that starts in the system gesture zone at a screen edge belongs to the system's Back gesture. Both
   actions are also TalkBack custom actions on the card, with the same labels.
-- Each connection is the same card as on the device card, built like a VPN app's tunnel list. Top row: on the left its name (its own only when it
+- Each connection is a card built like a VPN app's tunnel list. Top row: on the left its name (its own only when it
   has one other than the kind; with none, the title is the kind alone, "SSH", "Web", "MQTT" or "TCP", and the port, the SSH user and the login method
   go muted on the next line; with an own name the muted line starts with the kind), under it one state line (the state, the local address and the
   session count, wrapping between items), then a Material switch and "⋮" at the top-right, which stay there at a very large font. The switch is on
@@ -351,23 +349,22 @@ Quick access to the saved connections of every device.
   TalkBack reads it as "Tunnel <name>" with its on/off state. Bottom row, only while the tunnel is up or the assistant has a grant (§4): on the
   left the main action as an accent text link at least 48 dp tall ("▣ Terminal ›", "Terminal · 2 ›" with two or more terminals, "🌐 Open ›", "MQTT ›"
   for the explorer, "⧉ Copy address" for TCP and a tunnel no connection names), on the right the assistant's mark; at a large font they wrap, the
-  link first. There are no round buttons on the card. TalkBack reads the link's action with the connection's name. A tap on the card does its main
+  link first. An active saved SSH connection also has a folder action for Files; while off, Files remains in its menu. TalkBack reads the link's action with the connection's name. A tap on the card does its main
   action (scenario 4).
 - On a device offline as of a fresh answer of the server, a connection that
   is down is dimmed: its switch and the tap on its card are off, and its
-  state says "Device offline" instead of "Off". Its "⋮" and a long
+  state says "Device offline" instead of "Off". Its "⋮" and selection by long
   press still work. An active one stays as it is, so it can be disconnected.
   An old list (the server not answering, or not checked yet since the start)
-  blocks nothing: the device may be back. The device card does the same.
+  blocks nothing: the device may be back.
 - While the tab shows, every profile's device list is kept fresh: each is
   asked when the tab shows, the shown profile's is polled as on Devices,
   the others are asked again every 10 s; pull to refresh asks them all.
   Dots and buttons follow at once; the order of the devices does not move.
 - The header has no visible title (the bottom bar names the tab; TalkBack gets an invisible "Tunnels" heading). At 100% font it is one row:
-  the search and the capsule "● N | ⏻". When they do not fit (a large font in a narrow window; decided by measuring, not by the
-  font scale) it is two rows: the search, then the capsule. Nothing is cut or broken inside a word. The Sessions header shows its title.
-- Search is always there, at any number of connections: a 36 dp pill "Search" / «Поиск». A tap expands it over the whole header (the other
-  items hide) with "←" (closes: clears the query and collapses) and "✕" (clears the text); system Back closes it first. Its placeholder names the
+  the search, device picker and the capsule "● N | ⏻". When they do not fit (a large font in a narrow window; decided by measuring, not by the
+  font scale) controls reflow onto two rows. Nothing is cut or broken inside a word. The Sessions header shows its title.
+- Search is always there, at any number of connections: a 36 dp pill "Search" / «Поиск». A tap expands it; the device picker and the filter/Stop capsule remain accessible on the next row with "←" (closes: clears the query and collapses) and "✕" (clears the text); system Back closes it first. Its placeholder names the
   scope: "Search tunnels that are on" / «Поиск среди включённых» with the filter on, otherwise "Search all tunnels" / «Поиск по всем туннелям».
   It matches the device name or its label (all its connections in the scope) or a connection's name, compared as in Devices search, within the
   shown scope; nothing found says so. When the scope shows nothing but tunnels that are off match, one line "In all: N · Show" / «Во всех: N ·
@@ -375,11 +372,10 @@ Quick access to the saved connections of every device.
 - The capsule "● N | ⏻" is one rounded container, 38 dp tall (taller only when a large font needs it), with a thin outline and a thin divider
   between two halves, each with a touch target of at least 48 dp. At 0 the whole capsule is disabled (a muted dot, number and "⏻", no
   actions) and stays in its place, so the header does not move.
-- Left half: a green dot (the "online" colour) and N, the count of the tunnels that are on (up, connecting or being restored, across all
-  profiles). A tap toggles the filter "only tunnels that are on": on, the list shows only the tunnels that are on, and the half has the
+- Left half: a green dot (the "online" colour) and N, the count of tunnels that are on in the device and search scope; the unscoped count includes tunnels being restored across profiles. A tap toggles the filter "only tunnels that are on": on, the list shows only the tunnels that are on, and the half has the
   tonal accent fill; off, the list shows all. It is remembered (a UI choice in the settings file, with the other display choices) and on the
   first time. At 0 the list shows all. TalkBack: "Only tunnels that are on, N" / «Только включённые, N», a switch with its state.
-- Right half: "⏻" in red, Stop all. It disconnects every profile's tunnels, with Undo; a spinner while the servers are told. TalkBack:
+- Right half: "⏻" in red stops the active tunnels in the same device and search scope as the count, with Undo. The unscoped action keeps the existing all-profiles and restoration behavior, with a spinner while servers are told. TalkBack:
   "Turn off all tunnels, N" / «Выключить все туннели, N».
 - Nothing saved: "No saved tunnels yet. Open a device on Devices and tap
   “Tunnel”."
@@ -831,7 +827,7 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   with no stored answer yet counts as "not supported" until the first one
   arrives. The feature is never guessed from the shape of the device list
   or from a 404.
-- **Where to edit.** The device card's "⋮" has «Подпись…» and «Значок…».
+- **Where to edit.** The Devices row's "⋮" has «Подпись…» and «Значок…».
   Both open the same bottom sheet, «Подпись и значок», with the ✕ in its
   header. «Подпись…» opens it with the keyboard up in the text field;
   «Значок…» opens it with the keyboard down. The phone itself is not in its

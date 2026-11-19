@@ -1636,4 +1636,11 @@
     <string name="limit_skills_list">Список скиллов в запросе, символов</string>
     <string name="confirm_skill_old_description">Прежнее описание</string>
     <string name="confirm_skill_old_requires">Прежние требования</string>
+    <string name="tunnels_device_filter">Устройства: %1$d</string>
+    <string name="tunnels_filter_reset">Сбросить фильтр</string>
+    <string name="tunnels_select_all">Выбрать все</string>
+    <string name="tunnels_stop_selected">Отключить выбранные: %1$d</string>
+    <string name="tunnels_selected_count">Выбрано: %1$d</string>
+    <string name="tunnels_add_for">Добавить туннель: %1$s · %2$s</string>
+    <string name="tunnels_device_empty">У этого устройства пока нет туннелей.</string>
 </resources>

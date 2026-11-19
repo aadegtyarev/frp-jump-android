@@ -27,6 +27,9 @@ data class ConnectionsUiState(
     val groups: List<DeviceGroup> = emptyList(),
     /** Profile colour names by profile id. */
     val colors: Map<String, String> = emptyMap(),
+    val profileNames: Map<String, String> = emptyMap(),
+    val tunnelStates: Map<String, ru.adsrv.frpjump.tunnel.TunnelsState> = emptyMap(),
+    val devices: List<DeviceGroup> = emptyList(),
     /** The login method remembered for each SSH row, by [ConnectionRow.key], for the cards' details. */
     val sshMethods: Map<String, SshAuthMethod> = emptyMap(),
     /** False until the profiles' lists are read: no "nothing saved" before that. */
@@ -132,6 +135,15 @@ internal fun connectionsUiState(information: ru.adsrv.frpjump.profiles.ProfileIn
     ConnectionsUiState(
         groups = groupByDevice(information.profiles.flatMap { it.rows }, information.profiles.associate { it.id to it.devices?.devices }),
         colors = information.profiles.associate { it.id to it.color },
+        profileNames = information.profiles.associate { it.id to it.name },
+        tunnelStates = information.profiles.mapNotNull { profile -> profile.tunnels?.let { profile.id to it } }.toMap(),
+        devices = information.profiles.flatMap { profile ->
+            val known = profile.devices?.devices.orEmpty().map { device ->
+                DeviceGroup(profile.id, device.name, device, emptyList())
+            }
+            val existing = groupByDevice(profile.rows, mapOf(profile.id to profile.devices?.devices))
+            known + existing.filter { group -> known.none { it.name == group.name } }.map { it.copy(rows = emptyList()) }
+        },
         sshMethods = information.profiles.fold(emptyMap()) { all, part -> all + part.sshMethods },
         loaded = information.loaded,
     )

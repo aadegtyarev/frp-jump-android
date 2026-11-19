@@ -43,11 +43,11 @@ Consumers: the assistant tools `ssh_command`, `profile_information` and `start_t
 | --- | --- | --- | --- | --- | --- |
 | `ssh_exec` (`SshExec`) | `CHANGE_REMOTE` | tool `ssh_command` | `OpResult<SshExecOutput>` (streams, status, signal) | `SshRefusal`: `TargetUnavailable`, `NeedsSetup`, `TargetLostBeforeExec`, `ConnectFailed` | `SshFailure`: `TargetLost(exit?)`, `CommandFailed(exit?)`; `KNOWN` only when an exit was already reported, else `UNKNOWN`. `SshFailure.Unexpected` is never returned by the operation: it is the adapter's word for an exception that escaped it |
 | `profile_query` (`ProfileQuery`) | `READ_REMOTE` | tool `profile_information` | `OpResult<ProfileInformationState>` | none | `ProfileQueryFailure.Unavailable` (`UNKNOWN`) |
-| `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, device card, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(error: DomainError?)` (`UNKNOWN`), `DeviceNotListening(reason: DevicePortNotOpen)` (`UNKNOWN`: the device either refused or did not answer in time, and the result does not say which) |
-| `tunnel_connect` (`TunnelConnect`) | `CHANGE_LOCAL` | UI only (Connections, device card) | `OpResult<Unit>`: the connect was asked, not waited for | `TunnelRefusal.ProfileGone` | none |
-| `tunnel_down` (`TunnelDown`) | `CHANGE_LOCAL` (the commit tells the server later) | UI only (Connections, Devices, device card) | `OpResult<Unit>` | `TunnelRefusal.ProfileGone` (device and profile targets) | none |
-| `direct_retry` (`DirectRetry`) | `CHANGE_LOCAL` | UI only (device card, Connections) | `OpResult<Unit>` | none | none |
-| `direct_keep` (`DirectKeep`) | `CHANGE_LOCAL` | UI only (device card, Connections) | `OpResult<Unit>` | `DirectRefusal.NoNetwork` | none |
+| `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(error: DomainError?)` (`UNKNOWN`), `DeviceNotListening(reason: DevicePortNotOpen)` (`UNKNOWN`: the device either refused or did not answer in time, and the result does not say which) |
+| `tunnel_connect` (`TunnelConnect`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>`: the connect was asked, not waited for | `TunnelRefusal.ProfileGone` | none |
+| `tunnel_down` (`TunnelDown`) | `CHANGE_LOCAL` (the commit tells the server later) | UI only (Connections, Devices) | `OpResult<Unit>` | `TunnelRefusal.ProfileGone` (device and profile targets) | none |
+| `direct_retry` (`DirectRetry`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>` | none | none |
+| `direct_keep` (`DirectKeep`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>` | `DirectRefusal.NoNetwork` | none |
 | `mqtt_publish` (`MqttPublish`) | `CHANGE_REMOTE` | UI only (MQTT publish sheet) | `OpResult<MqttDelivery>` (`ACCEPTED`, `UNCONFIRMED`) | `MqttWriteRefusal`: `NotConnected` | `MqttWriteFailure`: `BrokerRefused(code, reasonString)` (`KNOWN`), `ConnectionLost`, `NoAnswer`, `Other(detail)` (`UNKNOWN`) |
 | `wb_write` (`MqttWbWrite`) | `CHANGE_REMOTE` | UI only (MQTT Wiren Board devices tab) | `OpResult<MqttDelivery>` | `MqttWriteRefusal`: `NotConnected`, `NotOwner`, `NotWritable`, `Blocked` | as `mqtt_publish` |
 
@@ -85,7 +85,7 @@ kind), not a `GrantTarget`. The assistant does not get it.
 
 ### `tunnel_down`
 
-Disconnects with Undo, over `undo/TunnelDisconnects.kt`: one tunnel (a row), every tunnel of a device, of a profile, or of every profile.
+Disconnects with Undo, over `undo/TunnelDisconnects.kt`: one tunnel (a row), an exact set of selected active tunnels, every tunnel of a device, of a profile, or of every profile. The selected target intersects its distinct references with currently up tunnels in existing profiles before enqueueing, so stale references are not queued.
 The effect is local and at once: before the operation first suspends the tunnels show down (hidden in `PendingUndo`), and the screens
 start it undispatched so the row goes dark when the tap returns. The server is told later, when the notice goes (or on `commitAll`:
 screens stopping, lock, before Forget), one commit after another; Undo restores and tells nothing; that later commit is not part of the

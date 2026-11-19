@@ -44,7 +44,7 @@ class AssistantNavSourceGuardTest {
     @Test fun `section screens are reached only through the bottom bar's tab switch or a full stack replace`() {
         // Sections are Devices, Connections and Sessions: TabFrame( appears in those three routes and in its own declaration, nowhere else.
         assertEquals(4, Regex("TabFrame\\(").findAll(appNav).count())
-        for ((route, next) in listOf("DEVICES" to "CONNECTIONS", "CONNECTIONS" to "SESSIONS", "SESSIONS" to "DEVICE")) {
+        for ((route, next) in listOf("DEVICES" to "CONNECTIONS", "CONNECTIONS" to "SESSIONS", "SESSIONS" to "TERMINAL")) {
             val body = block("composable(Routes.$route)", "composable(Routes.$next")
             assertEquals("TabFrame( only in the $route route", 1, Regex("TabFrame\\(").findAll(body).count())
         }

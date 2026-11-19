@@ -31,8 +31,7 @@ for visual minimalism. SSH identity and tunnel behavior belong to the
 
 ## Where it lives
 
-- Open Files from an SSH connection's “⋮” menu on its device card or the
-  Tunnels tab, or from the terminal's top bar. Bring up its tunnel first
+- Open Files from an active saved SSH connection's folder action on Tunnels, its “⋮” menu while off, or the terminal's top bar. Bring up its tunnel first
   if needed, as for Terminal. Files adds no bottom navigation tab.
 - Use the terminal's login: the same user, key or password, remembered login
   per device and port, and pinned host key per profile/device/port. Password

@@ -124,9 +124,9 @@ class TunnelsHeaderTest {
         compose.onNodeWithTag(TUNNELS_SEARCH_TAG).performClick()
         compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).assertIsDisplayed()
         compose.onNodeWithTag(TUNNELS_SEARCH_BACK_TAG).assertIsDisplayed()
-        // The other items are hidden while it is open.
-        compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertDoesNotExist()
-        compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertDoesNotExist()
+        // Filter and Stop remain reachable while search is open.
+        compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertIsDisplayed()
         compose.onNodeWithTag(ru.adsrv.frpjump.ui.SETTINGS_GEAR_TAG).assertDoesNotExist()
         // The placeholder names the scope: the tunnels that are on, then all of them.
         compose.onNodeWithText(text(R.string.connections_search_scope_on)).assertIsDisplayed()

@@ -11,6 +11,8 @@ import ru.adsrv.frpjump.undo.TunnelDisconnects
 sealed interface TunnelDownTarget {
     /** One tunnel (a row). */
     data class One(val tunnel: TunnelRef) : TunnelDownTarget
+    /** The exact selected tunnels, with the same deferred Undo as other UI actions. */
+    data class Selected(val tunnels: Set<TunnelRef>) : TunnelDownTarget
     /** One tunnel, at once and without Undo: the assistant's Stop, which the owner has answered on its card. */
     data class OneNow(val tunnel: TunnelRef) : TunnelDownTarget
     /** Every tunnel of [profile] to [device]. */
@@ -53,6 +55,11 @@ class TunnelDown(
     override suspend fun invoke(input: TunnelDownTarget): OpResult<Unit> {
         when (input) {
             is TunnelDownTarget.One -> disconnects.disconnect(listOf(input.tunnel))
+            is TunnelDownTarget.Selected -> {
+                val profiles = host.profiles()
+                val up = input.tunnels.map { it.profile }.toSet().intersect(profiles).flatMap(host::up).toSet()
+                disconnects.disconnect(disconnects.shown(input.tunnels.filter { it in up }))
+            }
             is TunnelDownTarget.OneNow -> disconnects.disconnectAtOnce(input.tunnel)
             is TunnelDownTarget.Profile -> {
                 if (input.profile !in host.profiles()) return OpResult.Refused(TunnelRefusal.ProfileGone)
