@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -40,9 +41,11 @@ internal fun MqttCacheScreen(initial: MqttCacheLimits, onSave: (MqttCacheLimits,
     val length = history.toIntOrNull()
     val limits = if (bytes == null || count == null || length == null) null else MqttCacheLimits(bytes, count, length, mode)
     val valid = limits != null && validMqttCacheLimits(limits)
+    val leave = { if (!busy) onBack() }
+    BackHandler(onBack = leave)
     FormScreen(
         title = stringResource(R.string.mqtt_cache_title), action = stringResource(R.string.save), busy = busy,
-        actionEnabled = valid, error = failure, onBack = { if (!busy) onBack() },
+        actionEnabled = valid, error = failure, onBack = leave,
         onAction = {
             if (valid && !busy) {
                 val owner = Any()
