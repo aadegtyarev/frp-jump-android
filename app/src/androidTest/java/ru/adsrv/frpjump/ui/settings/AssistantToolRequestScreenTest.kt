@@ -156,11 +156,11 @@ class AssistantToolRequestScreenTest {
         asks = listOf(ask("a", "ssh_command"))
         show(); send()
         compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag("on_", AssistantToolId.SSH_COMMAND)).fetchSemanticsNodes().isNotEmpty() }
-        assertEquals(emptyList<AssistantToolId>(), AssistantToolId.entries.filter { settings.assistantAvailability.tools[it] })
+        assertEquals(emptyList<AssistantToolId>(), AssistantToolId.entries.filter { settings.assistantAvailability.tools.switch(it) })
         shown("on_", AssistantToolId.SSH_COMMAND).performClick()
         val message = text(R.string.chat_request_turned_on_message, title(AssistantToolId.SSH_COMMAND))
         compose.waitUntil(15_000) { conversation.state.value.let { it.turns.size == 2 && !it.busy } }
-        assertEquals(listOf(AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { settings.assistantAvailability.tools[it] })
+        assertEquals(listOf(AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { settings.assistantAvailability.tools.switch(it) })
         assertEquals(message, conversation.state.value.turns.last().user)
         assertEquals(if (russian) "Включил „Команда SSH“" else "Turned on “SSH command”", message)
         compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag("on_", AssistantToolId.SSH_COMMAND)).fetchSemanticsNodes().isEmpty() }
@@ -175,7 +175,7 @@ class AssistantToolRequestScreenTest {
         shown("no_", AssistantToolId.SSH_COMMAND).performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag("no_", AssistantToolId.SSH_COMMAND)).fetchSemanticsNodes().isEmpty() }
         gone(AssistantToolId.SSH_COMMAND)
-        assertEquals(emptyList<AssistantToolId>(), AssistantToolId.entries.filter { settings.assistantAvailability.tools[it] })
+        assertEquals(emptyList<AssistantToolId>(), AssistantToolId.entries.filter { settings.assistantAvailability.tools.switch(it) })
         assertEquals(before, requests.size); assertEquals(1, conversation.state.value.turns.size)
         assertEquals(setOf("ssh_command"), conversation.state.value.declinedTools)
     }
