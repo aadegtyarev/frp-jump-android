@@ -14,7 +14,7 @@ These 20 rules apply to every redesign slice and its review. They record approve
 
 6. Use the fewest elements and understandable steps that achieve the task. Give each task one clear home, show each detail once, and avoid duplicate controls unless an approved shortcut adds value and uses the same action and form.
 7. Keep frequent actions in context and rare actions in menus. Show scope before bulk actions; retain the existing top Undo notice and required warnings for irreversible actions. Make filters visible and easy to reset.
-8. Reuse FRP Jump's Roboto, palette, glyphs, shapes, notices and forms; equivalent actions look and behave alike. Use familiar mobile patterns and normal app sizing. Preserve approved R39 Settings order, appearance, controls and values.
+8. Reuse FRP Jump's Roboto, palette, glyphs, shapes, notices and forms; equivalent actions look and behave alike. Before designing each UX change, study how popular apps handle the same task and consult relevant platform guidance. Adapt those patterns to FRP Jump's controls and normal mobile sizing. During review, check the proposed interaction against the relevant references. Preserve approved R39 Settings order, appearance, controls and values.
 9. Make state suggest the next step: provide useful empty, loading and error states, retain input on save failure, distinguish status without color, and preserve accessibility, progress and safety feedback.
 
 ## Settled slice direction
