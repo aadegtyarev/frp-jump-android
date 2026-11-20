@@ -56,4 +56,19 @@ class SessionCloserTest {
         assertTrue(closedTerminals.isEmpty())
         assertTrue(closedMqtt.isEmpty())
     }
+    @Test fun `mixed selected sessions share one undo and retain typed identities`() {
+        closer.closeSelected(setOf(SessionRef(SessionKind.TERMINAL, 7), SessionRef(SessionKind.MQTT, 7)))
+        assertEquals(mapOf(UndoKind.CLOSED to 2), counts)
+        assertTrue(sessionHidden(pending.hidden.value, SessionKind.TERMINAL, 7, tunnel))
+        assertTrue(sessionHidden(pending.hidden.value, SessionKind.MQTT, 7, tunnel))
+        undoOnNotice!!.invoke()
+        assertTrue(pending.hidden.value.isEmpty())
+        assertTrue(closedTerminals.isEmpty())
+        assertTrue(closedMqtt.isEmpty())
+        closer.closeSelected(setOf(SessionRef(SessionKind.TERMINAL, 7), SessionRef(SessionKind.MQTT, 7)))
+        pending.commitAll()
+        assertEquals(listOf(7), closedTerminals)
+        assertEquals(listOf(7), closedMqtt)
+    }
+
 }

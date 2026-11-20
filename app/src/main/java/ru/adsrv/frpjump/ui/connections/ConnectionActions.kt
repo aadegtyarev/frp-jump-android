@@ -44,7 +44,6 @@ import ru.adsrv.frpjump.ssh.KeyInstaller
 import ru.adsrv.frpjump.ssh.LoginRefusal
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
-import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.toAuth
 import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.tunnel.SessionOn
@@ -424,15 +423,20 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         return app.sshTargets.directLogin(row.profile, c.device, c.port, c.sshUser)
     }
 
-    /**
-     * The session already open to [row]'s device and port in its profile:
-     * the live one last among the tabs, else the last ended one (its
-     * output and Reconnect are still there); null when there is none. Main thread.
-     */
-    fun openSession(row: ConnectionRow): Int? {
+    /** Resolve a delayed picker action from the current tunnel owner, never its old local port. */
+    fun currentTerminalRow(row: ConnectionRow): ConnectionRow? {
         val c = row.connection
-        val mine = app.ssh.sessions.value.filter { it.profile == row.profile && it.device == c.device && it.port == c.port }
-        return (mine.lastOrNull { it.state.value !is SshState.Ended } ?: mine.lastOrNull())?.id
+        if (PendingUndo.tunnelKey(row.profile, c.device, c.port) in app.pendingUndo.hidden.value) return null
+        val tunnel = runtime(row.profile)?.tunnels?.state?.value?.tunnels?.firstOrNull { it.device == c.device && it.port == c.port } ?: return null
+        return row.copy(tunnel = tunnel)
+    }
+
+    /** Visible terminal tabs for the exact tunnel, including ended tabs for reconnect. */
+    fun terminalChoices(row: ConnectionRow): List<ru.adsrv.frpjump.ssh.SshSession> {
+        val c = row.connection
+        val tunnel = TunnelRef(row.profile, c.device, c.port)
+        return matchingTerminalSessions(app.ssh.sessions.value, tunnel, app.pendingUndo.hidden.value,
+            tunnelOf = { TunnelRef(it.profile, it.device, it.port) }, idOf = { it.id })
     }
 
     /**
@@ -441,7 +445,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
      * password means "the remembered one". Main thread.
      */
     fun openSsh(row: ConnectionRow, user: String, method: SshAuthMethod, password: String, remember: Boolean): Int? =
-        row.tunnel?.localPort?.let { openSshAt(row, it, user, method, password, remember) }
+        currentTerminalRow(row)?.tunnel?.localPort?.let { openSshAt(row, it, user, method, password, remember) }
 
     /**
      * As [openSsh], also with the tunnel down ("Change login" from "⋮"): it
@@ -449,10 +453,17 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
      * does not come up says why. Main thread.
      */
     fun openSshWhenUp(row: ConnectionRow, user: String, method: SshAuthMethod, password: String, remember: Boolean, onOpened: (Int) -> Unit) {
-        row.tunnel?.localPort?.let { port -> openSshAt(row, port, user, method, password, remember)?.let(onOpened); return }
+        if (row.tunnel != null) {
+            val current = currentTerminalRow(row)
+            if (current == null) app.notices.show(Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
+            else current.tunnel?.localPort?.let { port -> openSshAt(current, port, user, method, password, remember)?.let(onOpened) }
+            return
+        }
         scope.launch {
-            val port = tunnelPortOrNotice(row) ?: return@launch
-            openSshAt(row, port, user, method, password, remember)?.let(onOpened)
+            tunnelPortOrNotice(row) ?: return@launch
+            val current = currentTerminalRow(row)
+            if (current == null) app.notices.show(Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
+            else current.tunnel?.localPort?.let { port -> openSshAt(current, port, user, method, password, remember)?.let(onOpened) }
         }
     }
 

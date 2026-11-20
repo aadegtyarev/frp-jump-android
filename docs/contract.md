@@ -210,6 +210,7 @@ profile without re-enrollment.
   Existing SSH tabs are not evidence of listener recovery and are not reset.
 - Device rows open the single Tunnels screen scoped to the exact profile and device. Its group heading identifies both; device display editing remains on the Devices row (scenario 11).
 - Rename, change and delete a connection from Tunnels.
+- An SSH connection's Terminal action considers visible terminal sessions for the exact profile, device and port, including ended tabs available for reconnect. When none match, it follows the existing new-session and login flow. One match opens that tab. Several matches open a scrollable chooser with a new-session action. Pending-close sessions and tunnels are excluded. A delayed choice, login or connection completion rechecks the current tunnel and its local port before opening; an unavailable choice is reported.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
   first visit. A device answering an HTTPS connection in plain HTTP is
   told as such, with "Open over HTTP". If saving Trust in the certificate fails,
@@ -344,7 +345,7 @@ Quick access to the saved connections of every device.
   Dots and buttons follow at once; the order of the devices does not move.
 - The header has no visible title (the bottom bar names the tab; TalkBack gets an invisible "Tunnels" heading). At 100% font it is one row:
   the search, device picker and the capsule "● N | ⏻". When they do not fit (a large font in a narrow window; decided by measuring, not by the
-  font scale) controls reflow onto two rows. Nothing is cut or broken inside a word. The Sessions header shows its title.
+  font scale) controls reflow onto two rows. Nothing is cut or broken inside a word.
 - Search is always there, at any number of connections: a rounded "Search" / «Поиск» control, normally 38 dp high to match the device filter; it can grow for larger text. A tap focuses a full-width search and hides the other header controls while editing. Losing focus, IME Search or Back collapses it and restores the controls with the entered query still shown and applied; tapping it edits again. "✕" clears the query without leaving search. Its visible hint is short; the accessibility label names the scope: "Search tunnels that are on" / «Поиск среди включённых» with the filter on, otherwise "Search all tunnels" / «Поиск по всем туннелям».
   It matches the device name or its label (all its connections in the scope) or a connection's name, compared as in Devices search, within the
   shown scope; nothing found says so. When the scope shows nothing but tunnels that are off match, one line "In all: N · Show" / «Во всех: N ·
@@ -359,6 +360,12 @@ Quick access to the saved connections of every device.
   "Turn off all tunnels, N" / «Выключить все туннели, N».
 - Nothing saved: "No saved tunnels yet. Open a device on Devices and tap
   “Tunnel”."
+
+#### Sessions list
+
+Sessions lists the owner's open terminal and MQTT sessions and the assistant's own sessions under their existing ownership and privacy rules. Search matches session names and identifying device, user or profile context using the Devices search normalization. Clearing search leaves the sessions as they were. Empty lists and searches with no matches have distinct feedback. A row opens the existing session and preserves its attach or reconnect behavior; the close action closes one session through the existing Undo owner, without stopping its tunnel.
+
+Long press starts selection. Select all selects the current filtered list. Closing affects the selected sessions still present and shows one shared upper Undo notice. While selecting, each row exposes one checked selection target instead of its individual actions. Undo restores the same sessions. When Undo expires, the existing owner commits the closure. Terminal and MQTT identifiers are typed separately, and a remembered assistant session is not duplicated when it becomes an owner-visible tab.
 
 ### 6. Direct or through the server
 

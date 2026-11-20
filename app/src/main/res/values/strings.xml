@@ -368,6 +368,10 @@
     <string name="connections_empty">No saved tunnels yet. Open a device on Devices and tap “Tunnel”.</string>
 
     <!-- Sessions tab -->
+    <string name="sessions_picker_title">Terminal · %1$s</string>
+    <string name="sessions_search">Search sessions</string>
+    <string name="sessions_no_match">No sessions match.</string>
+    <string name="sessions_close_selected">Close selected: %1$d</string>
     <string name="sessions_empty">No open sessions. Tap “Terminal” or “MQTT” on a tunnel.</string>
     <string name="terminal_state_connecting">Connecting…</string>
     <string name="terminal_state_open">Open</string>

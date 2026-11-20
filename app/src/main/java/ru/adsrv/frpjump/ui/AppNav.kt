@@ -310,6 +310,7 @@ fun AppNav() {
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                     onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
                     assistant = app.assistantSessions,
+                    profileNames = profilesState.index.profiles.associate { it.id to it.name },
                 )
             }
         }
