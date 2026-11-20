@@ -9,11 +9,11 @@ import ru.adsrv.frpjump.ssh.TabName
 class AssistantSessionTitleTest {
     @Test fun `custom title remains compact and repeated names have distinct ordinals`() {
         val name = TabName("Deploy", NameSetter.ASSISTANT)
-        val first = assistantSessionTitle(name, 1, "Terminal")
-        val second = assistantSessionTitle(name, 2, "Terminal")
+        val first = sessionDisplayTitle(name, 1, "Terminal")
+        val second = sessionDisplayTitle(name, 2, "Terminal")
         assertEquals("\u2068Deploy\u2069", first)
         assertNotEquals(first, second)
         assertEquals("\u2068Deploy\u2069 · 2", second)
-        assertEquals("Terminal · 2", assistantSessionTitle(null, 2, "Terminal"))
+        assertEquals("Terminal · 2", sessionDisplayTitle(null, 2, "Terminal"))
     }
 }
