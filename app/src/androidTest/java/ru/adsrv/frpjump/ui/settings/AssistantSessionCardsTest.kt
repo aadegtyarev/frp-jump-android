@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -80,8 +81,8 @@ class AssistantSessionCardsTest {
         compose.onNodeWithTag("sessions_assistant_9").assertIsDisplayed()
         // The row is a container: its state is a child line.
         compose.onNode(hasAnyAncestor(hasTestTag("sessions_assistant_9")) and hasText(text(R.string.terminal_state_detached), substring = true), useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithTag("sessions_assistant_open_9").assertTextEquals(text(R.string.sessions_assistant_open)).performClick()
-        compose.onNodeWithTag("sessions_assistant_close_9").assertTextEquals(text(R.string.sessions_assistant_close)).performClick()
+        compose.onNodeWithTag("sessions_assistant_9").performClick()
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.session_close_named, "pi@synthetic-device")).performClick()
         compose.runOnIdle { assertTrue(log.toString(), log == listOf("open", "close")) }
         shot("sessions-assistant-row")
     }

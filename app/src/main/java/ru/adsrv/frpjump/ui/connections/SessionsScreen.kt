@@ -77,6 +77,7 @@ import androidx.compose.runtime.remember
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import ru.adsrv.frpjump.sessions.SessionCloser
@@ -106,10 +107,12 @@ fun SessionsScreen(
     /** The assistant's own sessions: listed in a group of their own while the owner has them not as tabs. Null: none (tests). */
     assistant: ru.adsrv.frpjump.assistant.AssistantSessions? = null,
     profileNames: Map<String, String> = emptyMap(),
+    onOpenDeviceTunnels: (String, String) -> Unit = { _, _ -> },
 ) {
     val allTerminals by terminals.sessions.collectAsStateWithLifecycle()
     val everyTerminal by terminals.all.collectAsStateWithLifecycle()
     val remembered by (assistant?.entries ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<ru.adsrv.frpjump.assistant.AssistantSessions.Entry>()) }).collectAsStateWithLifecycle()
+    val problems by (assistant?.ownerProblems ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyMap<ru.adsrv.frpjump.ssh.SessionKey, ru.adsrv.frpjump.assistant.OwnerSessionProblem>()) }).collectAsStateWithLifecycle()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val allExplorers by mqtt.sessions.collectAsStateWithLifecycle()
     val gone by hidden.collectAsStateWithLifecycle()
@@ -120,18 +123,20 @@ fun SessionsScreen(
         allExplorers.filterNot { sessionHidden(gone, SessionKind.MQTT, it.id, TunnelRef(it.profile, it.device, it.port)) }
     }
     // The assistant's sessions as its records say (the records are the ONE list, each once), except those the owner has opened as tabs (they are in the list above).
-    val mine = remember(everyTerminal, allTerminals, remembered, gone) {
+    val terminalTitle = stringResource(R.string.terminal)
+    val mine = remember(everyTerminal, allTerminals, remembered, gone, problems, terminalTitle) {
         remembered.mapNotNull { entry ->
             val live = everyTerminal.firstOrNull { it.tabNameKey() == entry.key }
             val id = live?.id ?: entry.id
             if (allTerminals.any { it.id == live?.id } || sessionHidden(gone, SessionKind.TERMINAL, id, TunnelRef(entry.key.profile, entry.key.device, entry.key.port))) null
             else {
-                val automatic = ru.adsrv.frpjump.ui.ssh.tabLabel(entry.key.user, entry.key.device, entry.key.port, live?.number ?: ru.adsrv.frpjump.ssh.tmuxNumber(entry.key.session).toInt().coerceAtLeast(1))
-                AssistantRow(entry.id, sessionIdentityLabel(automatic, entry.name), live, id, entry.key.profile, entry.key.device, entry.key.user, entry.key.port)
+                val number = live?.number ?: ru.adsrv.frpjump.ssh.tmuxNumber(entry.key.session).toInt().coerceAtLeast(1)
+                AssistantRow(entry.id, assistantSessionTitle(entry.name, number, terminalTitle), live, id, entry.key.profile, entry.key.device, entry.key.user, entry.key.port, problems[entry.key])
             }
         }
     }
     val colors = AppTheme.colors
+    val assistantLabel = stringResource(R.string.assistant_title)
     var query by rememberSaveable { mutableStateOf("") }
     var selected by remember { mutableStateOf(setOf<SessionRef>()) }
     BackHandler(enabled = selected.isNotEmpty()) { selected = emptySet() }
@@ -149,7 +154,7 @@ fun SessionsScreen(
             val requester = remember { FocusRequester() }
             val keyboard = LocalSoftwareKeyboardController.current
             val searchLabel = stringResource(R.string.sessions_search)
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp).heightIn(min = 48.dp)
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp).testTag("sessions_search_surface").heightIn(min = 48.dp)
                 .background(colors.card, RoundedCornerShape(ru.adsrv.frpjump.ui.HeaderControlRadius))
                 .border(BorderStroke(1.dp, colors.outline), RoundedCornerShape(ru.adsrv.frpjump.ui.HeaderControlRadius)).clickable { requester.requestFocus(); keyboard?.show() }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(SearchGlyph, contentDescription = null, tint = colors.muted, modifier = Modifier.size(20.dp).testTag("sessions_search_icon"))
@@ -194,8 +199,9 @@ fun SessionsScreen(
         }
         items(shownTerminals, key = { "t${it.id}" }) { session ->
             val ref = SessionRef(SessionKind.TERMINAL, session.id)
-            SelectableTunnelRow("${terminalSessionLabel(session)}, ${profileLabel(session.profile, profileNames)}", selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
-                TerminalLine(session, profileColors[session.profile], onClose = { close.terminal(session.id) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty()) { onOpenTerminal(session.id) }
+            SelectableTunnelRow(listOfNotNull(terminalSessionLabel(session), profileLabel(session.profile, profileNames), assistantLabel.takeIf { session.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT }).joinToString(", "), selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
+                TerminalLine(session, profileColors[session.profile], profileLabel(session.profile, profileNames), session.tabNameKey()?.let { problems[it] },
+                    onRecover = { onOpenDeviceTunnels(session.profile, session.device) }, onClose = { close.terminal(session.id) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty()) { onOpenTerminal(session.id) }
             }
         }
         items(shownMqtt, key = { "m${it.id}" }) { session ->
@@ -204,30 +210,30 @@ fun SessionsScreen(
                 MqttLine(session, profileColors[session.profile], onClose = { close.mqtt(session.id) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty()) { onOpenMqtt(session.id) }
             }
         }
-        // The assistant's own sessions: only while there are some. Open shows one as a normal tab (attaching it first when it is detached); it stays marked as the assistant's.
-        if (shownAssistant.isNotEmpty()) {
-            item(key = "assistant-title") {
-                Text(stringResource(R.string.sessions_assistant_group), fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 4.dp, top = 12.dp).testTag("sessions_assistant_group"))
-            }
-            items(shownAssistant, key = { "a${it.id}" }) { row ->
+        // The assistant's remembered sessions share the list and retain their own exact identity.
+        items(shownAssistant, key = { "a${it.id}" }) { row ->
                 val ref = SessionRef(SessionKind.TERMINAL, row.sessionId)
-                SelectableTunnelRow("${row.title}, ${profileLabel(row.profile, profileNames)}", selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
-                    AssistantLine(row, onOpen = { assistant?.let { a -> scope.launch { a.show(row.id)?.let { onOpenTerminal(it.id) } } } }, onClose = { close.terminal(row.sessionId) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty())
+                SelectableTunnelRow("${row.title}, ${row.user}@${row.device}:${row.port}, ${profileLabel(row.profile, profileNames)}, $assistantLabel", selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
+                    AssistantLine(row, onOpen = { assistant?.let { a -> scope.launch { a.show(row.id)?.let { onOpenTerminal(it.id) } } } }, onClose = { close.terminal(row.sessionId) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty(), profileName = profileLabel(row.profile, profileNames), profileColor = profileColors[row.profile], onRecover = { onOpenDeviceTunnels(row.profile, row.device) })
                 }
-            }
         }
     }
     }
 }
 
-/** One of the assistant's sessions in the group: [session] is null while it is remembered and not attached (detached). */
+/** One remembered assistant session: [session] is null while it is remembered and not attached (detached). */
 internal class AssistantRow(val id: Int, val title: String, val session: SshSession?, /** The id the owner's Close and the Undo use: the live session's, else the record's. */ val sessionId: Int = id,
-    val profile: String = session?.profile.orEmpty(), val device: String = session?.device.orEmpty(), val user: String = session?.user.orEmpty(), val port: Int = session?.port ?: 0)
+    val profile: String = session?.profile.orEmpty(), val device: String = session?.device.orEmpty(), val user: String = session?.user.orEmpty(), val port: Int = session?.port ?: 0,
+    val problem: ru.adsrv.frpjump.assistant.OwnerSessionProblem? = null)
 
 internal fun terminalSessionLabel(session: SshSession, name: ru.adsrv.frpjump.ssh.TabName? = session.tabName.value): String {
     val automatic = ru.adsrv.frpjump.ui.ssh.tabLabel(session.user, session.device, session.port, session.number)
     return sessionIdentityLabel(automatic, name)
+}
+
+internal fun assistantSessionTitle(name: ru.adsrv.frpjump.ssh.TabName?, number: Int, terminal: String): String {
+    val title = name?.text?.let { ru.adsrv.frpjump.ssh.isolateName(it) } ?: terminal
+    return if (number > 1) "$title · $number" else title
 }
 
 private fun sessionIdentityLabel(automatic: String, name: ru.adsrv.frpjump.ssh.TabName?): String {
@@ -235,40 +241,30 @@ private fun sessionIdentityLabel(automatic: String, name: ru.adsrv.frpjump.ssh.T
     return if (name?.setBy == ru.adsrv.frpjump.ssh.NameSetter.OWNER) "$label · $automatic" else label
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun AssistantLine(row: AssistantRow, onOpen: () -> Unit, onClose: () -> Unit, onLongClick: () -> Unit = {}, selecting: Boolean = false) {
+internal fun AssistantLine(row: AssistantRow, onOpen: () -> Unit, onClose: () -> Unit, onLongClick: () -> Unit = {}, selecting: Boolean = false,
+    profileName: String = row.profile, profileColor: String? = null, onRecover: () -> Unit = {}) {
     val colors = AppTheme.colors
     val live = row.session?.state?.collectAsStateWithLifecycle()?.value
-    val (text, color) = when {
-        row.session == null -> stringResource(R.string.terminal_state_detached) to colors.muted
-        live == SshState.Open -> stringResource(R.string.terminal_state_open) to colors.accent
-        live is SshState.Ended -> stringResource(R.string.terminal_state_ended) to colors.muted
-        live is SshState.Reconnecting -> stringResource(R.string.terminal_state_reconnecting) to colors.muted
-        live == SshState.Connecting -> stringResource(R.string.terminal_state_connecting) to colors.muted
-        else -> stringResource(R.string.terminal_state_asks) to colors.warning
-    }
-    Surface(color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = onLongClick).testTag("sessions_assistant_${row.id}")) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SessionTile(dot = null) { TerminalIcon() }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(row.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = color)
-            }
-            if (selecting) Spacer(Modifier.size(48.dp)) else {
-                androidx.compose.material3.TextButton(onClick = onOpen, modifier = Modifier.testTag("sessions_assistant_open_${row.id}")) { Text(stringResource(R.string.sessions_assistant_open)) }
-                androidx.compose.material3.TextButton(onClick = onClose, modifier = Modifier.testTag("sessions_assistant_close_${row.id}")) { Text(stringResource(R.string.sessions_assistant_close)) }
-            }
-        }
-    }
+    val (stateText, stateColor) = if (live == null) stringResource(R.string.terminal_state_detached) to colors.muted else terminalStateText(live)
+    val identity = listOfNotNull(row.device.takeIf { it.isNotBlank() }?.let { "${row.user}@$it:${row.port}" }, profileName.takeIf { it.isNotBlank() }).joinToString(" · ")
+    val problem = row.problem?.let { stringResource(ru.adsrv.frpjump.ui.ownerSessionProblemText(it)) }
+    SessionLine(row.title, stateText, stateColor, profileColor, onClose, onLongClick, onOpen, selecting, "sessions_assistant_${row.id}",
+        identity = identity, problem = problem, onRecover = if (problem != null) onRecover else null, wrapTitle = true, assistantOwned = true) { TerminalIcon() }
 }
 
 @Composable
-private fun TerminalLine(session: SshSession, profileColor: String?, onClose: () -> Unit, onLongClick: () -> Unit, selecting: Boolean, onClick: () -> Unit) {
+private fun TerminalLine(session: SshSession, profileColor: String?, profileName: String, problem: ru.adsrv.frpjump.assistant.OwnerSessionProblem?, onRecover: () -> Unit, onClose: () -> Unit, onLongClick: () -> Unit, selecting: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
     val state by session.state.collectAsStateWithLifecycle()
     val (text, color) = terminalStateText(state)
-    SessionLine(terminalSessionLabel(session), text, color, profileColor, onClose, onLongClick, onClick, selecting, "sessions_terminal_${session.id}") { TerminalIcon() }
+    val assistantOwned = session.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT
+    val detail = if (assistantOwned) "${session.user}@${session.device}:${session.port} · $profileName" else ""
+    val failure = problem?.let { stringResource(ru.adsrv.frpjump.ui.ownerSessionProblemText(it)) }
+    val name by session.tabName.collectAsStateWithLifecycle()
+    val title = if (assistantOwned) assistantSessionTitle(name, session.number, stringResource(R.string.terminal)) else terminalSessionLabel(session, name)
+    SessionLine(title, text, color, profileColor, onClose, onLongClick, onClick, selecting, "sessions_terminal_${session.id}",
+        identity = detail, problem = failure, onRecover = if (failure != null) onRecover else null, wrapTitle = assistantOwned, assistantOwned = assistantOwned) { TerminalIcon() }
 }
 
 @Composable
@@ -303,23 +299,23 @@ private fun MqttLine(session: MqttSession, profileColor: String?, onClose: () ->
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SessionLine(title: String, state: String, stateColor: Color, profileColor: String?, onClose: () -> Unit, onLongClick: () -> Unit, onClick: () -> Unit, selecting: Boolean, tag: String, glyph: @Composable () -> Unit) {
+private fun SessionLine(title: String, state: String, stateColor: Color, profileColor: String?, onClose: () -> Unit, onLongClick: () -> Unit, onClick: () -> Unit, selecting: Boolean, tag: String, identity: String = "", problem: String? = null, onRecover: (() -> Unit)? = null, wrapTitle: Boolean = false, assistantOwned: Boolean = false, glyph: @Composable () -> Unit) {
     val colors = AppTheme.colors
     Surface(color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().testTag(tag).combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            SessionTile(dot = colors.profile(profileColor ?: "grey"), glyph = glyph)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(state, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = stateColor)
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SessionTile(dot = colors.profile(profileColor ?: "grey"), assistantOwned = assistantOwned, glyph = glyph)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = if (wrapTitle) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
+                    if (identity.isNotBlank()) Text(identity, fontSize = 12.sp, color = colors.muted, modifier = Modifier.testTag("$tag-identity"))
+                    Text(state, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = stateColor)
+                }
+                if (selecting) Spacer(Modifier.size(48.dp)) else IconButton(onClick = onClose, modifier = Modifier.size(48.dp).testTag("$tag-close")) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.session_close_named, listOf(title, identity).filter { it.isNotBlank() }.joinToString(" · ")), tint = colors.muted, modifier = Modifier.size(20.dp))
+                }
             }
-            // At the row's end, as Disconnect on a connection row: ✕ as the other closes (search, a transfer).
-            if (selecting) Spacer(Modifier.size(48.dp)) else IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.session_close_named, title), tint = colors.muted, modifier = Modifier.size(20.dp))
-            }
+            if (problem != null) Text(problem, fontSize = 12.sp, color = colors.warning, modifier = Modifier.fillMaxWidth().padding(top = 6.dp).testTag("$tag-problem"))
+            if (onRecover != null && !selecting) androidx.compose.material3.TextButton(onClick = onRecover, modifier = Modifier.testTag("sessions_assistant_recover")) { Text(stringResource(R.string.assistant_session_tunnels)) }
         }
     }
 }
@@ -329,7 +325,7 @@ internal fun TerminalIcon() = Icon(TerminalGlyph, contentDescription = null, tin
 
 /** The session's glyph on a tile; [dot], the profile's colour, in the corner. */
 @Composable
-internal fun SessionTile(dot: Color?, glyph: @Composable () -> Unit) {
+internal fun SessionTile(dot: Color?, assistantOwned: Boolean = false, glyph: @Composable () -> Unit) {
     val colors = AppTheme.colors
     Box(Modifier.size(40.dp)) {
         Box(
@@ -339,6 +335,10 @@ internal fun SessionTile(dot: Color?, glyph: @Composable () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             glyph()
+        }
+        if (assistantOwned) {
+            val label = stringResource(R.string.assistant_title)
+            Text("✦", color = colors.accent, fontSize = 13.sp, modifier = Modifier.align(Alignment.TopEnd).clearAndSetSemantics { contentDescription = label }.testTag("session_assistant_marker"))
         }
         dot?.let {
             Box(

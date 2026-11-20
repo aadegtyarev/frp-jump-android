@@ -99,7 +99,7 @@ leaving the screen cancels neither the awaited connect nor the "all" path. The n
 
 Session presentation delegates to the existing SSH and MQTT session owners. The Tunnels Terminal entry matches visible SSH tabs by exact profile, device and port. Zero, one or several matches select the existing new-session flow, that tab, or a chooser. Pending session/tunnel closures are excluded, and delayed selection or login rechecks the current tunnel and local port. It introduces no new transport, credentials or assistant authority.
 
-`SessionCloser` stages one or a distinct set of typed terminal/MQTT session identities in the existing `PendingUndo` owner. A selection produces the same shared notice and Undo as individual closes. The session owner performs each close on commit, including the established assistant-owned close path. Closing a session leaves its tunnel running.
+`SessionCloser` stages one or a distinct set of typed terminal/MQTT session identities in the existing `PendingUndo` owner. A selection produces the same shared notice and Undo as individual closes. The session owner performs each close on commit. For an owner close of an assistant-owned SSH session, the Undo key stays hidden through attach, an exact-target dispatch check, a confirmed remote kill and durable record update. An unknown result or failed record write retains the session for recovery. This owner path does not change the assistant tool's confirmation or permission path. Closing a session leaves its tunnel running.
 ### `mqtt_publish` and `wb_write`
 
 Moved out of `ui/mqtt/MqttViewModel.kt` with no change of behavior; [MQTT](../../mqtt-contract.md) still owns what they do. The target is a typed `MqttTarget`

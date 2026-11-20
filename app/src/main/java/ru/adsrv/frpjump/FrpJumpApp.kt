@@ -127,8 +127,21 @@ class FrpJumpApp : Application() {
             notice = { which ->
                 notices.showInApp(ru.adsrv.frpjump.locale.Texts.get(when (which) {
                     ru.adsrv.frpjump.assistant.SessionNotice.TUNNEL_GONE -> R.string.session_tunnel_gone
-                    ru.adsrv.frpjump.assistant.SessionNotice.CLOSE_TUNNEL_OFF -> R.string.session_close_tunnel_off
                 }), ru.adsrv.frpjump.notices.NoticeKind.WARN)
+            },
+            ownerFailure = { key, problem ->
+                val allProfiles = profiles.state.value.index.profiles
+                val name = allProfiles.singleOrNull { it.id == key.profile }?.name?.ifBlank { key.profile } ?: key.profile
+                val profile = if (allProfiles.count { it.name == name } > 1) "$name · ${key.profile}" else name
+                val guidance = ru.adsrv.frpjump.locale.Texts.get(ru.adsrv.frpjump.ui.ownerSessionProblemText(problem))
+                notices.showInApp(ru.adsrv.frpjump.locale.Texts.get(R.string.assistant_session_failure_notice, profile, key.device, key.port, guidance), NoticeKind.WARN)
+            },
+            ownerGone = { key, savedTunnelGone ->
+                val allProfiles = profiles.state.value.index.profiles
+                val name = allProfiles.singleOrNull { it.id == key.profile }?.name?.ifBlank { key.profile } ?: key.profile
+                val profile = if (allProfiles.count { it.name == name } > 1) "$name · ${key.profile}" else name
+                val guidance = ru.adsrv.frpjump.locale.Texts.get(if (savedTunnelGone) R.string.assistant_session_saved_tunnel_gone else R.string.assistant_session_remote_gone)
+                notices.showInApp(ru.adsrv.frpjump.locale.Texts.get(R.string.assistant_session_failure_notice, profile, key.device, key.port, guidance), NoticeKind.WARN)
             },
             enabled = { settings.assistantAvailability.tools[ru.adsrv.frpjump.assistant.AssistantToolId.TERMINAL_OPEN] },
             toolTimeoutMs = { settings.settings.value.assistantLimits.toolTimeoutSeconds * 1000L }).also { it.refresh() }
@@ -562,7 +575,7 @@ class FrpJumpApp : Application() {
         sessions = OpenSessions(ssh.through, ssh::throughNow, mqtt.through, mqtt::throughNow, pendingUndo.hidden)
         closeSessions = SessionCloser(pendingUndo, closeTerminal = { id ->
             // The assistant's own sessions (also the remembered ones, which are attached to end their tmux session) go through the assistant's close.
-            if (assistantSessions.isAssistant(id)) appScope.launch { assistantSessions.closeByOwner(id) } else ssh.close(id, endTmux = true)
+            if (assistantSessions.isAssistant(id)) assistantSessions.closeByOwner(id) else ssh.close(id, endTmux = true)
         }, closeMqtt = mqtt::close)
         // A kept file session closes with the last terminal session on its tunnel.
         appScope.launch { ssh.through.collect(files::onTerminals) }

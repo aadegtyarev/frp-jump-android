@@ -177,7 +177,17 @@ class SshSessions(
      * A fresh session in place of an ended one, in its tab: the same login,
      * or as [user] with [auth] ("Change login"). Main thread.
      */
-    fun reconnect(id: Int, user: String? = null, auth: SshAuth? = null): SshSession? {
+    fun reconnect(id: Int, user: String? = null, auth: SshAuth? = null): SshSession? =
+        reconnectAt(id, user, auth, null, null, false)
+
+    /** Reattach the same assistant tab using the current validated tunnel and login. */
+    fun reconnectAssistant(id: Int, hostKeys: HostKeyStore, localPort: Int, user: String, auth: SshAuth): SshSession? {
+        val old = _all.value.firstOrNull { it.id == id } ?: return null
+        if (old.openedBy != SessionOpener.ASSISTANT || old.user != user || old.tabNameKey() == null) return null
+        return reconnectAt(id, user, auth, hostKeys, localPort, true)
+    }
+
+    private fun reconnectAt(id: Int, user: String?, auth: SshAuth?, hostKeys: HostKeyStore?, localPort: Int?, forceAttachOnly: Boolean): SshSession? {
         val old = _all.value.firstOrNull { it.id == id } ?: return null
         old.close()
         val login = user ?: old.user
@@ -191,9 +201,9 @@ class SshSessions(
         // An assistant session keeps its id: the model's tab_id stays valid across a reconnect.
         val freshId = if (old.openedBy == SessionOpener.ASSISTANT) old.id else nextId++
         val fresh = SshSession(
-            freshId, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
+            freshId, old.profile, hostKeys ?: old.hostKeys, old.device, old.port, localPort ?: old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
             tmuxName = old.tmux.assigned, noTmux = old.tmux.disabled, onReattached = ::sayReattached,
-            pickUp = if (pickUpStill) ::pickUp else null, tabName = old.tabName.value, openedBy = old.openedBy, attachOnly = old.attachOnly,
+            pickUp = if (pickUpStill) ::pickUp else null, tabName = old.tabName.value, openedBy = old.openedBy, attachOnly = forceAttachOnly || old.attachOnly,
         )
         if (old.openedBy == SessionOpener.ASSISTANT && old.shown.value) fresh.show()
         drafts.close(old.id)
@@ -341,12 +351,17 @@ class SshSessions(
     /** [runOnDevice] with the error output and the exit status ([ExecResult]). */
     fun runOnDeviceResult(from: SshSession, command: String): ExecResult {
         liveClient(from.profile, from.device, from.port, from.user)?.let { return execResult(it, command) }
-        val connector = SshConnector(from.profile, from.hostKeys, from.device, from.port, from.localPort, from.user, from.auth, env)
+        return runOnDeviceIsolated(from.profile, from.hostKeys, from.device, from.port, from.localPort, from.user, from.auth, command)
+    }
+
+    /** An isolated authenticated connection for operations whose acknowledgement must survive the terminal shell ending. */
+    fun runOnDeviceIsolated(profile: String, hostKeys: HostKeyStore, device: String, port: Int, localPort: Int, user: String, auth: SshAuth, command: String, beforeExec: () -> Unit = {}): ExecResult {
+        val connector = SshConnector(profile, hostKeys, device, port, localPort, user, auth, env)
         val ssh = connector.newClient()
-        connector.connect(ssh)
         try {
+            connector.connect(ssh)
             connector.authenticate(ssh)
-            return execResult(ssh, command)
+            return execResult(ssh, command, beforeExec)
         } finally {
             runCatching { ssh.disconnect() }
         }

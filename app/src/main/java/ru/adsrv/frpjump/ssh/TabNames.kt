@@ -170,6 +170,18 @@ class SessionRecordStore(private val storage: TextStorage, private val max: Int 
         if (list.removeAll { it.matches(key) }) save()
     }
 
+    /** Durable removal for a confirmed owner close: publish only after the file was written. */
+    @Synchronized
+    fun forgetConfirmed(key: SessionKey) {
+        val before = load()
+        val next = before.filterNot { it.matches(key) }
+        storage.write(WireJson.encodeToString(Stored(next)))
+        if (next.size != before.size) {
+            entries = next.toMutableList()
+            _changed.value += 1
+        }
+    }
+
     /**
      * A listing of this install's sessions (every one, whoever opened it) for [user] on [device]:[port] of
      * [profile]: [listed], or null when it failed (nothing is forgotten).

@@ -411,7 +411,7 @@ class AssistantTerminalTabs internal constructor(
             AttachResult.ATTACHED -> Unit
             AttachResult.GONE -> throw TabEnded()
             AttachResult.NEEDS_SETUP -> throw TabNeedsSetup()
-            AttachResult.UNREACHABLE -> throw TabNotConnected(TabState.DETACHED)
+            AttachResult.UNREACHABLE, AttachResult.RECORD_SAVE_FAILED -> throw TabNotConnected(TabState.DETACHED)
         }
         return visible().firstOrNull { it.id == handle.id } ?: throw TabNotOpen()
     }

@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.sessions
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -69,6 +70,19 @@ class SessionCloserTest {
         pending.commitAll()
         assertEquals(listOf(7), closedTerminals)
         assertEquals(listOf(7), closedMqtt)
+    }
+
+    @Test fun `committing an asynchronous close keeps the session hidden until it completes`() = runBlocking {
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val asyncPending = PendingUndo(timer = { _, _ -> {} }, run = { block -> launch { block() } }, announce = { _, _ -> })
+        val asyncCloser = SessionCloser(asyncPending, { release.await() }, {})
+        asyncCloser.terminal(9)
+        asyncPending.commitAll()
+        kotlinx.coroutines.yield()
+        assertTrue(sessionHidden(asyncPending.hidden.value, SessionKind.TERMINAL, 9, tunnel))
+        release.complete(Unit)
+        kotlinx.coroutines.yield()
+        assertFalse(sessionHidden(asyncPending.hidden.value, SessionKind.TERMINAL, 9, tunnel))
     }
 
 }

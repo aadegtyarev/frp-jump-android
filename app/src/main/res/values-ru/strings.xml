@@ -328,7 +328,7 @@
     <!-- Undo instead of confirm: the notice shared by deletes, disconnects and closes in a row -->
     <string name="undo_deleted">Удалено: %d</string>
     <string name="undo_disconnected">Выключено: %d</string>
-    <string name="undo_closed">Закрыто: %d</string>
+    <string name="undo_closed">К закрытию: %1$d</string>
     <string name="undo">Отменить</string>
     <string name="ssh_password_saved_spoken">%s, сохранён</string>
     <plurals name="terminal_sessions_count">
@@ -1617,6 +1617,16 @@
     <string name="terminal_session_by_assistant">Сессия помощника</string>
     <string name="ssh_session_unknown">Не удалось проверить, есть ли сессия на устройстве.</string>
     <string name="ssh_session_gone">Сессии больше нет на устройстве.</string>
+    <string name="assistant_session_open_setup">Не удалось открыть. Настройте вход SSH или ключ узла и повторите.</string>
+    <string name="assistant_session_open_unreachable">Не удалось открыть. Проверьте туннель и соединение и повторите.</string>
+    <string name="assistant_session_close_setup">Не удалось закрыть. Настройте вход SSH или ключ узла и повторите.</string>
+    <string name="assistant_session_close_unreachable">Не удалось закрыть. Проверьте туннель и соединение и повторите.</string>
+    <string name="assistant_session_close_unconfirmed">Не удалось подтвердить закрытие сессии. Проверьте соединение и повторите.</string>
+    <string name="assistant_session_saved_tunnel_gone">Сохранённого туннеля больше нет. Сессия осталась на устройстве.</string>
+    <string name="assistant_session_remote_gone">Сессия на устройстве больше не существует.</string>
+    <string name="assistant_session_record_failed">Не удалось сохранить состояние сессии на телефоне. Проверьте память и повторите.</string>
+    <string name="assistant_session_failure_notice">%1$s · %2$s:%3$d. %4$s</string>
+    <string name="assistant_session_tunnels">Туннели устройства</string>
     <string name="session_tunnel_gone">Сессия на устройстве осталась: сохранённого туннеля больше нет</string>
     <string name="session_close_tunnel_off">Не удалось закрыть: туннель выключен</string>
     <string name="limit_reply_raised">не меньше одного вызова и ответа модели: %1$d с</string>
