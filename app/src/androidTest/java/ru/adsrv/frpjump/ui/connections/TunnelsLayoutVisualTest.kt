@@ -118,6 +118,13 @@ class TunnelsLayoutVisualTest {
         val surface = compose.onNodeWithTag("tunnels_devices_filter_surface", useUnmergedTree = true).getBoundsInRoot()
         assertTrue("picker touch target >= 48dp", (picker.bottom - picker.top).value >= 47.5f)
         assertTrue("picker surface 38dp", kotlin.math.abs((surface.bottom - surface.top).value - 38f) < 1f)
+        val searchSurface = compose.onNodeWithTag("tunnels_search_surface", useUnmergedTree = true).getBoundsInRoot()
+        val searchHeight = (searchSurface.bottom - searchSurface.top).value
+        val fontScale = compose.activity.resources.configuration.fontScale
+        assertTrue("search surface is at least 38dp", searchHeight >= 37.5f)
+        if (fontScale <= 1.01f) {
+            assertTrue("search and picker surface heights match at normal font", kotlin.math.abs(searchHeight - (surface.bottom - surface.top).value) < 1f)
+        }
         shot("tunnels-search-idle")
         compose.onNodeWithTag(TUNNELS_SEARCH_TAG).performClick()
         compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).assertIsDisplayed().performTextInput("SSH")
@@ -137,6 +144,17 @@ class TunnelsLayoutVisualTest {
         compose.onNodeWithTag(TUNNELS_SEARCH_TAG).performClick()
         compose.onNodeWithTag(TUNNELS_SEARCH_CLEAR_TAG).performClick()
         compose.onNodeWithTag(TUNNELS_SEARCH_FIELD_TAG).assertIsDisplayed()
+    }
+
+    @Test fun selectedDeviceHasAdjacentFilterAndReset() {
+        host(false, emptyDevice = true)
+        val picker = compose.onNodeWithTag("tunnels_devices_filter").getBoundsInRoot()
+        val reset = compose.onNodeWithTag("tunnels_devices_reset").getBoundsInRoot()
+        assertTrue("filter and reset touch targets are adjacent", kotlin.math.abs((picker.right - reset.left).value) < 1f)
+        assertTrue("reset touch target >= 48dp", (reset.bottom - reset.top).value >= 47.5f)
+        shot("tunnels-header-filtered")
+        compose.onNodeWithTag("tunnels_devices_reset").performClick()
+        compose.onNodeWithTag("tunnels_devices_reset").assertDoesNotExist()
     }
 
     @Test fun multipleProfilesUseOneSectionHeadingPerProfile() {
