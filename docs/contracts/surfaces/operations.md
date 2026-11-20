@@ -95,6 +95,11 @@ waited for; with nothing shown up, every server is told now (restoring profiles 
 (the "Disconnect all" spinner follows that). The screens start these operations, and `tunnel_connect`, undispatched in the app scope, so
 leaving the screen cancels neither the awaited connect nor the "all" path. The notification's "Disconnect all" does not use Undo and does not use this operation. The assistant's `stop_tunnel` uses `TunnelDownTarget.OneNow` (through `StopSavedTunnel`): one tunnel disconnected at once, with no Undo, after the owner answered its card; every other target stays the screens'.
 
+### Session opening and closing
+
+Session presentation delegates to the existing SSH and MQTT session owners. The Tunnels Terminal entry matches visible SSH tabs by exact profile, device and port. Zero, one or several matches select the existing new-session flow, that tab, or a chooser. Pending session/tunnel closures are excluded, and delayed selection or login rechecks the current tunnel and local port. It introduces no new transport, credentials or assistant authority.
+
+`SessionCloser` stages one or a distinct set of typed terminal/MQTT session identities in the existing `PendingUndo` owner. A selection produces the same shared notice and Undo as individual closes. The session owner performs each close on commit, including the established assistant-owned close path. Closing a session leaves its tunnel running.
 ### `mqtt_publish` and `wb_write`
 
 Moved out of `ui/mqtt/MqttViewModel.kt` with no change of behavior; [MQTT](../../mqtt-contract.md) still owns what they do. The target is a typed `MqttTarget`

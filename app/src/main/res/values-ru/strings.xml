@@ -381,6 +381,10 @@
     <string name="connections_empty">Сохранённых туннелей пока нет. Откройте устройство на вкладке «Устройства» и нажмите «Туннель».</string>
 
     <!-- Sessions tab -->
+    <string name="sessions_picker_title">Терминал · %1$s</string>
+    <string name="sessions_search">Поиск сессий</string>
+    <string name="sessions_no_match">Сессии не найдены.</string>
+    <string name="sessions_close_selected">Закрыть выбранные: %1$d</string>
     <string name="sessions_empty">Открытых сессий нет. Нажмите «Терминал» или «MQTT» у туннеля.</string>
     <string name="terminal_state_connecting">Подключение…</string>
     <string name="terminal_state_open">Открыт</string>

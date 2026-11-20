@@ -26,6 +26,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -298,6 +301,7 @@ fun rememberNotificationsFirst(): (() -> Unit) -> Unit {
 @Stable
 class ConnectionUi {
     var login by mutableStateOf<ConnectionRow?>(null)
+    var terminalPicker by mutableStateOf<ConnectionRow?>(null)
 
     /** The row whose "Files" was tapped: the same login dialog, for a file screen. */
     var filesLogin by mutableStateOf<ConnectionRow?>(null)
@@ -385,6 +389,12 @@ class RowActions(
     val ask: ((ConnectionRow) -> Unit)? = null,
 )
 
+private fun openNewTerminal(row: ConnectionRow, actions: ConnectionActions, ui: ConnectionUi, onOpenTerminal: (Int) -> Unit) {
+    val login = actions.loginAtOnce(row)
+    val opened = login?.let { actions.openSsh(row, it.user, it.method, password = "", remember = true) }
+    if (opened != null) onOpenTerminal(opened) else ui.login = row
+}
+
 @Composable
 fun rememberRowActions(
     ui: ConnectionUi,
@@ -420,12 +430,13 @@ fun rememberRowActions(
                 // Back to the explorer session of this connection, or a new one; the screen shows it connecting.
                 PortKind.MQTT -> actions.openMqtt(row)?.let(onOpenMqtt)
                     ?: context.notice(context.getString(if (row.tunnel == null) R.string.files_tunnel_down else R.string.profile_gone), NoticeKind.WARN)
-                // Back to the session already open on this port; a new one is "+" on its tab row.
-                PortKind.SSH -> actions.openSession(row)?.let(onOpenTerminal) ?: run {
-                    // A usable remembered login connects at once; the dialog only when there is none.
-                    val login = actions.loginAtOnce(row)
-                    val opened = login?.let { actions.openSsh(row, it.user, it.method, password = "", remember = true) }
-                    if (opened != null) onOpenTerminal(opened) else ui.login = row
+                PortKind.SSH -> {
+                    val choices = actions.terminalChoices(row)
+                    when (val destination = terminalDestination(choices.map { it.id })) {
+                        TerminalDestination.New -> openNewTerminal(row, actions, ui, onOpenTerminal)
+                        is TerminalDestination.Existing -> onOpenTerminal(destination.id)
+                        TerminalDestination.Choose -> ui.terminalPicker = row
+                    }
                 }
             }
         }
@@ -554,10 +565,44 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
     }
 }
 
+/** The existing tabs for one tunnel; selecting or creating still goes through the owning action. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+internal fun TerminalChoicesSheet(device: String, choices: List<ru.adsrv.frpjump.ssh.SshSession>, onDismiss: () -> Unit, onChoose: (ru.adsrv.frpjump.ssh.SshSession) -> Unit, onNew: () -> Unit) {
+    val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val colors = AppTheme.colors
+    ru.adsrv.frpjump.ui.AppModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = colors.card) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            ru.adsrv.frpjump.ui.SheetHeader(sheet, onDismiss = onDismiss) {
+                Text(stringResource(R.string.sessions_picker_title, device), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+            LazyColumn(Modifier.weight(1f, fill = false).testTag("sessions_picker_list"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(choices, key = { it.id }) { session ->
+                    val custom by session.tabName.collectAsStateWithLifecycle()
+                    val state by session.state.collectAsStateWithLifecycle()
+                    val (status, statusColor) = terminalStateText(state)
+                    Surface(onClick = { onChoose(session) }, color = colors.card, shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, colors.outline), modifier = Modifier.fillMaxWidth().testTag("sessions_picker_${session.id}")) {
+                        Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SessionTile(dot = null) { TerminalIcon() }
+                            Column(Modifier.weight(1f)) {
+                                Text(terminalSessionLabel(session, custom), color = colors.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text(status, color = statusColor, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+            Button(onClick = onNew, colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = colors.onAccent), modifier = Modifier.padding(vertical = 8.dp).testTag("sessions_picker_new")) { Text(stringResource(R.string.terminal_new_session)) }
+        }
+    }
+}
+
 /**
  * The dialogs and the sheet of a connections screen: SSH login, change. [existing] lists a profile's connections, for the sheet's checks.
  */
 @Composable
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 fun ConnectionDialogs(
     ui: ConnectionUi,
     actions: ConnectionActions,
@@ -569,6 +614,27 @@ fun ConnectionDialogs(
     onOpenFiles: (targetId: Int) -> Unit,
 ) {
     val notificationsFirst = rememberNotificationsFirst()
+    val sessionChanges by actions.sessions.collectAsStateWithLifecycle(emptyList())
+    val context = LocalContext.current
+    ui.terminalPicker?.let { row ->
+        val choices = remember(row, sessionChanges) { actions.terminalChoices(row) }
+        val dismiss = { ui.terminalPicker = null }
+        fun currentRow(): ConnectionRow? = rows.firstOrNull {
+            it.profile == row.profile && it.connection.id == row.connection.id &&
+                it.connection.device == row.connection.device && it.connection.port == row.connection.port
+        }?.let(actions::currentTerminalRow)
+        TerminalChoicesSheet(row.connection.device, choices, dismiss, onChoose = { session ->
+            dismiss()
+            val latest = currentRow()
+            val chosen = latest?.let { actions.terminalChoices(it).firstOrNull { option -> option.id == session.id } }
+            if (chosen != null) onOpenTerminal(chosen.id)
+            else context.notice(context.getString(if (latest == null) R.string.files_tunnel_down else R.string.terminal_session_gone), NoticeKind.WARN)
+        }, onNew = {
+            dismiss()
+            currentRow()?.let { latest -> openNewTerminal(latest, actions, ui, onOpenTerminal) }
+                ?: context.notice(context.getString(R.string.files_tunnel_down), NoticeKind.WARN)
+        })
+    }
     KeyLoginDialogs(actions.keyLogin)
     ui.filesLogin?.let { row ->
         SshLoginDialog(

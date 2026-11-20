@@ -79,7 +79,7 @@ class AssistantSessionCardsTest {
         compose.setContent { FrpJumpTheme { AssistantLine(AssistantRow(9, "pi@synthetic-device", null), onOpen = { log += "open" }, onClose = { log += "close" }) } }
         compose.onNodeWithTag("sessions_assistant_9").assertIsDisplayed()
         // The row is a container: its state is a child line.
-        compose.onNode(hasAnyAncestor(hasTestTag("sessions_assistant_9")) and hasText(text(R.string.terminal_state_detached), substring = true)).assertIsDisplayed()
+        compose.onNode(hasAnyAncestor(hasTestTag("sessions_assistant_9")) and hasText(text(R.string.terminal_state_detached), substring = true), useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("sessions_assistant_open_9").assertTextEquals(text(R.string.sessions_assistant_open)).performClick()
         compose.onNodeWithTag("sessions_assistant_close_9").assertTextEquals(text(R.string.sessions_assistant_close)).performClick()
         compose.runOnIdle { assertTrue(log.toString(), log == listOf("open", "close")) }

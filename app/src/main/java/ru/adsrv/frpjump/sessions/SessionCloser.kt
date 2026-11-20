@@ -4,6 +4,8 @@ import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.undo.UndoKind
 
+data class SessionRef(val kind: SessionKind, val id: Int)
+
 /**
  * Closing a session with Undo (docs/contract.md, UI rules): it leaves the
  * tabs, the Sessions tab and the counts at once, and [closeTerminal] or
@@ -18,6 +20,14 @@ class SessionCloser(
     /** Terminal session [id]; [undo] runs when it comes back (its screen selects it again). */
     fun terminal(id: Int, undo: () -> Unit = {}) =
         pendingUndo.enqueue(PendingUndo.sessionKey(SessionKind.TERMINAL, id), commit = { closeTerminal(id) }, undo = undo, kind = UndoKind.CLOSED)
+
+    /** One existing Undo notice covers exactly these distinct typed sessions. */
+    fun closeSelected(sessions: Set<SessionRef>) {
+        sessions.forEach { session -> when (session.kind) {
+            SessionKind.TERMINAL -> terminal(session.id)
+            SessionKind.MQTT -> mqtt(session.id)
+        } }
+    }
 
     /** MQTT explorer session [id]. */
     fun mqtt(id: Int) =
