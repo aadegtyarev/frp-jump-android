@@ -9,6 +9,13 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material3.Button
@@ -253,14 +260,37 @@ internal fun ConnectionsContent(
                 else onDisconnectSelected(actionActive)
             },
             deviceFilter = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                val scopedFilter = scope.isNotEmpty()
+                Row(
+                    modifier = Modifier.drawBehind {
+                        if (scopedFilter) {
+                            val inset = 5.dp.toPx()
+                            val stroke = 1.dp.toPx()
+                            val topLeft = Offset(inset, inset)
+                            val surfaceSize = Size(size.width - 2 * inset, size.height - 2 * inset)
+                            val radius = CornerRadius(TunnelsControlRadius.toPx())
+                            drawRoundRect(colors.card, topLeft, surfaceSize, radius)
+                            val start = if (layoutDirection == LayoutDirection.Ltr) 0f else size.width / 2
+                            val end = if (layoutDirection == LayoutDirection.Ltr) size.width / 2 else size.width
+                            clipRect(left = start, right = end) { drawRoundRect(colors.accentContainer, topLeft, surfaceSize, radius) }
+                            drawRoundRect(colors.outline, topLeft, surfaceSize, radius, style = Stroke(stroke))
+                            drawLine(colors.outline, Offset(size.width / 2, inset), Offset(size.width / 2, size.height - inset), stroke)
+                        }
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     IconButton(onClick = { selected = emptySet(); filterOpen = true }, modifier = Modifier.size(48.dp).testTag("tunnels_devices_filter")) {
-                        Box(Modifier.size(38.dp).background(colors.card, RoundedCornerShape(10.dp)).border(1.dp, colors.outline, RoundedCornerShape(10.dp)).testTag("tunnels_devices_filter_surface"), contentAlignment = Alignment.Center) {
-                            Icon(ru.adsrv.frpjump.ui.DeviceGlyph, contentDescription = stringResource(R.string.tunnels_device_filter, scope.size / 2), tint = colors.ink)
-                            if (scope.isNotEmpty()) Text("${scope.size / 2}", modifier = Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 3.dp), fontSize = 10.sp, color = colors.accent)
+                        Box(
+                            Modifier.size(38.dp)
+                                .then(if (scopedFilter) Modifier else Modifier.background(colors.card, RoundedCornerShape(TunnelsControlRadius)).border(1.dp, colors.outline, RoundedCornerShape(TunnelsControlRadius)))
+                                .testTag("tunnels_devices_filter_surface"),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(ru.adsrv.frpjump.ui.DeviceGlyph, contentDescription = stringResource(R.string.tunnels_device_filter, scope.size / 2), tint = if (scopedFilter) colors.onAccentContainer else colors.ink)
+                            if (scopedFilter) Text("${scope.size / 2}", modifier = Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 3.dp), fontSize = 10.sp, color = colors.onAccentContainer)
                         }
                     }
-                    if (scope.isNotEmpty()) TextButton(onClick = { scope = arrayListOf(); selected = emptySet() }, modifier = Modifier.size(44.dp).testTag("tunnels_devices_reset").semantics { contentDescription = context.getString(R.string.tunnels_filter_reset) }) { Text("×") }
+                    if (scopedFilter) IconButton(onClick = { scope = arrayListOf(); selected = emptySet() }, modifier = Modifier.size(48.dp).testTag("tunnels_devices_reset").semantics { contentDescription = context.getString(R.string.tunnels_filter_reset) }) { Text("×", color = colors.muted) }
                 }
             },
             modifier = Modifier.statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),

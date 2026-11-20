@@ -88,6 +88,7 @@ const val TUNNELS_CAPSULE_TAG = "tunnels_capsule"
  * The room the collapsed search keeps in the header's one row: 130 dp at 100% font, growing with the size body text really has (system
  * font scaling is not linear, so the measured size of 16 sp is used, not the scale), so a large font wraps the header.
  */
+internal val TunnelsControlRadius = 10.dp
 private const val SEARCH_ROOM_DP = 130
 
 /**
@@ -163,7 +164,7 @@ private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -
     }
 }
 
-/** The collapsed search: a 36 dp pill, "🔍 Search", with a touch target of 44 dp. A tap expands it. */
+/** The collapsed search normally matches the 38 dp device control and grows for larger text; a tap expands it. */
 @Composable
 private fun SearchPill(query: String, onClick: () -> Unit) {
     val colors = AppTheme.colors
@@ -172,17 +173,18 @@ private fun SearchPill(query: String, onClick: () -> Unit) {
         Modifier
             .heightIn(min = 44.dp)
             .testTag(TUNNELS_SEARCH_TAG)
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(TunnelsControlRadius))
             .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
             .semantics { contentDescription = if (query.isBlank()) label else "$label: $query" },
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(
             Modifier
-                .heightIn(min = 36.dp)
+                .heightIn(min = 38.dp)
                 .fillMaxWidth()
-                .background(colors.card, CircleShape)
-                .border(1.dp, colors.outline, CircleShape)
+                .testTag("tunnels_search_surface")
+                .background(colors.card, RoundedCornerShape(TunnelsControlRadius))
+                .border(1.dp, colors.outline, RoundedCornerShape(TunnelsControlRadius))
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -219,8 +221,9 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () ->
             Modifier
                 .weight(1f)
                 .heightIn(min = 44.dp)
-                .background(colors.card, CircleShape)
-                .border(BorderStroke(1.dp, colors.accent), CircleShape)
+                .testTag("tunnels_search_focused_surface")
+                .background(colors.card, RoundedCornerShape(TunnelsControlRadius))
+                .border(BorderStroke(1.dp, colors.accent), RoundedCornerShape(TunnelsControlRadius))
                 .padding(start = 14.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -281,8 +284,8 @@ private fun OnCapsule(on: Boolean, count: Int, onFilter: (Boolean) -> Unit, busy
         filterOn -> colors.onAccentContainer
         else -> colors.ink
     }
-    val leftShape = RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50, topEndPercent = 0, bottomEndPercent = 0)
-    val rightShape = RoundedCornerShape(topStartPercent = 0, bottomStartPercent = 0, topEndPercent = 50, bottomEndPercent = 50)
+    val leftShape = RoundedCornerShape(topStart = TunnelsControlRadius, bottomStart = TunnelsControlRadius)
+    val rightShape = RoundedCornerShape(topEnd = TunnelsControlRadius, bottomEnd = TunnelsControlRadius)
     val leftSource = remember { MutableInteractionSource() }
     val rightSource = remember { MutableInteractionSource() }
     // The outline is drawn over the halves, around their visible part: the touch targets are 5 dp taller than it on each side.
@@ -300,7 +303,7 @@ private fun OnCapsule(on: Boolean, count: Int, onFilter: (Boolean) -> Unit, busy
                     outline,
                     topLeft = Offset(stroke / 2, top + stroke / 2),
                     size = Size(size.width - stroke, height - stroke),
-                    cornerRadius = CornerRadius(height / 2),
+                    cornerRadius = CornerRadius(TunnelsControlRadius.toPx()),
                     style = Stroke(stroke),
                 )
             },
