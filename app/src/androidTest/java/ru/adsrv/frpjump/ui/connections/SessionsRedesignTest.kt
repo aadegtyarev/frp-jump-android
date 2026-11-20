@@ -155,13 +155,13 @@ class SessionsRedesignTest {
         val firstBounds = compose.onNodeWithTag("sessions_terminal_1").getBoundsInRoot()
         assertTrue("search to first row gap is at least 12dp", (firstBounds.top - searchBounds.bottom).value >= 11.5f)
         shot("sessions-list")
-        compose.onNodeWithTag("sessions_search").performTextInput("beelink")
+        compose.onNodeWithTag("sessions_search").performTextInput("user@beelink:22")
         compose.onNodeWithTag("sessions_terminal_3").assertDoesNotExist()
         shot("sessions-search")
         compose.onNodeWithTag("sessions_search").performImeAction()
         compose.onNodeWithTag("sessions_terminal_1").performTouchInput { longClick() }
         compose.onNodeWithTag("sessions_selection").assertIsDisplayed()
-        compose.onAllNodesWithContentDescription(compose.activity.getString(R.string.session_close_named, "user · beelink"), useUnmergedTree = true).assertCountEquals(0)
+        compose.onNodeWithTag("sessions_terminal_1-close", useUnmergedTree = true).assertDoesNotExist()
         shot("sessions-selection")
         compose.onNodeWithTag("sessions_select_all").performClick()
         compose.onNodeWithTag("sessions_close_selected").performClick()
@@ -221,6 +221,17 @@ class SessionsRedesignTest {
         }
         compose.waitUntil(5000) { assistant.entries.value.isNotEmpty() }
         compose.onNodeWithTag("sessions_assistant_51").assertIsDisplayed()
+        compose.onNodeWithTag("sessions_search").performTextInput("2222")
+        compose.onNodeWithTag("sessions_search").performImeAction()
+        compose.onNodeWithTag("sessions_assistant_51").assertExists()
+        compose.onNodeWithTag("sessions_search").performTextClearance()
+        compose.onNodeWithTag("sessions_search").performTextInput("user@beelink:2222")
+        compose.onNodeWithTag("sessions_search").performImeAction()
+        compose.onNodeWithTag("sessions_assistant_51").assertExists()
+        compose.onNodeWithTag("sessions_search").performTextClearance()
+        compose.onNodeWithTag("sessions_assistant_51").performTouchInput { longClick() }
+        compose.onNodeWithContentDescription("user@beelink:2222", substring = true).assertExists()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithTag("sessions_assistant_group").assertDoesNotExist()
         compose.onNode(hasAnyAncestor(hasTestTag("sessions_assistant_51")) and hasContentDescription(compose.activity.getString(R.string.assistant_title)), useUnmergedTree = true).assertExists()
         compose.onNodeWithText("user@beelink:2222 · Работа", useUnmergedTree = true).assertIsDisplayed()
@@ -254,7 +265,16 @@ class SessionsRedesignTest {
             terminals.show(session.id)
         }
         host()
+        val ownerRow = compose.onNodeWithTag("sessions_terminal_1").getBoundsInRoot()
+        val ownerIdentity = compose.onNodeWithTag("sessions_terminal_1-identity", useUnmergedTree = true).getBoundsInRoot()
+        shot("sessions-owner-row-parity")
         compose.onNodeWithTag("sessions_list").performScrollToNode(hasTestTag("sessions_terminal_4"))
+        val assistantRow = compose.onNodeWithTag("sessions_terminal_4").getBoundsInRoot()
+        val assistantIdentity = compose.onNodeWithTag("sessions_terminal_4-identity", useUnmergedTree = true).getBoundsInRoot()
+        assertEquals("same card height", (ownerRow.bottom - ownerRow.top).value, (assistantRow.bottom - assistantRow.top).value, 1f)
+        assertEquals("same identity alignment", (ownerIdentity.left - ownerRow.left).value, (assistantIdentity.left - assistantRow.left).value, 1f)
+        compose.onNode(hasAnyAncestor(hasTestTag("sessions_terminal_4")) and hasText("user@beelink:22 · Работа"), useUnmergedTree = true).assertExists()
+        shot("sessions-owner-assistant-parity")
         compose.onNode(hasAnyAncestor(hasTestTag("sessions_terminal_4")) and hasContentDescription(compose.activity.getString(R.string.assistant_title)), useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("sessions_terminal_4").performTouchInput { longClick() }
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.assistant_title), substring = true).assertExists()

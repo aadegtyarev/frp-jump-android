@@ -131,7 +131,7 @@ fun SessionsScreen(
             if (allTerminals.any { it.id == live?.id } || sessionHidden(gone, SessionKind.TERMINAL, id, TunnelRef(entry.key.profile, entry.key.device, entry.key.port))) null
             else {
                 val number = live?.number ?: ru.adsrv.frpjump.ssh.tmuxNumber(entry.key.session).toInt().coerceAtLeast(1)
-                AssistantRow(entry.id, assistantSessionTitle(entry.name, number, terminalTitle), live, id, entry.key.profile, entry.key.device, entry.key.user, entry.key.port, problems[entry.key])
+                AssistantRow(entry.id, sessionDisplayTitle(entry.name, number, terminalTitle), live, id, entry.key.profile, entry.key.device, entry.key.user, entry.key.port, problems[entry.key])
             }
         }
     }
@@ -141,9 +141,10 @@ fun SessionsScreen(
     var selected by remember { mutableStateOf(setOf<SessionRef>()) }
     BackHandler(enabled = selected.isNotEmpty()) { selected = emptySet() }
     fun matches(vararg values: String): Boolean = query.isBlank() || values.any { searchMatches(it, query.trim()) }
-    val shownTerminals = list.filter { matches(terminalSessionLabel(it), it.title, it.device, it.user, it.profile, profileNames[it.profile].orEmpty()) }
+    val terminalNames = list.associate { session -> session.id to session.tabName.collectAsStateWithLifecycle().value }
+    val shownTerminals = list.filter { matches(sessionDisplayTitle(terminalNames[it.id], it.number, terminalTitle), terminalSessionLabel(it, terminalNames[it.id]), sessionIdentity(it.user, it.device, it.port, profileLabel(it.profile, profileNames)), it.port.toString(), it.title, it.device, it.user, it.profile, profileNames[it.profile].orEmpty()) }
     val shownMqtt = explorers.filter { matches(it.device, it.port.toString(), it.profile, profileNames[it.profile].orEmpty()) }
-    val shownAssistant = mine.filter { matches(it.title, it.device, it.user, it.profile, profileNames[it.profile].orEmpty()) }
+    val shownAssistant = mine.filter { matches(it.title, sessionIdentity(it.user, it.device, it.port, profileLabel(it.profile, profileNames)), it.port.toString(), it.device, it.user, it.profile, profileNames[it.profile].orEmpty()) }
     val shownRefs = (shownTerminals.map { SessionRef(SessionKind.TERMINAL, it.id) } +
         shownMqtt.map { SessionRef(SessionKind.MQTT, it.id) } + shownAssistant.map { SessionRef(SessionKind.TERMINAL, it.sessionId) }).toSet()
     fun toggle(ref: SessionRef) { selected = if (ref in selected) selected - ref else selected + ref }
@@ -199,7 +200,7 @@ fun SessionsScreen(
         }
         items(shownTerminals, key = { "t${it.id}" }) { session ->
             val ref = SessionRef(SessionKind.TERMINAL, session.id)
-            SelectableTunnelRow(listOfNotNull(terminalSessionLabel(session), profileLabel(session.profile, profileNames), assistantLabel.takeIf { session.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT }).joinToString(", "), selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
+            SelectableTunnelRow(listOfNotNull(sessionDisplayTitle(terminalNames[session.id], session.number, terminalTitle), sessionIdentity(session.user, session.device, session.port, profileLabel(session.profile, profileNames)), assistantLabel.takeIf { session.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT }).joinToString(", "), selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
                 TerminalLine(session, profileColors[session.profile], profileLabel(session.profile, profileNames), session.tabNameKey()?.let { problems[it] },
                     onRecover = { onOpenDeviceTunnels(session.profile, session.device) }, onClose = { close.terminal(session.id) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty()) { onOpenTerminal(session.id) }
             }
@@ -213,7 +214,7 @@ fun SessionsScreen(
         // The assistant's remembered sessions share the list and retain their own exact identity.
         items(shownAssistant, key = { "a${it.id}" }) { row ->
                 val ref = SessionRef(SessionKind.TERMINAL, row.sessionId)
-                SelectableTunnelRow("${row.title}, ${row.user}@${row.device}:${row.port}, ${profileLabel(row.profile, profileNames)}, $assistantLabel", selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
+                SelectableTunnelRow("${row.title}, ${sessionIdentity(row.user, row.device, row.port, profileLabel(row.profile, profileNames))}, $assistantLabel", selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
                     AssistantLine(row, onOpen = { assistant?.let { a -> scope.launch { a.show(row.id)?.let { onOpenTerminal(it.id) } } } }, onClose = { close.terminal(row.sessionId) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty(), profileName = profileLabel(row.profile, profileNames), profileColor = profileColors[row.profile], onRecover = { onOpenDeviceTunnels(row.profile, row.device) })
                 }
         }
@@ -226,15 +227,18 @@ internal class AssistantRow(val id: Int, val title: String, val session: SshSess
     val profile: String = session?.profile.orEmpty(), val device: String = session?.device.orEmpty(), val user: String = session?.user.orEmpty(), val port: Int = session?.port ?: 0,
     val problem: ru.adsrv.frpjump.assistant.OwnerSessionProblem? = null)
 
-internal fun terminalSessionLabel(session: SshSession, name: ru.adsrv.frpjump.ssh.TabName? = session.tabName.value): String {
+internal fun terminalSessionLabel(session: SshSession, name: ru.adsrv.frpjump.ssh.TabName?): String {
     val automatic = ru.adsrv.frpjump.ui.ssh.tabLabel(session.user, session.device, session.port, session.number)
     return sessionIdentityLabel(automatic, name)
 }
 
-internal fun assistantSessionTitle(name: ru.adsrv.frpjump.ssh.TabName?, number: Int, terminal: String): String {
+internal fun sessionDisplayTitle(name: ru.adsrv.frpjump.ssh.TabName?, number: Int, terminal: String): String {
     val title = name?.text?.let { ru.adsrv.frpjump.ssh.isolateName(it) } ?: terminal
     return if (number > 1) "$title · $number" else title
 }
+
+internal fun sessionIdentity(user: String, device: String, port: Int, profileName: String): String =
+    listOfNotNull(device.takeIf { it.isNotBlank() }?.let { "$user@$it:$port" }, profileName.takeIf { it.isNotBlank() }).joinToString(" · ")
 
 private fun sessionIdentityLabel(automatic: String, name: ru.adsrv.frpjump.ssh.TabName?): String {
     val label = ru.adsrv.frpjump.ui.ssh.chipLabel(automatic, name)
@@ -247,7 +251,7 @@ internal fun AssistantLine(row: AssistantRow, onOpen: () -> Unit, onClose: () ->
     val colors = AppTheme.colors
     val live = row.session?.state?.collectAsStateWithLifecycle()?.value
     val (stateText, stateColor) = if (live == null) stringResource(R.string.terminal_state_detached) to colors.muted else terminalStateText(live)
-    val identity = listOfNotNull(row.device.takeIf { it.isNotBlank() }?.let { "${row.user}@$it:${row.port}" }, profileName.takeIf { it.isNotBlank() }).joinToString(" · ")
+    val identity = sessionIdentity(row.user, row.device, row.port, profileName)
     val problem = row.problem?.let { stringResource(ru.adsrv.frpjump.ui.ownerSessionProblemText(it)) }
     SessionLine(row.title, stateText, stateColor, profileColor, onClose, onLongClick, onOpen, selecting, "sessions_assistant_${row.id}",
         identity = identity, problem = problem, onRecover = if (problem != null) onRecover else null, wrapTitle = true, assistantOwned = true) { TerminalIcon() }
@@ -259,12 +263,12 @@ private fun TerminalLine(session: SshSession, profileColor: String?, profileName
     val state by session.state.collectAsStateWithLifecycle()
     val (text, color) = terminalStateText(state)
     val assistantOwned = session.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT
-    val detail = if (assistantOwned) "${session.user}@${session.device}:${session.port} · $profileName" else ""
+    val detail = sessionIdentity(session.user, session.device, session.port, profileName)
     val failure = problem?.let { stringResource(ru.adsrv.frpjump.ui.ownerSessionProblemText(it)) }
     val name by session.tabName.collectAsStateWithLifecycle()
-    val title = if (assistantOwned) assistantSessionTitle(name, session.number, stringResource(R.string.terminal)) else terminalSessionLabel(session, name)
+    val title = sessionDisplayTitle(name, session.number, stringResource(R.string.terminal))
     SessionLine(title, text, color, profileColor, onClose, onLongClick, onClick, selecting, "sessions_terminal_${session.id}",
-        identity = detail, problem = failure, onRecover = if (failure != null) onRecover else null, wrapTitle = assistantOwned, assistantOwned = assistantOwned) { TerminalIcon() }
+        identity = detail, problem = failure, onRecover = if (failure != null) onRecover else null, wrapTitle = true, assistantOwned = assistantOwned) { TerminalIcon() }
 }
 
 @Composable
@@ -306,7 +310,7 @@ private fun SessionLine(title: String, state: String, stateColor: Color, profile
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SessionTile(dot = colors.profile(profileColor ?: "grey"), assistantOwned = assistantOwned, glyph = glyph)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = if (wrapTitle) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
+                    Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = if (wrapTitle) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("$tag-title"))
                     if (identity.isNotBlank()) Text(identity, fontSize = 12.sp, color = colors.muted, modifier = Modifier.testTag("$tag-identity"))
                     Text(state, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = stateColor)
                 }
@@ -338,7 +342,8 @@ internal fun SessionTile(dot: Color?, assistantOwned: Boolean = false, glyph: @C
         }
         if (assistantOwned) {
             val label = stringResource(R.string.assistant_title)
-            Text("✦", color = colors.accent, fontSize = 13.sp, modifier = Modifier.align(Alignment.TopEnd).clearAndSetSemantics { contentDescription = label }.testTag("session_assistant_marker"))
+            Icon(ru.adsrv.frpjump.ui.AssistantGlyph, contentDescription = null, tint = colors.accent,
+                modifier = Modifier.align(Alignment.TopEnd).size(12.dp).clearAndSetSemantics { contentDescription = label }.testTag("session_assistant_marker"))
         }
         dot?.let {
             Box(
