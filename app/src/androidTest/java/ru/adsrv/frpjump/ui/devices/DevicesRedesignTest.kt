@@ -1,37 +1,52 @@
 package ru.adsrv.frpjump.ui.devices
 
-import android.graphics.Bitmap
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
-import ru.adsrv.frpjump.api.Age
-import ru.adsrv.frpjump.api.AgeUnit
-import ru.adsrv.frpjump.devices.DeviceIcon
-import java.util.Locale
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.*
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.api.Age
+import ru.adsrv.frpjump.api.AgeUnit
+import ru.adsrv.frpjump.devices.DeviceIcon
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.settings.ThemeMode
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 import ru.adsrv.frpjump.ui.profiles.ProfileItem
 import java.io.File
+import java.util.Locale
 
 class DevicesRedesignTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -44,7 +59,19 @@ class DevicesRedesignTest {
     private lateinit var originalConfiguration: Configuration
 
     @org.junit.Before fun useFixtureLocale() {
+        val landscape = InstrumentationRegistry.getArguments().getString("composerOrientation") == "landscape"
+        compose.activityRule.scenario.onActivity {
+            it.enableEdgeToEdge()
+            it.requestedOrientation = if (landscape) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        val expected = if (landscape) Configuration.ORIENTATION_LANDSCAPE else Configuration.ORIENTATION_PORTRAIT
+        val until = android.os.SystemClock.uptimeMillis() + 5000
+        while (compose.activity.resources.configuration.orientation != expected && android.os.SystemClock.uptimeMillis() < until) android.os.SystemClock.sleep(50)
+        assertEquals(expected, compose.activity.resources.configuration.orientation)
         val resources = compose.activity.resources
+        InstrumentationRegistry.getArguments().getString("composerFontScale")?.toFloat()?.let { scale ->
+            assertEquals("actual font scale", scale, resources.configuration.fontScale, 0.01f)
+        }
         originalConfiguration = Configuration(resources.configuration)
         val language = InstrumentationRegistry.getArguments().getString("chatLocale") ?: "en"
         @Suppress("DEPRECATION")
@@ -85,8 +112,20 @@ class DevicesRedesignTest {
         }
     }
 
+    private fun assertOutsideSystemBars(node: SemanticsNodeInteraction) {
+        val view = compose.activity.window.decorView
+        val insets = WindowInsetsCompat.toWindowInsetsCompat(view.rootWindowInsets, view).getInsets(WindowInsetsCompat.Type.systemBars())
+        if (InstrumentationRegistry.getArguments().getString("composerOrientation") == "landscape") {
+            assertTrue("landscape must have a horizontal system bar", insets.left > 0 || insets.right > 0)
+        }
+        val bounds = node.fetchSemanticsNode().boundsInWindow
+        assertTrue("left edge is outside system bars: $bounds", bounds.left >= insets.left - 1f)
+        assertTrue("right edge is outside system bars: $bounds", bounds.right <= view.width - insets.right + 1f)
+    }
+
     @Test fun favoritesFilterSearchAndScope() {
         host()
+        assertOutsideSystemBars(compose.onNodeWithTag("settings_gear"))
         compose.onNodeWithTag("device_beelink").assertIsDisplayed()
         shot("devices-idle")
         compose.onNodeWithTag("devices_online_filter").performClick()
@@ -94,6 +133,7 @@ class DevicesRedesignTest {
         shot("devices-online")
         compose.onNodeWithTag("devices_search_open").performClick()
         compose.onNodeWithTag("search_field").performTextInput("красный")
+        assertOutsideSystemBars(compose.onNodeWithContentDescription(localized.getString(R.string.connections_clear_query)))
         compose.onNodeWithTag("device_beelink").assertIsDisplayed()
         compose.onNodeWithTag("device_router-home").assertDoesNotExist()
         shot("devices-search-focused")

@@ -20,6 +20,10 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import kotlinx.coroutines.launch
@@ -188,7 +192,7 @@ internal fun DevicesContent(
     BackHandler(enabled = openRow.name != null) { openRow.close() }
     Scaffold(
         // Anywhere on the screen, after the rows saw the finger: one landing off the open row closes it.
-        modifier = Modifier.closesOpenRow(openRow),
+        modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).closesOpenRow(openRow),
         topBar = {
             if (searching) {
                 SearchBar(
