@@ -14,7 +14,7 @@ data class SessionRef(val kind: SessionKind, val id: Int)
  */
 class SessionCloser(
     private val pendingUndo: PendingUndo,
-    private val closeTerminal: (Int) -> Unit,
+    private val closeTerminal: suspend (Int) -> Unit,
     private val closeMqtt: (Int) -> Unit,
 ) {
     /** Terminal session [id]; [undo] runs when it comes back (its screen selects it again). */

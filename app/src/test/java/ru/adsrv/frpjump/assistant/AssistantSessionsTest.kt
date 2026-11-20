@@ -214,17 +214,17 @@ class AssistantSessionsTest {
     @Test fun `the owner's Close of a session that cannot be reached keeps it and says so`() {
         val rig = remembered(1); rig.targets.ready.clear()
         runBlocking { rig.sessions.closeByOwner(rig.sessions.entries.value.single().id) }
-        assertEquals(listOf(SessionNotice.CLOSE_TUNNEL_OFF), rig.notices)
+        assertEquals(OwnerSessionProblem(OwnerSessionAction.CLOSE, OwnerSessionFailure.UNREACHABLE), rig.sessions.ownerProblems.value.values.single())
         assertEquals(1, rig.sessions.count()); assertTrue(rig.host.log.isEmpty())
         // Reachable: attached, reconnected when it ended, and killed.
         val ok = remembered(1)
         runBlocking { ok.sessions.closeByOwner(ok.sessions.entries.value.single().id) }
-        assertEquals(listOf("open ${100} attach frpjump-0a1b2c-1 only", "close 100 tmux=true"), ok.host.log.map { it.replace(Regex("open \\d+"), "open 100").replace(Regex("close \\d+"), "close 100") })
+        assertEquals(listOf("open ${100} attach frpjump-0a1b2c-1 only", "confirm 100", "close 100 tmux=false"), ok.host.log.map { it.replace(Regex("open \\d+"), "open 100").replace(Regex("close \\d+"), "close 100") })
         assertTrue(ok.notices.isEmpty()); assertEquals(0, ok.sessions.count())
         // A live session that ended is reconnected first, then ended.
         val ended = SessionRig(); ended.existing(4).flow.value = SshState.Ended("drop")
         runBlocking { ended.sessions.closeByOwner(4) }
-        assertTrue(ended.host.log.toString(), ended.host.log.first().startsWith("reconnect 4") && ended.host.log.last().endsWith("tmux=true"))
+        assertTrue(ended.host.log.toString(), ended.host.log.first().startsWith("reconnect 4") && ended.host.log.last().endsWith("tmux=false"))
     }
 
     @Test fun `attaching only attaches, a session that is gone is forgotten, never created again`() {
@@ -262,7 +262,7 @@ class AssistantSessionsTest {
     @Test fun `a Stop while terminal_open waits closes the half-open session`() {
         val rig = SessionRig(); rig.host.comes = SshState.Connecting
         val job = kotlinx.coroutines.GlobalScope.launch(Dispatchers.Default) { rig.sessions.open(ru.adsrv.frpjump.ops.tunnel.SavedTunnelIds("p1", "c1"), 3) }
-        runBlocking { kotlinx.coroutines.delay(100); job.cancelAndJoin() }
+        runBlocking { kotlinx.coroutines.withTimeout(5000) { rig.host.opened.await() }; job.cancelAndJoin() }
         assertEquals(1, rig.host.log.count { it.startsWith("open") })
         assertTrue(rig.host.log.toString(), rig.host.log.last().endsWith("tmux=true")); assertTrue(rig.host.sessions.isEmpty()); assertEquals(0, rig.sessions.count())
     }
@@ -301,7 +301,178 @@ class AssistantSessionsTest {
         assertEquals(1, rig.sessions.count())
         assertNotNull(rig.records.record(SessionKey("p1", "pi", 22, "root", "frpjump-0a1b2c-1")))
         runBlocking { rig.sessions.closeByOwner(id) }
-        assertEquals(listOf(SessionNotice.CLOSE_TUNNEL_OFF), rig.notices); assertEquals(1, rig.sessions.count())
+        assertEquals(OwnerSessionProblem(OwnerSessionAction.CLOSE, OwnerSessionFailure.UNREACHABLE), rig.sessions.ownerProblems.value.values.single()); assertEquals(1, rig.sessions.count())
+    }
+
+    @Test fun `owner open and close failures retain exact target and distinguish setup then recover`() {
+        val rig = remembered(1, 2)
+        val first = rig.sessions.entries.value.first()
+        val second = rig.sessions.entries.value.last()
+        rig.targets.needsSetup += "p1" to "c1"
+        assertNull(runBlocking { rig.sessions.show(first.id) })
+        runBlocking { rig.sessions.closeByOwner(second.id) }
+        assertEquals(OwnerSessionProblem(OwnerSessionAction.OPEN, OwnerSessionFailure.NEEDS_SETUP), rig.sessions.ownerProblems.value[first.key])
+        assertEquals(OwnerSessionProblem(OwnerSessionAction.CLOSE, OwnerSessionFailure.NEEDS_SETUP), rig.sessions.ownerProblems.value[second.key])
+        assertEquals(2, rig.sessions.count())
+        rig.targets.needsSetup.clear()
+        assertNotNull(runBlocking { rig.sessions.show(first.id) })
+        assertFalse(rig.sessions.ownerProblems.value.containsKey(first.key))
+        runBlocking { rig.sessions.closeByOwner(second.id) }
+        assertFalse(rig.sessions.ownerProblems.value.containsKey(second.key))
+        assertEquals(1, rig.sessions.count())
+    }
+
+    @Test fun `unconfirmed remote close retains record and retry removes it only after confirmation`() {
+        val rig = remembered(1)
+        val entry = rig.sessions.entries.value.single()
+        rig.host.closeConfirmed = false
+        runBlocking { rig.sessions.closeByOwner(entry.id) }
+        assertEquals(OwnerSessionProblem(OwnerSessionAction.CLOSE, OwnerSessionFailure.CLOSE_UNCONFIRMED), rig.sessions.ownerProblems.value[entry.key])
+        assertNotNull(rig.records.record(entry.key))
+        assertEquals(entry.key, rig.host.confirmedTarget?.first)
+        assertEquals(entry.key.profile, rig.host.confirmedTarget?.second?.profile)
+        assertEquals(entry.key.device, rig.host.confirmedTarget?.second?.device)
+        assertEquals(entry.key.port, rig.host.confirmedTarget?.second?.port)
+        assertEquals(entry.key.user, rig.host.confirmedTarget?.second?.user)
+        assertEquals(1, rig.sessions.count())
+        assertTrue(rig.host.sessions.any { it.id == entry.id })
+        rig.host.closeConfirmed = true
+        runBlocking { rig.sessions.closeByOwner(entry.id) }
+        assertNull(rig.records.record(entry.key))
+        assertTrue(rig.sessions.ownerProblems.value.isEmpty())
+        assertEquals(0, rig.sessions.count())
+    }
+
+    @Test fun `removed record is not republished by a late failed owner attach`() = runBlocking {
+        val rig = remembered(1)
+        val entry = rig.sessions.entries.value.single()
+        rig.host.comes = SshState.Connecting
+        val work = launch { rig.sessions.closeByOwner(entry.id) }
+        kotlinx.coroutines.yield()
+        assertTrue(rig.host.sessions.isNotEmpty())
+        rig.records.forget(entry.key)
+        rig.sessions.refresh()
+        rig.host.sessions.single().flow.value = SshState.Ended("unavailable")
+        work.join()
+        assertTrue(rig.sessions.ownerProblems.value.isEmpty())
+        assertEquals(0, rig.sessions.count())
+    }
+
+    @Test fun `a changed target after authentication prevents remote close`() {
+        val rig = remembered(1)
+        val entry = rig.sessions.entries.value.single()
+        rig.host.beforeConfirm = { rig.targets.stillValid = false }
+        runBlocking { rig.sessions.closeByOwner(entry.id) }
+        assertFalse(rig.host.log.any { it.startsWith("confirm") })
+        assertNotNull(rig.records.record(entry.key))
+        assertEquals(OwnerSessionFailure.CLOSE_UNCONFIRMED, rig.sessions.ownerProblems.value[entry.key]?.failure)
+    }
+
+    @Test fun `a record removed before dispatch cannot be killed or republished`() {
+        val rig = remembered(1)
+        val entry = rig.sessions.entries.value.single()
+        rig.host.beforeConfirm = { rig.records.forget(entry.key); rig.sessions.refresh() }
+        runBlocking { rig.sessions.closeByOwner(entry.id) }
+        assertFalse(rig.host.log.any { it.startsWith("confirm") })
+        assertNull(rig.records.record(entry.key))
+        assertTrue(rig.sessions.ownerProblems.value.isEmpty())
+    }
+
+    @Test fun `cancellation after authentication prevents owner close dispatch`() = runBlocking {
+        val rig = remembered(1)
+        val entry = rig.sessions.entries.value.single()
+        val work = launch { rig.sessions.closeByOwner(entry.id) }
+        rig.host.beforeConfirm = { work.cancel() }
+        work.join()
+        assertFalse(rig.host.log.any { it.startsWith("confirm") })
+        assertNotNull(rig.records.record(entry.key))
+        assertTrue(rig.sessions.ownerProblems.value.isEmpty())
+    }
+
+    @Test fun `owner receives exact target when saved tunnel or remote session is gone`() {
+        val missingTunnel = remembered(1)
+        val tunnelEntry = missingTunnel.sessions.entries.value.single()
+        missingTunnel.targets.removed += "p1"
+        assertNull(runBlocking { missingTunnel.sessions.show(tunnelEntry.id) })
+        assertEquals(listOf(tunnelEntry.key to true), missingTunnel.gone)
+        assertEquals(0, missingTunnel.sessions.count())
+        val missingSession = remembered(1)
+        val sessionEntry = missingSession.sessions.entries.value.single()
+        missingSession.host.running = emptySet()
+        assertNull(runBlocking { missingSession.sessions.show(sessionEntry.id) })
+        assertEquals(listOf(sessionEntry.key to false), missingSession.gone)
+        assertEquals(0, missingSession.sessions.count())
+    }
+
+    @Test fun `owner replacement before dispatch cannot be killed`() {
+        val rig = remembered(1)
+        val entry = rig.sessions.entries.value.single()
+        rig.host.beforeConfirm = {
+            rig.host.sessions.clear()
+            rig.host.sessions += FakeHosted(entry.id, SessionOpener.OWNER, key = entry.key)
+        }
+        runBlocking { rig.sessions.closeByOwner(entry.id) }
+        assertFalse(rig.host.log.any { it.startsWith("confirm") })
+        assertNotNull(rig.records.record(entry.key))
+    }
+
+    @Test fun `confirmed close and already-gone retry preserve the record on storage failure`() {
+        val file = object : ru.adsrv.frpjump.store.TextStorage {
+            var text: String? = null
+            var fail = false
+            override fun read(): String? = text
+            override fun write(text: String) { if (fail) throw java.io.IOException("full"); this.text = text }
+            override fun delete() { text = null }
+        }
+        val records = ru.adsrv.frpjump.ssh.SessionRecordStore(file)
+        val rig = SessionRig(records = records)
+        val key = SessionKey("p1", "pi", 22, "root", "frpjump-0a1b2c-1")
+        records.put(key, null, openedBy = SessionOpener.ASSISTANT)
+        rig.sessions.refresh()
+        val id = rig.sessions.entries.value.single().id
+        file.fail = true
+        runBlocking { rig.sessions.closeByOwner(id) }
+        assertEquals(OwnerSessionFailure.RECORD_SAVE_FAILED, rig.sessions.ownerProblems.value[key]?.failure)
+        assertNotNull(records.record(key))
+        assertNotNull(ru.adsrv.frpjump.ssh.SessionRecordStore(file).record(key))
+        // The successful remote kill may already have ended the tab. Retry sees the session gone.
+        rig.host.sessions.clear()
+        rig.host.running = emptySet()
+        runBlocking { rig.sessions.closeByOwner(id) }
+        assertEquals(OwnerSessionFailure.RECORD_SAVE_FAILED, rig.sessions.ownerProblems.value[key]?.failure)
+        assertNotNull(records.record(key))
+        rig.host.sessions.clear()
+        file.fail = false
+        runBlocking { rig.sessions.closeByOwner(id) }
+        assertNull(records.record(key))
+        assertNull(ru.adsrv.frpjump.ssh.SessionRecordStore(file).record(key))
+        assertEquals(0, rig.sessions.count())
+    }
+
+    @Test fun `owner retry reconnects retained ended tab through current endpoint`() {
+        val rig = SessionRig()
+        val old = rig.existing(4)
+        old.flow.value = SshState.Ended("drop")
+        old.shown = true
+        rig.targets.localPort = 49999
+        rig.host.closeConfirmed = false
+        runBlocking { rig.sessions.closeByOwner(4) }
+        assertEquals(49999, rig.host.reconnectedTarget?.localPort)
+        assertEquals(49999, rig.host.confirmedTarget?.second?.localPort)
+        assertEquals(4, rig.host.sessions.single().id)
+        assertTrue(rig.host.sessions.single().shown)
+        assertNotNull(rig.records.record(old.key!!))
+    }
+
+    @Test fun `cancellation after acknowledgement still finishes durable owner cleanup`() = runBlocking {
+        val rig = remembered(1)
+        val entry = rig.sessions.entries.value.single()
+        val work = launch { rig.sessions.closeByOwner(entry.id) }
+        rig.host.afterConfirm = { work.cancel() }
+        work.join()
+        assertNull(rig.records.record(entry.key))
+        assertTrue(rig.host.sessions.none { it.id == entry.id })
+        assertEquals(0, rig.sessions.count())
     }
 
     @Test fun `only a real answer that the session is not there says gone`() {
@@ -416,7 +587,7 @@ class AssistantSessionsTest {
     @Test fun `the owner closing the assistant's session takes the same way, no question`() {
         val rig = SessionRig(); rig.existing(4)
         runBlocking { rig.sessions.closeByOwner(4) }
-        assertEquals(listOf("close 4 tmux=true"), rig.host.log)
+        assertEquals(listOf("confirm 4", "close 4 tmux=false"), rig.host.log)
     }
 
     @Test fun `the assistant renames a remembered session without attaching it`() {

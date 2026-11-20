@@ -155,8 +155,9 @@ class ExecResult(val stdout: String, val stderr: String, val exitStatus: Int?)
 fun execOutput(ssh: SSHClient, command: String): String = execResult(ssh, command).stdout
 
 /** [execOutput] with the error output and the exit status as well. */
-fun execResult(ssh: SSHClient, command: String): ExecResult =
+fun execResult(ssh: SSHClient, command: String, beforeExec: () -> Unit = {}): ExecResult =
     ssh.startSession().use { s ->
+        beforeExec()
         val exec = s.exec(command)
         // As the probe: the output waits in the channel's window until read; no answer is no answer.
         exec.join(EXEC_TIMEOUT_S, TimeUnit.SECONDS)

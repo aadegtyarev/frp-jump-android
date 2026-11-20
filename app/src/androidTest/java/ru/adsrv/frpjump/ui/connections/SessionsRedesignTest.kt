@@ -21,9 +21,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -149,6 +151,9 @@ class SessionsRedesignTest {
         host()
         compose.onNodeWithTag("sessions_terminal_1").assertExists().performClick()
         compose.runOnIdle { assertEquals(1, opened) }
+        val searchBounds = compose.onNodeWithTag("sessions_search_surface", useUnmergedTree = true).getBoundsInRoot()
+        val firstBounds = compose.onNodeWithTag("sessions_terminal_1").getBoundsInRoot()
+        assertTrue("search to first row gap is at least 12dp", (firstBounds.top - searchBounds.bottom).value >= 11.5f)
         shot("sessions-list")
         compose.onNodeWithTag("sessions_search").performTextInput("beelink")
         compose.onNodeWithTag("sessions_terminal_3").assertDoesNotExist()
@@ -179,6 +184,81 @@ class SessionsRedesignTest {
         host()
         compose.onNodeWithText(compose.activity.getString(R.string.sessions_empty)).assertIsDisplayed()
         shot("sessions-empty")
+    }
+
+    @Test fun detachedAssistantFailureShowsTargetAndOffersRecovery() {
+        compose.runOnIdle { terminals.closeAll() }
+        val activeScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val key = ru.adsrv.frpjump.ssh.SessionKey("work", "beelink", 2222, "user", "frpjump-0a1b2c-1")
+        val records = ru.adsrv.frpjump.ssh.SessionRecordStore(Memory())
+        records.put(key, "Deploy", ru.adsrv.frpjump.ssh.NameSetter.ASSISTANT, ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT)
+        val fakeHost = object : ru.adsrv.frpjump.assistant.SessionHost {
+            override fun all(): List<ru.adsrv.frpjump.assistant.HostedSession> = emptyList()
+            override fun reserveId() = 51
+            override fun open(spec: ru.adsrv.frpjump.assistant.OpenSpec, id: Int?, tmuxName: String?, attachOnly: Boolean): ru.adsrv.frpjump.assistant.HostedSession = error("must not connect")
+            override fun reconnect(id: Int): ru.adsrv.frpjump.assistant.HostedSession? = null
+            override fun reconnectForOwner(id: Int, spec: ru.adsrv.frpjump.assistant.OpenSpec): ru.adsrv.frpjump.assistant.HostedSession? = null
+            override fun close(id: Int, endTmux: Boolean) = Unit
+            override suspend fun endConfirmed(id: Int, key: ru.adsrv.frpjump.ssh.SessionKey, spec: ru.adsrv.frpjump.assistant.OpenSpec, beforeExec: () -> Unit) = false
+            override fun show(id: Int): ru.adsrv.frpjump.assistant.HostedSession? = null
+        }
+        var setup = false
+        val fakeTargets = object : ru.adsrv.frpjump.assistant.SessionTargets {
+            override fun spec(profile: String, connection: String): ru.adsrv.frpjump.assistant.SpecResult = if (setup) ru.adsrv.frpjump.assistant.SpecResult.NeedsSetup else ru.adsrv.frpjump.assistant.SpecResult.Unavailable
+            override fun connectionAt(profile: String, device: String, port: Int) = "connection"
+            override fun connectionGone(profile: String, device: String, port: Int) = false
+        }
+        val assistant = ru.adsrv.frpjump.assistant.AssistantSessions(fakeHost, fakeTargets, records, activeScope, main = Dispatchers.Unconfined, io = Dispatchers.Unconfined)
+        assistant.refresh()
+        val localPending = PendingUndo(timer = { _, _ -> {} }, run = { action -> activeScope.launch { action() } }, announce = { _, _ -> })
+        var recovery: Pair<String, String>? = null
+        compose.setContent {
+            FrpJumpTheme(mode = ThemeMode.DARK) {
+                Box(Modifier.fillMaxSize().background(AppTheme.colors.ground)) {
+                    SessionsScreen(terminals, app.mqtt, localPending.hidden, SessionCloser(localPending, { assistant.closeByOwner(it) }, {}), mapOf("work" to "crimson"), {}, {}, assistant, mapOf("work" to "Работа"), { p, d -> recovery = p to d })
+                }
+            }
+        }
+        compose.waitUntil(5000) { assistant.entries.value.isNotEmpty() }
+        compose.onNodeWithTag("sessions_assistant_51").assertIsDisplayed()
+        compose.onNodeWithTag("sessions_assistant_group").assertDoesNotExist()
+        compose.onNode(hasAnyAncestor(hasTestTag("sessions_assistant_51")) and hasContentDescription(compose.activity.getString(R.string.assistant_title)), useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("user@beelink:2222 · Работа", useUnmergedTree = true).assertIsDisplayed()
+        shot("assistant-session-detached")
+        compose.onNodeWithTag("sessions_assistant_51").performClick()
+        compose.onNodeWithText(compose.activity.getString(R.string.assistant_session_open_unreachable), useUnmergedTree = true).assertIsDisplayed()
+        shot("assistant-session-open-failed")
+        compose.onNodeWithTag("sessions_assistant_recover").performClick()
+        compose.runOnIdle { assertEquals("work" to "beelink", recovery) }
+        compose.onNodeWithTag("sessions_assistant_51-close", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("sessions_assistant_51").assertDoesNotExist()
+        compose.runOnIdle { localPending.undoAll() }
+        compose.onNodeWithTag("sessions_assistant_51").assertExists()
+        compose.onNodeWithTag("sessions_assistant_51-close", useUnmergedTree = true).performClick()
+        compose.runOnIdle { localPending.commitAll() }
+        compose.onNodeWithText(compose.activity.getString(R.string.assistant_session_close_unreachable), useUnmergedTree = true).assertIsDisplayed()
+        val failureBounds = compose.onNodeWithTag("sessions_assistant_51-problem", useUnmergedTree = true).getBoundsInRoot()
+        val identityBounds = compose.onNodeWithTag("sessions_assistant_51-identity", useUnmergedTree = true).getBoundsInRoot()
+        assertTrue("recovery guidance uses full width below identity", failureBounds.top >= identityBounds.bottom && (failureBounds.right - failureBounds.left) > (identityBounds.right - identityBounds.left))
+        shot("assistant-session-close-failed")
+        setup = true
+        compose.onNodeWithTag("sessions_assistant_51").performClick()
+        compose.onNodeWithText(compose.activity.getString(R.string.assistant_session_open_setup), useUnmergedTree = true).assertIsDisplayed()
+        shot("assistant-session-setup-needed")
+        activeScope.cancel()
+    }
+
+    @Test fun shownAssistantTabKeepsItsMarkerAndSelectionOwnership() {
+        compose.runOnIdle {
+            val session = terminals.open("work", HostKeyStore(Memory()), "beelink", 22, 9, "user", SshAuth.Key, openedBy = ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT)
+            terminals.show(session.id)
+        }
+        host()
+        compose.onNodeWithTag("sessions_list").performScrollToNode(hasTestTag("sessions_terminal_4"))
+        compose.onNode(hasAnyAncestor(hasTestTag("sessions_terminal_4")) and hasContentDescription(compose.activity.getString(R.string.assistant_title)), useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("sessions_terminal_4").performTouchInput { longClick() }
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.assistant_title), substring = true).assertExists()
+        shot("assistant-session-shown-selected")
     }
 
     @Test fun terminalChoicesShowDistinctTabsAndNewAction() {

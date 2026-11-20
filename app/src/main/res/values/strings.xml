@@ -315,7 +315,7 @@
     <!-- Undo instead of confirm: the notice shared by deletes, disconnects and closes in a row -->
     <string name="undo_deleted">Deleted: %d</string>
     <string name="undo_disconnected">Stopped: %d</string>
-    <string name="undo_closed">Closed: %d</string>
+    <string name="undo_closed">Scheduled to close: %1$d</string>
     <string name="undo">Undo</string>
     <string name="ssh_password_saved_spoken">%s, saved</string>
     <plurals name="terminal_sessions_count">
@@ -1564,6 +1564,16 @@
     <string name="terminal_session_by_assistant">Assistant’s session</string>
     <string name="ssh_session_unknown">Could not check whether the session still exists on the device.</string>
     <string name="ssh_session_gone">The session no longer exists on the device.</string>
+    <string name="assistant_session_open_setup">Could not open. Set up SSH login or host key, then try again.</string>
+    <string name="assistant_session_open_unreachable">Could not open. Check the tunnel and connection, then try again.</string>
+    <string name="assistant_session_close_setup">Could not close. Set up SSH login or host key, then try again.</string>
+    <string name="assistant_session_close_unreachable">Could not close. Check the tunnel and connection, then try again.</string>
+    <string name="assistant_session_close_unconfirmed">Could not confirm the session closed. Check the connection and try again.</string>
+    <string name="assistant_session_saved_tunnel_gone">The saved tunnel is gone. The session remains on the device.</string>
+    <string name="assistant_session_remote_gone">The session no longer exists on the device.</string>
+    <string name="assistant_session_record_failed">Could not save the session state on this phone. Check storage and try again.</string>
+    <string name="assistant_session_failure_notice">%1$s · %2$s:%3$d. %4$s</string>
+    <string name="assistant_session_tunnels">Device tunnels</string>
     <string name="session_tunnel_gone">The session stays on the device: its saved tunnel is gone</string>
     <string name="session_close_tunnel_off">Could not close: the tunnel is off</string>
     <string name="limit_reply_raised">at least one call and one model answer: %1$d s</string>

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -66,10 +67,16 @@ internal enum class AttachResult {
     NEEDS_SETUP,
     /** The tunnel is off, the switch is off, or the connection did not come up. */
     UNREACHABLE,
+    /** The device result was known, but the local record could not be updated. */
+    RECORD_SAVE_FAILED,
 }
 
 /** What the owner is told in a notice (the app words it). */
-enum class SessionNotice { TUNNEL_GONE, CLOSE_TUNNEL_OFF }
+enum class SessionNotice { TUNNEL_GONE }
+
+enum class OwnerSessionAction { OPEN, CLOSE }
+enum class OwnerSessionFailure { NEEDS_SETUP, UNREACHABLE, CLOSE_UNCONFIRMED, RECORD_SAVE_FAILED }
+data class OwnerSessionProblem(val action: OwnerSessionAction, val failure: OwnerSessionFailure)
 
 /** What the owner is asked for: act in the assistant's session [id] ([reason] is the model's text, shown as it is after cleaning). */
 class OwnerAsk(val id: Int, val reason: String, val profile: String, val user: String, val device: String, val number: Int, val name: String?) {
@@ -104,7 +111,7 @@ internal interface HostedSession {
 }
 
 /** Where a session logs in: what [SessionHost.open] needs of a saved SSH connection whose tunnel is on. */
-internal class OpenSpec(val profile: String, val hostKeys: HostKeyStore?, val device: String, val port: Int, val localPort: Int, val user: String, val auth: SshAuth?)
+internal class OpenSpec(val profile: String, val hostKeys: HostKeyStore?, val device: String, val port: Int, val localPort: Int, val user: String, val auth: SshAuth?, val stillValid: () -> Boolean = { true })
 
 /** The app's sessions as the assistant's sessions use them ([SshSessions] in the app). Main thread. */
 internal interface SessionHost {
@@ -119,7 +126,11 @@ internal interface SessionHost {
     fun open(spec: OpenSpec, id: Int? = null, tmuxName: String? = null, attachOnly: Boolean = false): HostedSession
     /** A fresh session in place of the ended one [id] (the same login and tmux session); null when there is none. */
     fun reconnect(id: Int): HostedSession?
+    /** Owner retry reattaches with the current verified endpoint and login. */
+    fun reconnectForOwner(id: Int, spec: OpenSpec): HostedSession?
     fun close(id: Int, endTmux: Boolean)
+    /** Confirms ending this exact assistant-owned tmux session; false is unconfirmed. */
+    suspend fun endConfirmed(id: Int, key: SessionKey, spec: OpenSpec, beforeExec: () -> Unit): Boolean
     /** The owner has the assistant's session [id] as a tab now. */
     fun show(id: Int): HostedSession?
 }
@@ -162,6 +173,8 @@ class AssistantSessions internal constructor(
     /** Takes that notification back when the ask is answered or its session is gone. */
     private val cancelNotify: (Int) -> Unit = {},
     private val notice: (SessionNotice) -> Unit = {},
+    private val ownerFailure: (SessionKey, OwnerSessionProblem) -> Unit = { _, _ -> },
+    private val ownerGone: (SessionKey, Boolean) -> Unit = { _, _ -> },
     /** Whether the owner's «Свои сессии» switch is on: the assistant attaches over a tunnel only while it is. */
     private val enabled: () -> Boolean = { true },
     private val main: CoroutineDispatcher = Dispatchers.Main,
@@ -178,8 +191,11 @@ class AssistantSessions internal constructor(
 
     private val ids = HashMap<SessionKey, Int>()
     private val attaching = Mutex()
+    private val recordPublication = Mutex()
     private val _entries = MutableStateFlow<List<Entry>>(emptyList())
     private val _asks = MutableStateFlow<List<OwnerAsk>>(emptyList())
+    private val _ownerProblems = MutableStateFlow<Map<SessionKey, OwnerSessionProblem>>(emptyMap())
+    val ownerProblems: StateFlow<Map<SessionKey, OwnerSessionProblem>> = _ownerProblems
 
     /** The assistant's sessions as the records say, as they change: what Sessions, `terminal_tabs` and the limit use. */
     val entries: StateFlow<List<Entry>> = _entries
@@ -194,7 +210,7 @@ class AssistantSessions internal constructor(
     /** Reads the records again (at start and whenever they change). Any thread. */
     fun refresh() { scope.launch(io) { reload() } }
 
-    private suspend fun reload() {
+    private suspend fun reload() = recordPublication.withLock {
         val stored = records.assistantSessions()
         withContext(main) {
             val list = stored.map { (key, record) ->
@@ -203,6 +219,7 @@ class AssistantSessions internal constructor(
             }
             list.forEach { ids[it.key] = it.id }
             _entries.value = list
+            _ownerProblems.update { problems -> problems.filterKeys { key -> list.any { it.key == key } } }
             // An ask whose session is gone goes with it, and so does its notification.
             val present = list.map { it.id }.toSet()
             _asks.value.filter { it.id !in present }.forEach { cancelNotify(it.id) }
@@ -284,7 +301,7 @@ class AssistantSessions internal constructor(
      * ONLY attaches: a tmux session that is gone is not created again (its record is forgotten), a login of another user than the record's is not offered, a tunnel
      * is not started. A session that is live but ended is reconnected. Never throws.
      */
-    internal suspend fun attach(id: Int, byOwner: Boolean = false): AttachResult = attaching.withLock {
+    internal suspend fun attach(id: Int, byOwner: Boolean = false, strictForget: Boolean = byOwner): AttachResult = attaching.withLock {
         withContext(main) {
             if (!byOwner && !enabled()) return@withContext AttachResult.UNREACHABLE
             val entry = entryFor(id) ?: return@withContext AttachResult.UNREACHABLE
@@ -295,10 +312,8 @@ class AssistantSessions internal constructor(
             if (connection == null) {
                 if (targets.connectionGone(key.profile, key.device, key.port)) {
                     // Its saved tunnel was removed: the session stays on the device, and the owner is told.
-                    withContext(io) { records.forget(key) }
-                    existing?.let { ssh.close(it.id, endTmux = false) }
-                    _entries.update { list -> list.filter { it.key != key } }
-                    notice(SessionNotice.TUNNEL_GONE)
+                    if (!forgetObservedGone(key, strictForget) { existing?.let { ssh.close(it.id, endTmux = false) } }) return@withContext AttachResult.RECORD_SAVE_FAILED
+                    if (strictForget) ownerGone(key, true) else notice(SessionNotice.TUNNEL_GONE)
                     return@withContext AttachResult.GONE
                 }
                 return@withContext AttachResult.UNREACHABLE
@@ -311,7 +326,7 @@ class AssistantSessions internal constructor(
             // Never one user's credentials for another's session.
             if (spec.user != key.user) return@withContext AttachResult.NEEDS_SETUP
             val session = when {
-                existing != null -> ssh.reconnect(existing.id) ?: return@withContext AttachResult.UNREACHABLE
+                existing != null -> (if (strictForget) ssh.reconnectForOwner(existing.id, spec) else ssh.reconnect(existing.id)) ?: return@withContext AttachResult.UNREACHABLE
                 else -> ssh.open(OpenSpec(spec.profile, spec.hostKeys, key.device, key.port, spec.localPort, key.user, spec.auth), id = entry.id, tmuxName = key.session, attachOnly = true)
             }
             entry.name?.let(session::restoreName)
@@ -319,48 +334,132 @@ class AssistantSessions internal constructor(
             when {
                 state is SshState.Open -> AttachResult.ATTACHED
                 session.sessionGone -> {
-                    ssh.close(session.id, endTmux = false)
-                    withContext(io) { records.forget(key) }
-                    _entries.update { list -> list.filter { it.key != key } }
-                    AttachResult.GONE
+                    if (!forgetObservedGone(key, strictForget) { ssh.close(session.id, endTmux = false) }) AttachResult.RECORD_SAVE_FAILED
+                    else {
+                        if (strictForget) ownerGone(key, false)
+                        AttachResult.GONE
+                    }
                 }
+                state is SshState.HostKeyUnknown || state is SshState.HostKeyChanged -> { ssh.close(session.id, endTmux = false); if (byOwner) AttachResult.NEEDS_SETUP else AttachResult.UNREACHABLE }
                 else -> { ssh.close(session.id, endTmux = false); AttachResult.UNREACHABLE }
             }
         }
     }
 
-    /** The owner opens the assistant's session [id] as a tab (attaching it first when it is detached); the live session, or null when it cannot be. */
-    internal suspend fun show(id: Int): HostedSession? {
-        if (attach(id, byOwner = true) != AttachResult.ATTACHED) return null
-        dismissAsk(id)
-        return withContext(main) { entryFor(id)?.let { live(it) }?.let { ssh.show(it.id) } }
+    private suspend fun forgetObservedGone(key: SessionKey, strict: Boolean, closeLocal: () -> Unit): Boolean = try {
+        recordPublication.withLock {
+            withContext(io) { if (strict) records.forgetConfirmed(key) else records.forget(key) }
+            withContext(main) { closeLocal(); _entries.update { list -> list.filter { it.key != key } } }
+        }
+        true
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
+
+    private fun ownerFailureFor(result: AttachResult): OwnerSessionFailure? = when (result) {
+        AttachResult.NEEDS_SETUP -> OwnerSessionFailure.NEEDS_SETUP
+        AttachResult.UNREACHABLE -> OwnerSessionFailure.UNREACHABLE
+        AttachResult.RECORD_SAVE_FAILED -> OwnerSessionFailure.RECORD_SAVE_FAILED
+        else -> null
     }
 
-    /**
-     * Ends the assistant's session [id] with its tmux session and anything in it ([CloseResult]). A detached session is attached first, which needs its tunnel; one
-     * found gone is closed as well (nothing left to end).
-     */
+    private suspend fun recordOwnerProblem(key: SessionKey?, action: OwnerSessionAction, failure: OwnerSessionFailure?) = withContext(main) {
+        if (key == null) return@withContext
+        if (_entries.value.none { it.key == key }) {
+            _ownerProblems.update { it - key }
+            return@withContext
+        }
+        val problem = failure?.let { OwnerSessionProblem(action, it) }
+        _ownerProblems.update { old -> if (problem == null) old - key else old + (key to problem) }
+        if (problem != null) ownerFailure(key, problem)
+    }
+
+    /** Opens the owner's tab, keeping a target-specific recovery state if attach fails. */
+    internal suspend fun show(id: Int): HostedSession? {
+        val key = withContext(main) { entryFor(id)?.key }
+        val result = try { attach(id, byOwner = true) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { AttachResult.UNREACHABLE }
+        recordOwnerProblem(key, OwnerSessionAction.OPEN, ownerFailureFor(result))
+        if (result != AttachResult.ATTACHED) return null
+        val shown = withContext(main) { entryFor(id)?.let { live(it) }?.let { ssh.show(it.id) } }
+        if (shown == null) recordOwnerProblem(key, OwnerSessionAction.OPEN, OwnerSessionFailure.UNREACHABLE)
+        else dismissAsk(id)
+        return shown
+    }
+
+    /** The assistant tool retains its existing close path and admission behavior. */
     internal suspend fun close(id: Int): CloseResult {
         val entry = withContext(main) { entryFor(id) }
         if (entry == null) return if (withContext(main) { ssh.find(id) } != null) CloseResult.NotYours else CloseResult.Unknown
-        return when (attach(id, byOwner = true)) {
+        return when (attach(id, byOwner = true, strictForget = false)) {
             AttachResult.ATTACHED -> {
-                withContext(main) { live(entry)?.let { ssh.close(it.id, endTmux = true) } }
-                withContext(main) { _entries.update { list -> list.filter { it.key != entry.key } } }
+                withContext(main) { live(entry)?.let { ssh.close(it.id, endTmux = true) }; _entries.update { list -> list.filter { it.key != entry.key } } }
                 dismissAsk(id)
                 CloseResult.Closed
             }
             AttachResult.GONE -> { dismissAsk(id); CloseResult.Closed }
-            AttachResult.NEEDS_SETUP, AttachResult.UNREACHABLE -> CloseResult.Unreachable
+            AttachResult.NEEDS_SETUP, AttachResult.UNREACHABLE, AttachResult.RECORD_SAVE_FAILED -> CloseResult.Unreachable
         }
     }
 
-    /**
-     * The owner's Close of the assistant's session [id] (the shared Undo has run out): the same, no confirmation. A session that cannot be reached stays listed
-     * and the owner is told; never silent.
-     */
+    private suspend fun closeDetailed(id: Int, onFailure: (OwnerSessionFailure) -> Unit): CloseResult {
+        val entry = withContext(main) { entryFor(id) }
+        if (entry == null) return if (withContext(main) { ssh.find(id) } != null) CloseResult.NotYours else CloseResult.Unknown
+        return when (val attached = attach(id, byOwner = true)) {
+            AttachResult.ATTACHED -> {
+                val target = withContext(main) {
+                    val connection = targets.connectionAt(entry.key.profile, entry.key.device, entry.key.port)
+                    connection?.let { targets.spec(entry.key.profile, it) }
+                }
+                if (target !is SpecResult.Ready || target.spec.user != entry.key.user) {
+                    onFailure(if (target is SpecResult.NeedsSetup || target is SpecResult.Ready) OwnerSessionFailure.NEEDS_SETUP else OwnerSessionFailure.UNREACHABLE)
+                    CloseResult.Unreachable
+                } else {
+                    val live = withContext(main) { live(entry) }
+                    val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+                    job?.ensureActive()
+                    withContext(NonCancellable) {
+                        val confirmed = try { live != null && ssh.endConfirmed(live.id, entry.key, target.spec) {
+                            job?.ensureActive()
+                            check(target.spec.stillValid() && _entries.value.any { it.key == entry.key } &&
+                                records.record(entry.key)?.openedBy == SessionOpener.ASSISTANT &&
+                                ssh.find(live.id)?.let { it.key == entry.key && it.openedBy == SessionOpener.ASSISTANT } == true)
+                            job?.ensureActive()
+                        } }
+                            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                            catch (_: Exception) { false }
+                        if (!confirmed) {
+                            onFailure(OwnerSessionFailure.CLOSE_UNCONFIRMED)
+                            CloseResult.Unreachable
+                        } else {
+                            try {
+                                recordPublication.withLock {
+                                    withContext(io) { records.forgetConfirmed(entry.key) }
+                                    withContext(main) {
+                                        live(entry)?.let { ssh.close(it.id, endTmux = false) }
+                                        _entries.update { list -> list.filter { it.key != entry.key } }
+                                    }
+                                }
+                                dismissAsk(id)
+                                CloseResult.Closed
+                            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                            catch (_: Exception) { onFailure(OwnerSessionFailure.RECORD_SAVE_FAILED); CloseResult.Unreachable }
+                        }
+                    }
+                }
+            }
+            AttachResult.GONE -> { dismissAsk(id); CloseResult.Closed }
+            AttachResult.NEEDS_SETUP, AttachResult.UNREACHABLE, AttachResult.RECORD_SAVE_FAILED -> { onFailure(ownerFailureFor(attached)!!); CloseResult.Unreachable }
+        }
+    }
+
+    /** The owner's committed close completes before its Undo key is released. */
     suspend fun closeByOwner(id: Int) {
-        if (close(id) == CloseResult.Unreachable) notice(SessionNotice.CLOSE_TUNNEL_OFF)
+        val key = withContext(main) { entryFor(id)?.key }
+        var failure: OwnerSessionFailure? = null
+        try { closeDetailed(id) { failure = it } }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { failure = OwnerSessionFailure.UNREACHABLE }
+        recordOwnerProblem(key, OwnerSessionAction.CLOSE, failure)
     }
 
     /** What the card of a close shows of session [id]; null when it is not the assistant's. Pure lookup of app state, main thread. */
@@ -439,7 +538,24 @@ internal class SshSessionHost(private val ssh: SshSessions) : SessionHost {
     override fun open(spec: OpenSpec, id: Int?, tmuxName: String?, attachOnly: Boolean): HostedSession = SshHosted(
         ssh.open(spec.profile, checkNotNull(spec.hostKeys), spec.device, spec.port, spec.localPort, spec.user, checkNotNull(spec.auth), SessionOpener.ASSISTANT, id, tmuxName, attachOnly))
     override fun reconnect(id: Int): HostedSession? = ssh.reconnect(id)?.let(::SshHosted)
+    override fun reconnectForOwner(id: Int, spec: OpenSpec): HostedSession? {
+        val old = ssh.find(id) ?: return null
+        if (old.openedBy != SessionOpener.ASSISTANT || old.profile != spec.profile || old.device != spec.device || old.port != spec.port || old.user != spec.user || !spec.stillValid()) return null
+        return ssh.reconnectAssistant(id, spec.hostKeys ?: return null, spec.localPort, spec.user, spec.auth ?: return null)?.let(::SshHosted)
+    }
     override fun close(id: Int, endTmux: Boolean) = ssh.close(id, endTmux = endTmux)
+    override suspend fun endConfirmed(id: Int, key: SessionKey, spec: OpenSpec, beforeExec: () -> Unit): Boolean {
+        val session = ssh.find(id) ?: return false
+        if (session.openedBy != SessionOpener.ASSISTANT || session.tabNameKey() != key || spec.profile != key.profile || spec.device != key.device || spec.port != key.port || spec.user != key.user) return false
+        val hostKeys = spec.hostKeys ?: return false
+        val auth = spec.auth ?: return false
+        return try {
+            withContext(Dispatchers.IO) {
+                ssh.runOnDeviceIsolated(spec.profile, hostKeys, spec.device, spec.port, spec.localPort, spec.user, auth, ru.adsrv.frpjump.ssh.tmuxKillCommand(key.session), beforeExec).exitStatus == 0
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
+    }
+
     override fun show(id: Int): HostedSession? = ssh.show(id)?.let(::SshHosted)
 }
 
@@ -449,7 +565,9 @@ internal class SshSessionTargets(private val targets: SshTargets) : SessionTarge
         val target = (targets.resolveSaved(profile, connection) as? SshTargetResolution.Ready)?.target ?: return SpecResult.Unavailable
         val (user, auth) = targets.directSession(target) ?: return SpecResult.NeedsSetup
         val saved = target.connection
-        return SpecResult.Ready(OpenSpec(target.profile, target.runtime.hostKeys, saved.device, saved.port, target.tunnel.localPort, user, auth))
+        val fingerprint = targets.fingerprint(profile, connection)
+        return SpecResult.Ready(OpenSpec(target.profile, target.runtime.hostKeys, saved.device, saved.port, target.tunnel.localPort, user, auth,
+            stillValid = { fingerprint != null && targets.isAvailable(target) && targets.fingerprint(profile, connection) == fingerprint }))
     }
     override fun connectionAt(profile: String, device: String, port: Int) = targets.savedConnectionAt(profile, device, port)
     override fun connectionGone(profile: String, device: String, port: Int) = targets.connectionGone(profile, device, port)

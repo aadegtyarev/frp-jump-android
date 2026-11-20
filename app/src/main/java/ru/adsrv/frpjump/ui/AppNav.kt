@@ -311,6 +311,7 @@ fun AppNav() {
                     onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
                     assistant = app.assistantSessions,
                     profileNames = profilesState.index.profiles.associate { it.id to it.name },
+                    onOpenDeviceTunnels = { profile, device -> nav.openDeviceTunnels(profile, device) },
                 )
             }
         }

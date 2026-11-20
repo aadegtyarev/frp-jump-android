@@ -36,6 +36,12 @@ internal class FakeHost : SessionHost {
     var running: Set<String>? = null
     /** The probe of an attach-only session gets no answer: it ends, but not as gone. */
     var probeTimesOut = false
+    val opened = kotlinx.coroutines.CompletableDeferred<Unit>()
+    var beforeConfirm: () -> Unit = {}
+    var afterConfirm: () -> Unit = {}
+    var closeConfirmed = true
+    var confirmedTarget: Pair<SessionKey, OpenSpec>? = null
+    var reconnectedTarget: OpenSpec? = null
     private var next = 100
     override fun all(): List<HostedSession> = sessions.toList()
     override fun reserveId() = next++
@@ -48,6 +54,7 @@ internal class FakeHost : SessionHost {
         if (attachOnly && probeTimesOut) s.flow.value = SshState.Ended("no answer")
         sessions += s
         log += "open ${s.id}${if (tmuxName != null) " attach $tmuxName" else ""}${if (attachOnly) " only" else ""}"
+        opened.complete(Unit)
         return s
     }
     override fun reconnect(id: Int): HostedSession? {
@@ -58,7 +65,20 @@ internal class FakeHost : SessionHost {
         log += "reconnect $id -> ${s.id}"
         return s
     }
+    override fun reconnectForOwner(id: Int, spec: OpenSpec): HostedSession? {
+        reconnectedTarget = spec
+        return reconnect(id)
+    }
     override fun close(id: Int, endTmux: Boolean) { sessions.removeAll { it.id == id }; log += "close $id tmux=$endTmux" }
+    override suspend fun endConfirmed(id: Int, key: SessionKey, spec: OpenSpec, beforeExec: () -> Unit): Boolean {
+        beforeConfirm()
+        beforeExec()
+        log += "confirm $id"
+        confirmedTarget = key to spec
+        val confirmed = closeConfirmed && sessions.any { it.id == id && it.key == key }
+        if (confirmed) afterConfirm()
+        return confirmed
+    }
     override fun show(id: Int): HostedSession? = sessions.firstOrNull { it.id == id }?.also { it.shown = true; log += "show $id" }
 }
 
@@ -66,10 +86,12 @@ internal class FakeHost : SessionHost {
 internal class FakeTargets : SessionTargets {
     val ready = mutableSetOf("p1" to "c1")
     val needsSetup = mutableSetOf<Pair<String, String>>()
+    var stillValid = true
+    var localPort = 40001
     override fun spec(profile: String, connection: String): SpecResult = when {
         profile to connection in needsSetup -> SpecResult.NeedsSetup
         profile to connection !in ready -> SpecResult.Unavailable
-        else -> SpecResult.Ready(OpenSpec(profile, null, "pi", 22, 40001, user, null))
+        else -> SpecResult.Ready(OpenSpec(profile, null, "pi", 22, localPort, user, null, stillValid = { stillValid }))
     }
     /** Saved connections that were removed: the tunnel is not merely off, the connection is gone. */
     val removed = mutableSetOf<String>()
@@ -82,10 +104,11 @@ internal class FakeTargets : SessionTargets {
 internal class SessionRig(
     val host: FakeHost = FakeHost(), val targets: FakeTargets = FakeTargets(), val records: SessionRecordStore = SessionRecordStore(MemoryTextStorage()),
     val asked: MutableList<OwnerAsk> = ArrayList(), val cancelled: MutableList<Int> = ArrayList(), val notices: MutableList<SessionNotice> = ArrayList(),
+    val gone: MutableList<Pair<SessionKey, Boolean>> = ArrayList(),
     var switchOn: Boolean = true,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-    val sessions = AssistantSessions(host, targets, records, scope, notify = { asked += it }, cancelNotify = { cancelled += it }, notice = { notices += it }, enabled = { switchOn }, main = Dispatchers.Unconfined, io = Dispatchers.Unconfined,
+    val sessions = AssistantSessions(host, targets, records, scope, notify = { asked += it }, cancelNotify = { cancelled += it }, notice = { notices += it }, ownerGone = { key, tunnelGone -> gone += key to tunnelGone }, enabled = { switchOn }, main = Dispatchers.Unconfined, io = Dispatchers.Unconfined,
         connectWaitMs = 500, profileName = { if (it == "p1") "Home" else null })
     /** An assistant session already open, as if `terminal_open` had made it. */
     fun existing(id: Int, number: Int = 1, name: TabName? = null) = FakeHosted(id, SessionOpener.ASSISTANT, number = number, name = name,

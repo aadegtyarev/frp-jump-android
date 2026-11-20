@@ -203,7 +203,7 @@ back to the automatic label.
   Tunnel close/profile forget/manual replacement do not kill it.
 - Terminal ⋮ → **Close all sessions of this phone on <device>** first lists
   this install's sessions read-only, with a “Looking for…” notice. Then tabs
-  to that profile/device/port leave the screen, and the shared “Closed: N ·
+  to that profile/device/port leave the screen, and the shared “Scheduled to close: N ·
   Undo” counts tabs plus discovered sessions no tab holds. Nothing remote
   ends until Undo expires; Undo restores tabs and ends nothing.
 - On commit, close the tabs and end the discovered sessions in one exec,
@@ -488,6 +488,6 @@ the pick-up after a kill) takes only the owner's sessions; Close all closes ever
 tmux session ends with it), and leaves the assistant's hidden ones. After an app restart the
 assistant's sessions are listed from the records as **detached** and attached over their tunnel (which must be on) at the first read, input or wait (only while the switch is on); attaching ONLY attaches: a tmux session that is gone is not created again and its
 record is forgotten (the model is told the session has ended), a saved login of another user than the record's is never used, and no tunnel is started.
-A record whose saved connection was removed is forgotten with a notice (the session stays on the device). The owner's Close of a session whose tunnel is off keeps
-it listed and says «Не удалось закрыть: туннель выключен». The owner can open one as a tab from Sessions («Открыть»): it is then a tab like any other and stays marked as the
-assistant's in its menu; his Close ends it, through the same Undo.
+A record whose saved connection was removed is forgotten with a target-specific notice (the session stays on the device). Sessions shows the owner's and assistant's sessions together. An assistant session stays marked with ✦ after the owner opens it as a tab.
+
+An owner Close is staged through shared Undo and stays hidden while the existing owner attaches and checks the remote result. After attach, an isolated client uses the current saved profile, device, port, user, host keys, login and local tunnel port. Immediately before the tmux kill dispatch, it checks cancellation, the same assistant-owned session and record, and the still-current target. Only exit status zero confirms the kill. Failure, timeout or a missing status retains the record and reports that closure could not be confirmed. Following confirmation, durable record removal and local tab cleanup complete together even if the caller is cancelled. The owner path writes record removal before publishing it. A storage failure retains the record and reports the distinct save problem. The same durable removal applies when an owner retry establishes that the session or saved tunnel is gone. Retrying an ended assistant tab reattaches using the current validated endpoint, without starting a tunnel or changing user. Unavailable connection and SSH setup failures retain the session and offer a target-specific route to the device's Tunnels. These owner controls do not change the assistant tool's confirmation or permission path.
