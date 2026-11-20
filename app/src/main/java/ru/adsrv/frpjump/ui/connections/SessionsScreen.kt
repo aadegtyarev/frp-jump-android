@@ -152,12 +152,17 @@ fun SessionsScreen(
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp).heightIn(min = 48.dp)
                 .background(colors.card, RoundedCornerShape(ru.adsrv.frpjump.ui.HeaderControlRadius))
                 .border(BorderStroke(1.dp, colors.outline), RoundedCornerShape(ru.adsrv.frpjump.ui.HeaderControlRadius)).clickable { requester.requestFocus(); keyboard?.show() }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(SearchGlyph, contentDescription = null, tint = colors.muted, modifier = Modifier.size(20.dp))
+                Icon(SearchGlyph, contentDescription = null, tint = colors.muted, modifier = Modifier.size(20.dp).testTag("sessions_search_icon"))
                 BasicTextField(value = query, onValueChange = { query = it }, singleLine = true,
                     textStyle = TextStyle(fontSize = 16.sp, color = colors.ink), cursorBrush = SolidColor(colors.accent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).padding(start = 8.dp).focusRequester(requester).testTag("sessions_search").semantics { contentDescription = searchLabel },
-                    decorationBox = { field -> Box { if (query.isEmpty()) Text(stringResource(R.string.sessions_search), color = colors.muted); field() } })
+                    decorationBox = { field ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (query.isEmpty()) Text(stringResource(R.string.sessions_search), color = colors.muted, fontSize = 16.sp, modifier = Modifier.testTag("sessions_search_hint"))
+                            Box(Modifier.testTag("sessions_search_value")) { field() }
+                        }
+                    })
                 if (query.isNotEmpty()) IconButton(onClick = { query = "" }, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.connections_clear_query), tint = colors.muted) }
             }
         } else {

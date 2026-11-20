@@ -130,6 +130,21 @@ class SessionsRedesignTest {
         }
     }
 
+    @Test fun searchHintAndInputAreCenteredWithIcon() {
+        host()
+        fun center(tag: String): Float {
+            val bounds = compose.onNodeWithTag(tag, useUnmergedTree = true).getBoundsInRoot()
+            return (bounds.top.value + bounds.bottom.value) / 2f
+        }
+        val icon = center("sessions_search_icon")
+        assertEquals("empty hint centered on icon", icon, center("sessions_search_hint"), 2f)
+        compose.onNodeWithTag("sessions_search").performTextInput("SSH")
+        assertEquals("typed input centered on icon", icon, center("sessions_search_value"), 2f)
+        shot("sessions-search-alignment")
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.connections_clear_query)).performClick()
+        assertEquals("cleared hint centered on icon", icon, center("sessions_search_hint"), 2f)
+    }
+
     @Test fun searchSelectionAndUndo() {
         host()
         compose.onNodeWithTag("sessions_terminal_1").assertExists().performClick()
