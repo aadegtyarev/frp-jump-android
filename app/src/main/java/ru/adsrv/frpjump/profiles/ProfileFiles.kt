@@ -13,6 +13,7 @@ internal object ProfileFiles {
 
     const val ENROLLMENT = "enrollment.json"
     const val DEVICE_LIST = "device_list.json"
+    const val DEVICE_FAVORITES = "device_favorites.json"
 
     /** The server's last `features` answer, kept beside [DEVICE_LIST]. */
     const val SERVER_FEATURES = "server_features.json"

@@ -65,7 +65,7 @@ fun ProfileSwitcher(item: ProfileItem?, onClick: () -> Unit, modifier: Modifier 
     val label = stringResource(R.string.switch_profile)
     Surface(
         onClick = onClick,
-        shape = CircleShape,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(ru.adsrv.frpjump.ui.HeaderControlRadius),
         color = colors.card,
         border = BorderStroke(1.dp, colors.outline),
         modifier = modifier

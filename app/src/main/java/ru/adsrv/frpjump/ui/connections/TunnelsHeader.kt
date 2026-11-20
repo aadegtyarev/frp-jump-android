@@ -88,7 +88,7 @@ const val TUNNELS_CAPSULE_TAG = "tunnels_capsule"
  * The room the collapsed search keeps in the header's one row: 130 dp at 100% font, growing with the size body text really has (system
  * font scaling is not linear, so the measured size of 16 sp is used, not the scale), so a large font wraps the header.
  */
-internal val TunnelsControlRadius = 10.dp
+internal val TunnelsControlRadius = ru.adsrv.frpjump.ui.HeaderControlRadius
 private const val SEARCH_ROOM_DP = 130
 
 /**

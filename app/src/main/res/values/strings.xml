@@ -145,6 +145,11 @@
     <string name="search_close">Close search</string>
     <string name="devices_no_match">No devices match “%s”.</string>
 
+    <string name="devices_online_filter">Online only, %1$d</string>
+    <string name="devices_no_online">No online devices found.</string>
+    <string name="devices_show_all">Show all</string>
+    <string name="devices_others">Other devices</string>
+
     <!-- Device icons (the server's fixed set) -->
     <string name="device_icon_linux" translatable="false">Linux</string>
     <string name="device_icon_wirenboard" translatable="false">Wiren Board</string>

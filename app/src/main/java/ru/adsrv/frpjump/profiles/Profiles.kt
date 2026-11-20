@@ -289,7 +289,13 @@ class Profiles(
             return@withLock
         }
         runtime.tunnels.shutdown {
-            withContext(Dispatchers.IO) { if (keepData) runtime.store.wipe() else store.remove(id, beforeUnlisting) }
+            withContext(Dispatchers.IO) {
+                if (keepData) runtime.store.wipe() else {
+                    runtime.deviceFavorites.close()
+                    try { store.remove(id, beforeUnlisting) }
+                    catch (e: Exception) { runtime.deviceFavorites.reopen(); throw e }
+                }
+            }
         }
         // After the wipe: a poll can no longer fetch and cache the list again.
         runtime.devices.forget()

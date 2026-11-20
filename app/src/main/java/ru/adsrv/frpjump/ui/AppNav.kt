@@ -278,7 +278,6 @@ fun AppNav() {
                     onOpen = { profile, name ->
                         nav.openDeviceTunnels(profile, name)
                     },
-                    onTunnels = { nav.goToTab(Tab.CONNECTIONS) },
                     onSettings = { nav.openSettings() },
                 )
             }

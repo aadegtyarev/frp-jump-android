@@ -89,9 +89,7 @@ accessibility, truthful waiting/error feedback or required safety warnings.
   and profile colours; text contrast at least WCAG AA in both. Follows the
   system, or set by hand in settings.
 - No technical details on the main screens: addresses and frpc states are on
-  the card or in details, not in the lists. The one exception is the compact
-  mark of open tunnel ports on a device row (link glyph and port numbers),
-  which tells at a glance where a tunnel is open.
+  the card or in details, not in the lists.
 
 ## Scenarios
 
@@ -133,14 +131,7 @@ profile without re-enrollment.
 
 ### 2. Switching profiles
 
-- The device list shows one profile at a time; a switcher at the top changes it. The Devices header, left to right: the switcher,
-  the tunnel chip (only while some profile has tunnels up), the search magnifier (while there is a list to search) and the gear. The
-  icon buttons sit next to each other, each with its own 44 dp field; the 8 dp gap is only between the switcher and the rest. The
-  chip is the Tunnels section's link glyph and the number of the tunnels on in ALL profiles together, not only the shown one's, counted as the Tunnels filter counts them (distinct
-  tunnels up or coming up, plus those being restored; tunnels whose disconnect waits for Undo are not counted); TalkBack reads it as "N tunnels" («N туннелей», plural
-  forms kept), as a button that opens Tunnels. There
-  is no power button in this header: one profile's tunnels go down from a device row (swipe) or Tunnels'
-  "Stop all". The switcher is never narrower than 126 dp at 100% font and 66 dp at 200% at 360 dp with one tunnel up.
+- The device list shows one profile at a time. The header offers the profile switcher, search, an online count and toggle, and Settings. The online count and filter use the current profile's last known device state; stale information remains identified as such. Tunnel management is on Tunnels.
 - The visible profile polls every 2 s while the app is open. Other profiles
   poll only while they have tunnels up, at the background interval.
 - "Tunnels" and the notification show tunnels of all profiles, each
@@ -162,16 +153,13 @@ profile without re-enrollment.
   (scenario 11). The phone itself is not listed.
 - A row shows the device's icon on its tile (the state dot stays in the
   corner) and the name. The second line puts the label in front of the state:
-  «Щиток, гараж · Онлайн · ⛓ 22». The label is never cut, because it is what
+  «Щиток, гараж · Онлайн». The label is never cut, because it is what
   tells similar devices apart. When the label and the state do not fit on
   one line, the label takes its own line or lines, wrapped, and the state
-  and the tunnel ports go on the line below. A device without a label shows
+  goes on the line below. A device without a label shows
   the line as before.
-- A magnifier in the title opens search. It matches the device name or its
-  label, ignoring the spaces around the query. Both sides are normalised to
-  NFC and compared without case, whatever the phone's language (Locale.ROOT
-  folding). The hint says «Имя или подпись». When nothing matches, the list
-  says so.
+- Search matches the device name or label using NFC and Locale.ROOT case folding, and intersects independently with the online filter. While editing, it takes the header; Back, IME Search or leaving the field restores the controls and retains the query. Empty lists and no matches are distinct.
+- Favorites are stored locally in each profile's directory by exact device name, default empty, and are removed with the profile. Temporary absence from a device list does not remove them. Matching favorites appear first, without duplicated rows; a right swipe reveals the favorite action without executing it. The row menu and accessibility action offer the same toggle; save failures remain visible.
 - TalkBack reads a row as its name, the label, the state, and the icon's
   name («wb01, Щиток, гараж, Онлайн, Wiren Board»). The generic glyph is not
   read out.
@@ -183,12 +171,7 @@ profile without re-enrollment.
   marked as possibly stale. Saved connections are still listed and can be
   opened when the network returns.
 - Pull to refresh; the banner goes away on the first good answer.
-- A device row with tunnels open swipes left to show the power button (the
-  power glyph in red): it disconnects only that device's tunnels of
-  this profile, with Undo. The row
-  slides back on scroll, refresh, Back or a finger landing elsewhere on the
-  screen; a tap opens Tunnels filtered to the row's profile and device. TalkBack offers it as the row's action
-  "Stop tunnels of <device>"; rows without tunnels do not swipe.
+- A row tap opens Tunnels filtered to that exact profile and device. An open swipe closes on scroll, refresh, Back or a touch elsewhere.
 
 ### 4. Named connections
 
@@ -630,8 +613,7 @@ else happens: no click for the program, no keyboard.
   long-press menu shows the notification. The icon is never swapped.
   - It counts tunnels, not connections: several connections on one device port
     share one tunnel, and a tunnel is what runs and what the service keeps
-    alive. It is the same number the Devices tunnel chip shows and TalkBack reads as "N tunnels", so they never
-    disagree; tunnels hidden while their disconnect waits for Undo are not
+    alive; tunnels hidden while their disconnect waits for Undo are not
     counted, as in the title.
   - While none is up (restoring after a restart, disconnecting) the
     notification carries no number (0); a launcher still badges it: a dot, or

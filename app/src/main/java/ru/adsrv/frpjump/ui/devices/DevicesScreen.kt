@@ -2,8 +2,10 @@ package ru.adsrv.frpjump.ui.devices
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.testTag
 import ru.adsrv.frpjump.ui.SettingsGear
@@ -12,6 +14,16 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -31,10 +43,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import ru.adsrv.frpjump.ui.AppDropdownMenu
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -61,6 +77,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,8 +90,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.devices.DeviceRow
-import ru.adsrv.frpjump.devices.filterDevices
-import ru.adsrv.frpjump.devices.portsShown
+import ru.adsrv.frpjump.devices.visibleDevices
 import ru.adsrv.frpjump.ui.LinkGlyph
 import ru.adsrv.frpjump.ui.userText
 import ru.adsrv.frpjump.errors.DomainError
@@ -99,19 +115,17 @@ import java.time.Instant
  * removed on their servers; [onProfiles] opens the profile list,
  * [onTunnels] the Connections tab (the tunnel count's tap), [onSettings] Settings (the gear).
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DevicesScreen(
     vm: DevicesViewModel,
     profiles: List<ProfileItem>,
     onProfiles: () -> Unit,
     onOpen: (String, String) -> Unit,
-    onTunnels: () -> Unit,
     onSettings: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
-    val tunnelsOn by vm.tunnelsOn.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
     // The app's poller fetches the list only while this screen is visible.
@@ -130,23 +144,43 @@ fun DevicesScreen(
     LaunchedEffect(notice, current?.id) {
         if (notice != null) vm.takeNotice()?.let { snackbar.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long) }
     }
-    // Search: the bar turns into a field and the list follows it; ✕ or Back closes it and shows them all again.
-    var searching by rememberSaveable { mutableStateOf(false) }
+    DevicesContent(state, profiles, onProfiles, onOpen, onSettings, vm::pull, vm::saveDisplay, vm::toggleFavorite, snackbar)
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+internal fun DevicesContent(
+    state: DevicesUiState, profiles: List<ProfileItem>, onProfiles: () -> Unit, onOpen: (String, String) -> Unit,
+    onSettings: () -> Unit, onPull: () -> Unit,
+    onSave: (String, String, ru.adsrv.frpjump.devices.DisplayChange, (ru.adsrv.frpjump.devices.DisplayFailure?) -> Unit) -> Unit,
+    onFavorite: (String, String, (String?) -> Unit) -> Unit, snackbar: SnackbarHostState = remember { SnackbarHostState() },
+) {
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val current = profiles.firstOrNull { it.current }
+    // Closing search keeps the applied query.
+    var searching by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     // Focus and keyboard only when the magnifier opened it, not on every return to this screen.
-    var focusOnOpen by rememberSaveable { mutableStateOf(false) }
+    var focusOnOpen by remember { mutableStateOf(false) }
     val closeSearch = {
         searching = false
-        query = ""
         focusOnOpen = false
+        focusManager.clearFocus()
     }
     BackHandler(enabled = searching) { closeSearch() }
+    val imeVisible = WindowInsets.isImeVisible
+    var sawIme by remember { mutableStateOf(false) }
+    LaunchedEffect(searching, imeVisible) {
+        if (!searching) sawIme = false else if (imeVisible) sawIme = true else if (sawIme) closeSearch()
+    }
+    var onlyOnline by rememberSaveable { mutableStateOf(false) }
     var editDevice by remember(state.profile) { mutableStateOf<Pair<DeviceRow, Boolean>?>(null) }
     // Another profile shown: its list is not filtered by the old query.
     var searchedProfile by rememberSaveable { mutableStateOf(current?.id) }
     LaunchedEffect(current?.id) {
         val now = current?.id ?: return@LaunchedEffect
-        if (searchedProfile != null && searchedProfile != now) closeSearch()
+        if (searchedProfile != null && searchedProfile != now) { closeSearch(); query = ""; onlyOnline = false }
         searchedProfile = now
     }
     // The row swiped open, one at a time; another profile shown starts with none. Back closes it first.
@@ -165,12 +199,14 @@ fun DevicesScreen(
                     onFocused = { focusOnOpen = false },
                     label = stringResource(R.string.devices_search),
                     hint = stringResource(R.string.devices_search_hint),
+                    retainQuery = true,
                 )
             } else {
-                DevicesHeader(current, onProfiles, onTunnels, onSettings, tunnels = tunnelsOn, onSearch = {
-                    searching = true
-                    focusOnOpen = true
-                }.takeIf { !state.devices.isNullOrEmpty() })
+                DevicesHeader(current, onProfiles, onSettings, online = state.devices.orEmpty().count { it.online }, onlyOnline = onlyOnline,
+                    onOnline = { onlyOnline = it }, query = query, onSearch = {
+                        searching = true
+                        focusOnOpen = true
+                    })
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -178,91 +214,59 @@ fun DevicesScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .pointerInput(searching) { if (searching) awaitEachGesture { awaitFirstDown(requireUnconsumed = false); closeSearch() } },
         ) {
             RemovedElsewhereLine(removedElsewhere(profiles), onProfiles)
             NotificationsOffLine()
             // Above the list, not in it: an item inserted before the first row would be scrolled out of sight.
             val staleSince = state.staleSince
             if (staleSince != null) {
-                OfflineBanner(staleSince, state.unreachable, state.error, onRetry = vm::pull)
+                OfflineBanner(staleSince, state.unreachable, state.error, onRetry = onPull)
             } else state.error?.let { error ->
                 Text(error.userText(), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             }
-            DeviceRows(state, query, openRow, vm::pull, onOpen = { device -> state.profile?.let { onOpen(it, device) } }, onEdit = { device, label -> editDevice = device to label }, onDisconnect = { device -> state.profile?.let { vm.actions.disconnectDevice(it, device) } })
+            DeviceRows(state, query, onlyOnline, { onlyOnline = false }, openRow, onPull, onOpen = { device -> state.profile?.let { onOpen(it, device) } }, onEdit = { device, label -> editDevice = device to label }, onFavorite = { device -> state.profile?.let { profile -> onFavorite(profile, device) { failure -> if (failure != null) scope.launch { snackbar.showSnackbar(failure) } } } })
         }
     }
     editDevice?.let { (device, label) ->
         state.profile?.let { profile ->
-            DeviceDisplaySheet(device = device, focusLabel = label, onSave = { change, done -> vm.saveDisplay(profile, device.name, change, done) }, onDismiss = { editDevice = null })
+            DeviceDisplaySheet(device = device, focusLabel = label, onSave = { change, done -> onSave(profile, device.name, change, done) }, onDismiss = { editDevice = null })
         }
     }
 }
 
-/**
- * The switcher, the tunnel count of all profiles (a tap: [onTunnels]), search ([onSearch], null while there is nothing to search)
- * and the gear ([onSettings]); the icon buttons sit next to each other, the gap is only after the switcher.
- */
+/** Profile switcher, search, online filter and Settings for the current device list. */
 @Composable
 internal fun DevicesHeader(
-    current: ProfileItem?,
-    onProfiles: () -> Unit,
-    onTunnels: () -> Unit,
-    onSettings: () -> Unit,
-    /** The tunnels that are on, of ALL profiles (the chip leads to the Tunnels tab, which lists them all), not only [current]'s. */
-    tunnels: Int = current?.tunnels ?: 0,
-    onSearch: (() -> Unit)?,
+    current: ProfileItem?, onProfiles: () -> Unit, onSettings: () -> Unit,
+    online: Int = 0, onlyOnline: Boolean = false, onOnline: (Boolean) -> Unit = {}, query: String = "", onSearch: (() -> Unit)?,
 ) {
     val colors = AppTheme.colors
-    Row(
-        Modifier
-            .statusBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.weight(1f).testTag(PROFILE_SWITCHER_TAG)) { ProfileSwitcher(current, onProfiles) }
-        Spacer(Modifier.width(8.dp))
-        tunnels.takeIf { it > 0 }?.let { TunnelsChip(it, onTunnels) }
-        onSearch?.let {
-            IconButton(onClick = it, modifier = Modifier.size(44.dp)) {
-                Icon(SearchGlyph, contentDescription = stringResource(R.string.devices_search), tint = colors.ink, modifier = Modifier.size(22.dp))
+    val searchLabel = stringResource(R.string.devices_search)
+    val onlineLabel = stringResource(R.string.devices_online_filter, online)
+    Row(Modifier.statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f).testTag(PROFILE_SWITCHER_TAG)) { ProfileSwitcher(current, onProfiles, Modifier.fillMaxWidth()) }
+        onSearch?.let { search ->
+            Box(Modifier.heightIn(min = 48.dp).widthIn(min = 48.dp, max = 120.dp).clickable(role = Role.Button, onClick = search).testTag("devices_search_open").semantics { contentDescription = if (query.isBlank()) searchLabel else "$searchLabel: $query" }, contentAlignment = Alignment.Center) {
+                Row(Modifier.heightIn(min = 38.dp).background(colors.card, RoundedCornerShape(ru.adsrv.frpjump.ui.HeaderControlRadius)).border(1.dp, colors.outline, RoundedCornerShape(ru.adsrv.frpjump.ui.HeaderControlRadius)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    Icon(SearchGlyph, contentDescription = null, tint = colors.ink, modifier = Modifier.size(22.dp))
+                    if (query.isNotBlank()) Text(query, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp))
+                }
             }
         }
-        SettingsGear(onSettings)
+        Box(Modifier.heightIn(min = 48.dp).toggleable(value = onlyOnline, role = Role.Switch, onValueChange = onOnline).testTag("devices_online_filter").semantics { contentDescription = onlineLabel }, contentAlignment = Alignment.Center) {
+            Row(Modifier.heightIn(min = 38.dp).background(if (onlyOnline) colors.accentContainer else colors.card, RoundedCornerShape(ru.adsrv.frpjump.ui.HeaderControlRadius)).border(1.dp, colors.outline, RoundedCornerShape(ru.adsrv.frpjump.ui.HeaderControlRadius)).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("●", color = colors.online, fontSize = 12.sp)
+                Text(" $online", color = if (onlyOnline) colors.onAccentContainer else colors.ink, fontSize = 14.sp)
+            }
+        }
+        SettingsGear(framed = true, onClick = onSettings)
     }
 }
 
 const val PROFILE_SWITCHER_TAG = "profile_switcher"
 const val TUNNELS_CHIP_TAG = "tunnels_chip"
-
-/**
- * The tunnel count as the Connections glyph and the number; a tap leads to the Tunnels tab. TalkBack reads the plural
- * text ("1 tunnel"). Tall as the bar for the finger, the ripple on the chip.
- */
-@Composable
-private fun TunnelsChip(count: Int, onClick: () -> Unit) {
-    val colors = AppTheme.colors
-    val source = remember { MutableInteractionSource() }
-    val spoken = pluralStringResource(R.plurals.tunnels, count, count)
-    Box(
-        Modifier
-            .heightIn(min = 44.dp)
-            .testTag(TUNNELS_CHIP_TAG)
-            .clickable(source, indication = null, role = Role.Button, onClickLabel = stringResource(R.string.tunnels_show), onClick = onClick)
-            .clearAndSetSemantics { contentDescription = spoken },
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(
-            Modifier.clip(CircleShape).indication(source, ripple()).background(colors.accentContainer, CircleShape)
-                .padding(start = 8.dp, end = 10.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(LinkGlyph, contentDescription = null, tint = colors.onAccentContainer, modifier = Modifier.size(16.dp))
-            Text(count.toString(), color = colors.onAccentContainer, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-        }
-    }
-}
 
 /** One line for profiles whose server deleted this phone while another profile was shown. Tap for the profile list. */
 @Composable
@@ -288,100 +292,49 @@ private fun RemovedElsewhereLine(removed: List<ProfileItem>, onClick: () -> Unit
     )
 }
 
-/**
- * The device rows; a row with tunnels open swipes left to show its power
- * button ([onDisconnect] with the device's name). One row is open at a time;
- * it slides back when the list moves or refreshes (and, from the screen
- * around it, on Back or a finger landing anywhere else).
- */
+/** Filtering and ordering are shared with the Devices projection. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DeviceRows(state: DevicesUiState, query: String, openRow: OpenRow, onPull: () -> Unit, onOpen: (String) -> Unit, onEdit: (DeviceRow, Boolean) -> Unit, onDisconnect: (String) -> Unit) {
+internal fun DeviceRows(state: DevicesUiState, query: String, onlyOnline: Boolean, showAll: () -> Unit, openRow: OpenRow, onPull: () -> Unit, onOpen: (String) -> Unit, onEdit: (DeviceRow, Boolean) -> Unit, onFavorite: (String) -> Unit) {
     val listState = rememberLazyListState()
-    LaunchedEffect(listState, openRow) {
-        snapshotFlow { listState.isScrollInProgress }.collect { if (it) openRow.close() }
-    }
+    LaunchedEffect(listState, openRow) { snapshotFlow { listState.isScrollInProgress }.collect { if (it) openRow.close() } }
     LaunchedEffect(state.refreshing) { if (state.refreshing) openRow.close() }
-    PullToRefreshBox(
-        isRefreshing = state.refreshing,
-        onRefresh = onPull,
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+    PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = onPull, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val devices = state.devices
-            if (devices != null && devices.isEmpty()) {
-                item {
-                    Text(stringResource(R.string.devices_empty), color = AppTheme.colors.muted, modifier = Modifier.padding(4.dp))
+            val shown = devices?.let { visibleDevices(it, query, onlyOnline, state.favorites) }.orEmpty()
+            if (devices == null && state.error == null) item { CircularProgressIndicator(modifier = Modifier.padding(16.dp).testTag("devices_loading")) }
+            if (devices != null && devices.isEmpty()) item { Text(stringResource(R.string.devices_empty), color = AppTheme.colors.muted, modifier = Modifier.padding(4.dp)) }
+            val canShowAll = onlyOnline && !devices.isNullOrEmpty() && visibleDevices(devices, query, false, state.favorites).isNotEmpty()
+            if (!devices.isNullOrEmpty() && shown.isEmpty()) item {
+                Column {
+                    Text(if (query.isBlank() || canShowAll) stringResource(R.string.devices_no_online) else stringResource(R.string.devices_no_match, query.trim()), color = AppTheme.colors.muted, modifier = Modifier.padding(4.dp).semantics { liveRegion = LiveRegionMode.Polite })
+                    if (canShowAll) {
+                        OutlinedButton(onClick = showAll, modifier = Modifier.testTag("devices_show_all"), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, AppTheme.colors.outline), colors = ButtonDefaults.outlinedButtonColors(containerColor = AppTheme.colors.card, contentColor = AppTheme.colors.accent)) { Text(stringResource(R.string.devices_show_all)) }
+                    }
                 }
             }
-            val shown = devices?.let { filterDevices(it, query) }.orEmpty()
-            // A search that finds nothing says so, rather than leave an empty screen.
-            if (!devices.isNullOrEmpty() && shown.isEmpty()) {
-                item {
-                    Text(
-                        stringResource(R.string.devices_no_match, query.trim()),
-                        color = AppTheme.colors.muted,
-                        // Read out as the typing changes it.
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .semantics { liveRegion = LiveRegionMode.Polite },
-                    )
+            val favoriteRows = shown.filter { it.name in state.favorites }
+            val otherRows = shown.filterNot { it.name in state.favorites }
+            if (favoriteRows.isNotEmpty()) item { Text(stringResource(R.string.connections_favorites), color = AppTheme.colors.muted, fontSize = 13.sp, modifier = Modifier.semantics { heading() }.padding(vertical = 4.dp)) }
+            fun androidx.compose.foundation.lazy.LazyListScope.rows(rows: List<DeviceRow>) {
+                items(rows, key = { it.name }) { device ->
+                    val favorite = device.name in state.favorites
+                    val open = openRow.name == device.name
+                    val favoriteActionLabel = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add)
+                    SwipeReveal(open = open, enabled = false, onOpenChange = { openRow.reported(device.name, it) }, actionWidth = 76.dp, action = {},
+                        startAction = {
+                            Surface(onClick = { openRow.close(); onFavorite(device.name) }, color = AppTheme.colors.accentContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.width(70.dp).fillMaxHeight().testTag("device_favorite_action").semantics { contentDescription = favoriteActionLabel }) {
+                                Box(contentAlignment = Alignment.Center) { Text(if (favorite) "★" else "☆", color = AppTheme.colors.onAccentContainer, fontSize = 24.sp) }
+                            }
+                        }, modifier = Modifier.touchesRow(openRow, device.name)) {
+                        DeviceItem(device, favorite, onClick = { if (open) openRow.close() else onOpen(device.name) }, onFavorite = { onFavorite(device.name) }, onEdit = if (state.display) ({ label -> onEdit(device, label) }) else null)
+                    }
                 }
             }
-            items(shown, key = { it.name }) { device ->
-                val ports = state.tunnelPorts[device.name].orEmpty()
-                val open = openRow.name == device.name
-                SwipeReveal(
-                    open = open,
-                    enabled = ports.isNotEmpty(),
-                    onOpenChange = { now -> openRow.reported(device.name, now) },
-                    actionWidth = REVEAL_WIDTH,
-                    action = {
-                        DisconnectDeviceButton(device.name) {
-                            openRow.close()
-                            onDisconnect(device.name)
-                        }
-                    },
-                    modifier = Modifier.touchesRow(openRow, device.name),
-                ) {
-                    DeviceItem(
-                        device,
-                        ports,
-                        // Open: a tap puts it back; closed, it opens the card as before.
-                        onClick = { if (open) openRow.close() else onOpen(device.name) },
-                        onDisconnect = { onDisconnect(device.name) }.takeIf { ports.isNotEmpty() },
-                        onEdit = if (state.display) ({ label -> onEdit(device, label) }) else null,
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** How far a row slides aside for its power button. */
-private val REVEAL_WIDTH = 76.dp
-
-/** The power button behind a row swiped aside: this device's tunnels, as the bar's does for the profile. */
-@Composable
-private fun DisconnectDeviceButton(device: String, onClick: () -> Unit) {
-    val colors = AppTheme.colors
-    val label = stringResource(R.string.disconnect_device_tunnels, device)
-    Surface(
-        onClick = onClick,
-        color = colors.errorContainer,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier
-            .width(REVEAL_WIDTH - 6.dp)
-            .fillMaxHeight()
-            .semantics { contentDescription = label },
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(22.dp))
+            rows(favoriteRows)
+            if (favoriteRows.isNotEmpty() && otherRows.isNotEmpty()) item { Text(stringResource(R.string.devices_others), color = AppTheme.colors.muted, fontSize = 13.sp, modifier = Modifier.semantics { heading() }.padding(vertical = 4.dp)) }
+            rows(otherRows)
         }
     }
 }
@@ -391,9 +344,9 @@ private fun DisconnectDeviceButton(device: String, onClick: () -> Unit) {
  * TalkBack as an action of the row, since the swipe is not.
  */
 @Composable
-private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit, onDisconnect: (() -> Unit)?, onEdit: ((Boolean) -> Unit)?) {
+private fun DeviceItem(device: DeviceRow, favorite: Boolean, onClick: () -> Unit, onFavorite: () -> Unit, onEdit: ((Boolean) -> Unit)?) {
     val colors = AppTheme.colors
-    val disconnectLabel = stringResource(R.string.disconnect_device_tunnels, device.name)
+    val favoriteLabel = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add)
     val stateText = when {
         device.online && device.stale -> wasOnline(device)
         device.online -> stringResource(R.string.device_online)
@@ -405,7 +358,7 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
         device.name,
         device.label,
         stateText,
-        stringResource(R.string.device_tunnels_open, ports.joinToString(", ")).takeIf { ports.isNotEmpty() },
+        stringResource(R.string.favorite_spoken).takeIf { favorite },
         stringResource(R.string.device_disabled).takeIf { device.disabled },
         device.icon?.let { stringResource(it.caption) },
     ).joinToString(", ")
@@ -415,10 +368,9 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("device_" + device.name)
             .semantics {
-                if (onDisconnect != null) {
-                    customActions = listOf(CustomAccessibilityAction(disconnectLabel) { onDisconnect(); true })
-                }
+                customActions = listOf(CustomAccessibilityAction(favoriteLabel) { onFavorite(); true })
             },
     ) {
         Row(
@@ -438,7 +390,7 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
                 },
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(device.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text(device.name + if (favorite) " ★" else "", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 LabelAndState(device.label, state = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -449,43 +401,23 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false),
                         )
-                        if (ports.isNotEmpty()) TunnelPorts(ports)
+
                     }
                 })
             }
             if (device.disabled) Chip(stringResource(R.string.device_disabled), colors.errorContainer, colors.onErrorContainer)
-            onEdit?.let { edit ->
-                var menu by remember { mutableStateOf(false) }
-                Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
-                    AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            var menu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
+                AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(favoriteLabel) }, onClick = { menu = false; onFavorite() })
+                    onEdit?.let { edit ->
                         DropdownMenuItem(text = { Text(stringResource(R.string.device_menu_label)) }, onClick = { menu = false; edit(true) })
                         DropdownMenuItem(text = { Text(stringResource(R.string.device_menu_icon)) }, onClick = { menu = false; edit(false) })
                     }
                 }
             }
         }
-    }
-}
-
-/** " · ⛓ 22 80 +2": the ports this phone has tunnels open to, in the accent; read out in words. */
-@Composable
-private fun TunnelPorts(ports: List<Int>) {
-    val colors = AppTheme.colors
-    val (shown, more) = portsShown(ports)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(" · ", fontSize = 13.sp, color = colors.muted)
-        Icon(LinkGlyph, contentDescription = null, tint = colors.accent, modifier = Modifier.size(13.dp))
-        Text(
-            (shown.map { it.toString() } + listOfNotNull("+$more".takeIf { more > 0 })).joinToString(" ", prefix = " "),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.accent,
-            maxLines = 1,
-            softWrap = false,
-        )
     }
 }
 
