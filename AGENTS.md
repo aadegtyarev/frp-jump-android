@@ -47,6 +47,7 @@
 
 ## Redesign requirements
 
+- For UI work, inspect the existing production component, localized strings and a rendered reference before creating a mock. Reuse the component in the app. Compare the mock and implementation with the production reference during review.
 - For every FRP Jump redesign slice, read and follow [docs/redesign-requirements.md](docs/redesign-requirements.md), alongside the applicable contracts and instructions below. For this redesign, Terra implements and Sol independently reviews every slice, including UI slices; root orchestrates. This scoped role assignment overrides the default implementation and review roles below, which remain in effect elsewhere.
 
 ## Project-specific commands and conventions
