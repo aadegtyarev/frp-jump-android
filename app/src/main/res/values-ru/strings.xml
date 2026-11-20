@@ -150,6 +150,11 @@
     <string name="search_close">Закрыть поиск</string>
     <string name="devices_no_match">Нет устройств по запросу «%s».</string>
 
+    <string name="devices_online_filter">Только онлайн, %1$d</string>
+    <string name="devices_no_online">Онлайн-устройства не найдены.</string>
+    <string name="devices_show_all">Показать все</string>
+    <string name="devices_others">Остальные устройства</string>
+
     <!-- Значки устройств (набор сервера) -->
     <string name="device_icon_server">Сервер</string>
     <string name="device_icon_pc">Компьютер</string>

@@ -67,7 +67,7 @@ class SectionHeadersTest {
     private fun profile(tunnels: Int) = ProfileItem("p1", "A profile with a rather long name", "green", null, false, tunnels, current = true, removed = false)
 
     private fun devices(tunnels: Int, search: Boolean, onSettings: () -> Unit = {}, onTunnels: () -> Unit = {}) = @Composable {
-        DevicesHeader(profile(tunnels), {}, onTunnels, onSettings, onSearch = if (search) ({}) else null)
+        DevicesHeader(profile(tunnels), {}, onSettings, onSearch = if (search) ({}) else null)
     }
 
     private fun near(a: androidx.compose.ui.unit.Dp, b: androidx.compose.ui.unit.Dp) = kotlin.math.abs(a.value - b.value) <= 0.5f
@@ -82,23 +82,20 @@ class SectionHeadersTest {
         val gear = compose.onNodeWithTag(SETTINGS_GEAR_TAG).assertIsDisplayed()
         assertEquals(string(R.string.tab_settings), gear.fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription)?.single())
         assertEquals(Role.Button, gear.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Role))
-        val chip = compose.onNodeWithTag(TUNNELS_CHIP_TAG).assertIsDisplayed()
-        val spoken = localized.resources.getQuantityString(R.plurals.tunnels, 1, 1)
-        assertEquals(spoken, chip.fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription)?.single())
-        assertEquals(Role.Button, chip.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Role))
+        compose.onNodeWithTag(TUNNELS_CHIP_TAG).assertDoesNotExist()
+        compose.onNodeWithTag("devices_online_filter").assertIsDisplayed()
         val search = compose.onNodeWithContentDescription(string(R.string.devices_search)).assertIsDisplayed().getBoundsInRoot()
         val g = gear.getBoundsInRoot()
         assertTrue("the gear is last: $g after $search", g.left >= search.right)
-        assertTrue("the gear is 44 dp: $g", near(g.width, 44.dp) && near(g.height, 44.dp))
+        assertTrue("the gear is 48 dp: $g", near(g.width, 48.dp) && near(g.height, 48.dp))
         assertTrue("the gear ends at the 16 dp gutter: $g", near(g.right, 344.dp))
         // No power button on Devices.
         compose.onNodeWithContentDescription(localized.getString(R.string.disconnect_all_count, 1)).assertDoesNotExist()
         // The switcher keeps its width.
         val switcher = compose.onNodeWithTag(PROFILE_SWITCHER_TAG).getBoundsInRoot().width
         assertTrue("the switcher is $switcher, needs at least $minSwitcherDp dp", switcher >= minSwitcherDp.dp)
-        chip.performClick()
         gear.performClick()
-        assertEquals(1, tunnels)
+        assertEquals(0, tunnels)
         assertEquals(1, settings)
     }
 

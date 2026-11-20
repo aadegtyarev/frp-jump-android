@@ -45,7 +45,7 @@ Consumers: the assistant tools `ssh_command`, `profile_information` and `start_t
 | `profile_query` (`ProfileQuery`) | `READ_REMOTE` | tool `profile_information` | `OpResult<ProfileInformationState>` | none | `ProfileQueryFailure.Unavailable` (`UNKNOWN`) |
 | `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(error: DomainError?)` (`UNKNOWN`), `DeviceNotListening(reason: DevicePortNotOpen)` (`UNKNOWN`: the device either refused or did not answer in time, and the result does not say which) |
 | `tunnel_connect` (`TunnelConnect`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>`: the connect was asked, not waited for | `TunnelRefusal.ProfileGone` | none |
-| `tunnel_down` (`TunnelDown`) | `CHANGE_LOCAL` (the commit tells the server later) | UI only (Connections, Devices) | `OpResult<Unit>` | `TunnelRefusal.ProfileGone` (device and profile targets) | none |
+| `tunnel_down` (`TunnelDown`) | `CHANGE_LOCAL` (the commit tells the server later) | UI only (Connections) | `OpResult<Unit>` | `TunnelRefusal.ProfileGone` (device and profile targets) | none |
 | `direct_retry` (`DirectRetry`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>` | none | none |
 | `direct_keep` (`DirectKeep`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>` | `DirectRefusal.NoNetwork` | none |
 | `mqtt_publish` (`MqttPublish`) | `CHANGE_REMOTE` | UI only (MQTT publish sheet) | `OpResult<MqttDelivery>` (`ACCEPTED`, `UNCONFIRMED`) | `MqttWriteRefusal`: `NotConnected` | `MqttWriteFailure`: `BrokerRefused(code, reasonString)` (`KNOWN`), `ConnectionLost`, `NoAnswer`, `Other(detail)` (`UNKNOWN`) |

@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -25,8 +26,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -42,10 +49,12 @@ import ru.adsrv.frpjump.R
  * ✕. [label] names the field for TalkBack, [hint] shows while it is empty.
  */
 @Composable
-fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, focus: Boolean, onFocused: () -> Unit, label: String, hint: String) {
+fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, focus: Boolean, onFocused: () -> Unit, label: String, hint: String, retainQuery: Boolean = false) {
     val colors = AppTheme.colors
     val requester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    var hadFocus by remember { mutableStateOf(false) }
     // [focus]: just opened by the magnifier; once done, a return to the screen leaves the keyboard down.
     val locked = LocalAppLocked.current
     // Not while locked: the keyboard must not come up over the lock screen; it comes after unlock.
@@ -61,6 +70,9 @@ fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, foc
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (retainQuery) IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.search_close), tint = colors.ink)
+        }
         Surface(
             shape = CircleShape,
             color = colors.card,
@@ -82,9 +94,11 @@ fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, foc
                     textStyle = TextStyle(fontSize = 16.sp, color = colors.ink),
                     cursorBrush = SolidColor(colors.accent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); if (retainQuery) focusManager.clearFocus() }),
                     modifier = Modifier
                         .weight(1f)
+                        .testTag("search_field")
+                        .onFocusChanged { if (retainQuery) { if (it.isFocused) hadFocus = true else if (hadFocus) { hadFocus = false; onClose() } } }
                         .focusRequester(requester)
                         .semantics { contentDescription = label },
                     decorationBox = { field ->
@@ -94,8 +108,8 @@ fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, foc
                         }
                     },
                 )
-                IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.search_close), tint = colors.muted, modifier = Modifier.size(20.dp))
+                IconButton(onClick = { if (retainQuery) onQuery("") else onClose() }, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(if (retainQuery) R.string.connections_clear_query else R.string.search_close), tint = colors.muted, modifier = Modifier.size(20.dp))
                 }
             }
         }

@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -18,14 +21,10 @@ import ru.adsrv.frpjump.devices.DisplayFailure
 import ru.adsrv.frpjump.devices.displayFailure
 import ru.adsrv.frpjump.ui.userMessage
 import ru.adsrv.frpjump.FrpJumpApp
-import ru.adsrv.frpjump.connections.onTunnelsCount
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceList
 import ru.adsrv.frpjump.devices.DeviceRow
-import ru.adsrv.frpjump.devices.tunnelPorts
-import ru.adsrv.frpjump.devices.tunnelsFirst
 import ru.adsrv.frpjump.session.Notice
-import ru.adsrv.frpjump.ui.connections.ConnectionActions
 import ru.adsrv.frpjump.errors.DomainError
 import java.time.Instant
 
@@ -35,13 +34,12 @@ data class DevicesUiState(
     val devices: List<DeviceRow>? = null,
     val display: Boolean = false,
     val refreshing: Boolean = false,
+    val favorites: Set<String> = emptySet(),
     val error: DomainError? = null,
     /** Set once a refresh of an old list failed: when the server last answered. */
     val staleSince: Instant? = null,
     /** The failure is the network, not the server. */
     val unreachable: Boolean = false,
-    /** Ports this phone has tunnels open to, by device; those devices are listed first. */
-    val tunnelPorts: Map<String, List<Int>> = emptyMap(),
 )
 
 /**
@@ -56,20 +54,18 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.Eagerly, app.profiles.current?.devices)
     private val refreshing = MutableStateFlow(false)
 
-    /** The Devices chip: the tunnels that are on in all profiles, counted as the Tunnels tab's filter counts them ([onTunnelsCount]). */
-    val tunnelsOn: StateFlow<Int> =
-        combine(app.profiles.shownTunnelRefsAll, app.profiles.restorePending) { refs, pending -> onTunnelsCount(refs, pending ?: 0) }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
-
-    /** The bar's "disconnect all" for the current profile. */
-    val actions = ConnectionActions(app, viewModelScope)
-
     /** The list is on screen. */
     private var shown = false
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val favorites = app.profiles.state.flatMapLatest { state ->
+        val profile = state.index.current
+        state.current?.deviceFavorites?.favorites?.map { profile to it } ?: flowOf(profile to emptySet())
+    }
+
     val state: StateFlow<DevicesUiState> =
-        combine(app.profileInformation.observe(), refreshing) { information, busy ->
-            devicesUiState(information, busy)
+        combine(app.profileInformation.observe(), refreshing, favorites) { information, busy, favorite ->
+            devicesUiState(information, busy).copy(favorites = if (favorite.first == information.current) favorite.second else emptySet())
         }.stateIn(viewModelScope, SharingStarted.Eagerly, DevicesUiState())
 
     /** A message left by the screen before (e.g. after "Forget profile"); shown once. */
@@ -120,6 +116,15 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
         }
     }
 
+    fun toggleFavorite(profile: String, device: String, done: (String?) -> Unit) {
+        val runtime = app.profiles.runtime(profile) ?: return done(ru.adsrv.frpjump.locale.Texts.get(ru.adsrv.frpjump.R.string.profile_gone))
+        viewModelScope.launch {
+            val failure = try { withContext(Dispatchers.IO) { runtime.deviceFavorites.toggle(device) }; null }
+            catch (e: Exception) { if (e is CancellationException) throw e; e.userMessage() }
+            done(failure)
+        }
+    }
+
     override fun onCleared() {
         directory.value?.want(this, false)
     }
@@ -139,16 +144,14 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
 internal fun devicesUiState(information: ru.adsrv.frpjump.profiles.ProfileInformationState, busy: Boolean): DevicesUiState {
     val part = information.profiles.firstOrNull { it.id == information.current }
     val list = part?.devices ?: DeviceList()
-    val ports = tunnelPorts(part?.tunnels?.tunnels.orEmpty())
     return DevicesUiState(
         profile = part?.id,
-        devices = list.devices?.let { tunnelsFirst(it, ports) },
+        devices = list.devices,
         display = list.display,
         refreshing = busy,
         error = list.error,
         // A list restored at start is not a failure yet: no banner until a fetch fails.
         staleSince = list.updatedAt.takeIf { list.stale && list.error != null },
         unreachable = list.unreachable,
-        tunnelPorts = ports,
     )
 }

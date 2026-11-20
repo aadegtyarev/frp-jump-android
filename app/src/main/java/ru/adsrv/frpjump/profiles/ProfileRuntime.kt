@@ -81,6 +81,7 @@ class ProfileRuntime(
 ) {
 
     val session = ProfileSession()
+    val deviceFavorites = ru.adsrv.frpjump.devices.DeviceFavorites(shared.storageFor(File(dir, ProfileFiles.DEVICE_FAVORITES)))
     val hostKeys = HostKeyStore(shared.storageFor(File(dir, ProfileFiles.HOST_KEYS)))
     val sshLogins = SshLoginMemory(shared.storageFor(File(dir, ProfileFiles.SSH_LOGINS)))
     val webCerts = WebCertStore(shared.storageFor(File(dir, ProfileFiles.WEB_CERTS)))
@@ -193,6 +194,7 @@ class ProfileRuntime(
     /** Stops the poller and everything else this runtime runs; after "Forget profile". */
     @Synchronized
     fun close() {
+        deviceFavorites.close()
         if (closed) return
         closed = true
         scope.cancel()

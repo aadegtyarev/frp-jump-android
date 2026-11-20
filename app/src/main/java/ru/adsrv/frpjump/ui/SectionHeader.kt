@@ -1,5 +1,9 @@
 package ru.adsrv.frpjump.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -23,11 +27,16 @@ import ru.adsrv.frpjump.R
 
 /** The gear at the right end of a section's header: Settings open over the section. */
 @Composable
-fun SettingsGear(onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(44.dp).testTag(SETTINGS_GEAR_TAG)) {
-        Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.tab_settings), tint = AppTheme.colors.ink, modifier = Modifier.size(22.dp))
+fun SettingsGear(framed: Boolean = false, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(if (framed) 48.dp else 44.dp).testTag(SETTINGS_GEAR_TAG)) {
+        val shape = RoundedCornerShape(HeaderControlRadius)
+        Box(if (framed) Modifier.size(38.dp).background(AppTheme.colors.card, shape).border(1.dp, AppTheme.colors.outline, shape) else Modifier, contentAlignment = Alignment.Center) {
+            Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.tab_settings), tint = AppTheme.colors.ink, modifier = Modifier.size(22.dp))
+        }
     }
 }
+
+val HeaderControlRadius = 10.dp
 
 const val SETTINGS_GEAR_TAG = "settings_gear"
 
