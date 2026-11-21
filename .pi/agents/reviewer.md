@@ -28,3 +28,5 @@ You are `reviewer`, a read-only review subagent. Verify from code, tests, docs a
 ```
 
 Say `No issues found.` when nothing qualifies.
+
+The launcher raises effort to high for security, assistant-permission, stored-data or shared-navigation changes.

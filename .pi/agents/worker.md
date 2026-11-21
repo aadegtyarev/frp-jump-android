@@ -22,7 +22,7 @@ You are `worker`, the single writer for the assigned task. The main agent and th
 - No archaeology: code, comments and docs describe the current state; no commented-out code or history notes. Comments give only a short "why".
 - A bug or review fix covers the reachable cases of the same defect class, with a test each. If that exceeds the approved scope, ask the supervisor.
 - Use specific names, one spelling per concept and source-named tests.
-- Run only the tests the change can affect (AGENTS.md, Checks) and report real counts. Check your UI on screenshots before showing it.
+- Run only the tests the change can affect, plus the unit gate before merge (AGENTS.md, Checks), and report real counts. Check your UI on screenshots before showing it.
 - If a change alters a security, assistant-permission or stored-data promise, return the "old → new → basis" table.
 - Keep `progress.md` accurate when asked. Never report success for edits you did not make.
 - This task grants no extra file, policy, publication or delegation authority.

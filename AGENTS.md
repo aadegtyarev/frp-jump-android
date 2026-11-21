@@ -8,7 +8,7 @@
 - Before designing, see how good apps solve the task. Name and shape equivalent actions alike everywhere.
 - UI: fewest steps, common actions direct, short labels. Never drop functionality, accessibility, truthful feedback or safety warnings for minimalism. Check your UI on screenshots before showing it.
 - No archaeology: code, comments, contracts and docs describe only the current state. No "previously", "no longer", "removed in #N", commented-out or kept-for-reference code, or history notes; git keeps history. Comments give only a short "why" the code cannot say.
-- Run only the tests the change can affect (Checks).
+- Run only the tests the change can affect, plus the unit gate before merge (Checks).
 
 <!-- BEGIN ad-pi-addons contract workflow -->
 ## Contracts
@@ -44,7 +44,7 @@
 - Merge at the matched head after the unit gate; scan new commits with Gitleaks before push. One writer per worktree.
 - The parent keeps scope, acceptance, commit, PR, merge and release authority. Releases are pre-authorized: after a slice's version PR is reviewed and merged, tag and publish it; otherwise no release, tag or version bump without explicit operator instruction.
 - Models and roles: plan on the strongest model (astra, or sol at high effort), implement on terra, review on another model (sol). Every slice gets that review, scaled by risk: medium effort plus the unit gate for small UI changes; high for security, assistant permissions, stored data or shared navigation. With one model: plan at high effort, implement, review in a fresh context. Never below medium effort. No silent external-CLI fallback.
-- Release from a main commit whose changed screens passed both configurations, with 1.0 and 200% screenshots viewed (`ltest.sh` → `build/shots`). The release PR has only version and notes. A flaky test gets one rerun; if green, release, name it in the notes, open an issue.
+- Release from a main commit whose changed screens passed both configurations, with 1.0 and 200% screenshots viewed (`ltest.sh` → `build/shots`). The version PR has only version and notes. A flaky test gets one rerun; if green, release, name it in the notes, open an issue.
 - Attribution, two trailing lines: `Environment: Pi`, `Model: <the model that wrote the change>`.
 
 ## Review
@@ -57,7 +57,7 @@
 
 ## Redesign requirements
 
-For every redesign slice and its review; full wording in [docs/redesign-requirements.md](docs/redesign-requirements.md#rule-details). Surface contracts and their security, privacy, retention and lifecycle guarantees stay normative.
+For every redesign slice and its review. The full wording in [docs/redesign-requirements.md](docs/redesign-requirements.md#rule-details) binds equally: read the rules your slice touches there before starting. The rules record approved direction, not proof of implementation; mocks and gallery suggestions alone approve no change. Surface contracts and their security, privacy, retention and lifecycle guarantees stay normative.
 
 1. Scope: Devices, Tunnels, Sessions, Settings, assistant entry and context, list gestures.
 2. Terminal, Files, Web, MQTT stay unchanged except approved narrow routing; check opening and return.
