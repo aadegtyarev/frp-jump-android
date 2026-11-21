@@ -42,10 +42,10 @@
 ## Delivery and authority
 
 - Merge at the matched head after the unit gate; scan new commits with Gitleaks before push. One writer per worktree.
-- The parent keeps scope, acceptance, commit, PR, merge and release authority. No release, tag or version bump without explicit operator instruction.
+- The parent keeps scope, acceptance, commit, PR, merge and release authority. Releases are pre-authorized: after a slice's version PR is reviewed and merged, tag and publish it; otherwise no release, tag or version bump without explicit operator instruction.
 - Models and roles: plan on the strongest model (astra, or sol at high effort), implement on terra, review on another model (sol). Every slice gets that review, scaled by risk: medium effort plus the unit gate for small UI changes; high for security, assistant permissions, stored data or shared navigation. With one model: plan at high effort, implement, review in a fresh context. Never below medium effort. No silent external-CLI fallback.
 - Release from a main commit whose changed screens passed both configurations, with 1.0 and 200% screenshots viewed (`ltest.sh` → `build/shots`). The release PR has only version and notes. A flaky test gets one rerun; if green, release, name it in the notes, open an issue.
-- Attribution, two trailing lines: `Environment: Pi`, `Model: openai/gpt-6.1-sol`.
+- Attribution, two trailing lines: `Environment: Pi`, `Model: <the model that wrote the change>`.
 
 ## Review
 
