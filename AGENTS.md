@@ -10,13 +10,11 @@
 - No archaeology: code, comments, contracts and docs describe only the current state. No "previously", "no longer", "removed in #N", commented-out or kept-for-reference code, or history notes; git keeps history. Comments give only a short "why" the code cannot say.
 - Run only the tests the change can affect, plus the unit gate before merge (Checks).
 
-<!-- BEGIN ad-pi-addons contract workflow -->
 ## Contracts
 - Follow `docs/contracts/meta-contract.md` (approval, exact paths for every role, stop on scope change, cleanup).
 - Only large or risky features (security, assistant permissions, stored data, cross-surface) need a feature contract in `docs/contracts/features/`. Read the relevant sections of affected surface contracts; keep contracts compact.
 - Never overwrite or delete instructions or contracts silently.
 - Delegate nontrivial read-only reconnaissance to a configured role; the parent owns scope, decisions, verification and user communication.
-<!-- END ad-pi-addons contract workflow -->
 
 ## Project facts
 
