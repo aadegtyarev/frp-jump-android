@@ -61,6 +61,15 @@ class AssistantSessionsTest {
         assertSame(ChangeCheck.ReadOnly, TerminalOpenTool(rig.sessions, 3).changeCheck(ids()))
     }
 
+    @Test fun `terminal_open issues the exact opened session reference`() {
+        val rig = SessionRig()
+        rig.host.issuedReference = "[terminal:opened]"
+        val out = open(rig)
+        assertEquals("[terminal:opened]", out.references.single().token)
+        assertEquals(out.text, out.references.single().evidence)
+        assertEquals("100 · root@pi", out.references.single().label)
+    }
+
     @Test fun `terminal_open refuses past the owner's limit and opens nothing`() {
         val rig = SessionRig(); rig.existing(1); rig.existing(2)
         val out = open(rig, limit = 2)

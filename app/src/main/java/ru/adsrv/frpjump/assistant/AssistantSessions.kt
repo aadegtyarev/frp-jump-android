@@ -34,7 +34,7 @@ import ru.adsrv.frpjump.ssh.tmuxNumber
 /** How `terminal_open` ended. */
 internal sealed interface OpenResult {
     /** The session is open and runs tmux: its tab id and where it is. */
-    class Opened(val id: Int, val user: String, val device: String) : OpenResult
+    class Opened(val id: Int, val user: String, val device: String, val reference: String? = null) : OpenResult
     /** [atOnce] sessions of the assistant exist already, the most the owner allows. */
     class TooMany(val atOnce: Int) : OpenResult
     /** The target is not a saved SSH tunnel that is on and ready (no tunnel was started). */
@@ -98,6 +98,7 @@ internal interface HostedSession {
     val number: Int
     val openedBy: SessionOpener
     val shown: Boolean
+    val reference: String? get() = null
     val state: StateFlow<SshState>
     /** The connection now open runs tmux (the session survives the connection). */
     val tmuxInUse: Boolean
@@ -281,7 +282,7 @@ class AssistantSessions internal constructor(
                     withContext(io) { records.put(key, null, openedBy = SessionOpener.ASSISTANT) }
                     ids[key] = session.id
                     _entries.update { list -> list.filter { it.key != key } + Entry(session.id, key, null) }
-                    OpenResult.Opened(session.id, session.user, session.device)
+                    OpenResult.Opened(session.id, session.user, session.device, session.reference)
                 }
                 state is SshState.Open -> OpenResult.NoTmux
                 state is SshState.HostKeyUnknown || state is SshState.HostKeyChanged -> OpenResult.NeedsSetup
@@ -523,6 +524,7 @@ internal class SshHosted(private val session: SshSession) : HostedSession {
     override val number get() = session.number
     override val openedBy get() = session.openedBy
     override val shown get() = session.shown.value
+    override val reference get() = session.assistantReference
     override val state get() = session.state
     override val tmuxInUse get() = session.tmux.inUse
     override val key get() = session.tabNameKey()

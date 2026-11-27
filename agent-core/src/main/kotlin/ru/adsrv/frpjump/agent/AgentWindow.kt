@@ -39,7 +39,7 @@ fun selectAgentWindow(
 
 internal fun toolResult(call: ToolCall, output: ToolOutput, limit: Int): ToolResult {
     val original = output.text
-    if (original.length <= limit) return ToolResult(call.id, call.name, original, output.outcome)
+    if (original.length <= limit) return ToolResult(call.id, call.name, original, output.outcome, references = emittedReferences(original, output))
     val marker = "\n[…]\n"
     val available = limit - marker.length
     var head = available / 2
@@ -47,5 +47,9 @@ internal fun toolResult(call: ToolCall, output: ToolOutput, limit: Int): ToolRes
     // Do not split a UTF-16 surrogate pair at either cut.
     if (head > 0 && original[head - 1].isHighSurrogate() && original[head].isLowSurrogate()) head--
     if (tail > 0 && original[tail - 1].isHighSurrogate() && original[tail].isLowSurrogate()) tail++
-    return ToolResult(call.id, call.name, original.take(head) + marker + original.substring(tail), output.outcome, tail - head)
+    val text = original.take(head) + marker + original.substring(tail)
+    return ToolResult(call.id, call.name, text, output.outcome, tail - head, emittedReferences(text, output))
 }
+
+private fun emittedReferences(text: String, output: ToolOutput): List<ToolReference> =
+    if (output.outcome == ToolOutcome.SUCCESS) output.references.filter { it.evidence.isNotEmpty() && it.evidence in text.lineSequence().toSet() } else emptyList()

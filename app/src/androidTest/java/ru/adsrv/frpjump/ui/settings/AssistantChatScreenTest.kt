@@ -172,7 +172,10 @@ class AssistantChatScreenTest {
     }
     private val waitSources = SyntheticWaits()
     private fun tabWait(kind: ru.adsrv.frpjump.assistant.WaitKind) = ru.adsrv.frpjump.assistant.WaitSpec(kind, 10, tabId = 3)
-    private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?, private val screen: String) : TabHandle {
+    private var openedTerminalReference: String? = null
+
+    private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?,
+        private val screen: String, override val reference: String? = null) : TabHandle {
         companion object {
             /** What a terminal showing only [screen] (no history, the cursor on its last row) holds. */
             fun sourceOf(screen: String, first: Int): ru.adsrv.frpjump.assistant.SourceText {
@@ -295,7 +298,7 @@ class AssistantChatScreenTest {
                 "terminal-tabs" -> when (request.turns.last().exchanges.size) {
                     0 -> AgentReply(calls = listOf(ToolCall("tabs-1", "terminal_tabs", buildJsonObject { })))
                     1 -> AgentReply(calls = listOf(ToolCall("tabs-2", "terminal_read", buildJsonObject { put("tab_id", 1); put("lines", 50) })))
-                    else -> { heldProviderReply.await(); AgentReply("The first tab shows a synthetic prompt and two files.") }
+                    else -> { heldProviderReply.await(); AgentReply("The first tab shows a synthetic prompt and two files.\n\n[terminal:synthetic-report]") }
                 }
                 "terminal-rename" -> when (request.turns.last().exchanges.size) {
                     0 -> AgentReply(calls = listOf(ToolCall("tabs-1", "terminal_tabs", buildJsonObject { })))
@@ -466,7 +469,7 @@ class AssistantChatScreenTest {
                     val vm = viewModel { vm() }
                     SideEffect { owner = vm.conversation; chatBinding = vm.tools; ownerSupport = vm.confirmations }
                     AssistantChatScreen(vm, onBack = { nav.popBackStack() },
-                        onSetup = { nav.navigate("setup") })
+                        onSetup = { nav.navigate("setup") }, onTerminalReference = { openedTerminalReference = it })
                 }
                 composable("setup") { Text("Synthetic provider setup") }
             }
@@ -673,7 +676,8 @@ class AssistantChatScreenTest {
     /** Terminal results stay in the model context, outside the transcript. */
     @Test fun terminalTabsAndReadStayInModelContextWithoutReceipts() {
         terminalTabs = AssistantTerminalTabs(
-            tabs = { listOf(SyntheticTab(1, 1, null, "pi@synthetic-device:~$ ls\nreport.txt  notes.txt\npi@synthetic-device:~$"), SyntheticTab(2, 2, "frpjump-0a1b2c-2", "")) },
+            tabs = { listOf(SyntheticTab(1, 1, null, "pi@synthetic-device:~$ ls\nreport.txt  notes.txt\npi@synthetic-device:~$",
+                reference = "[terminal:synthetic-report]"), SyntheticTab(2, 2, "frpjump-0a1b2c-2", "")) },
             hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" })
         mode = "terminal-tabs"; settings.update { it.copy(assistantTerminalTabs = true) }
         install()
@@ -691,6 +695,12 @@ class AssistantChatScreenTest {
         }
         compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
         compose.onAllNodesWithText("report.txt", substring = true).assertCountEquals(0)
+        compose.onAllNodesWithText("[terminal:synthetic-report]", substring = true).assertCountEquals(0)
+        val openTab = localizedFormat(ru.adsrv.frpjump.R.string.chat_open_terminal, "1 · pi@synthetic-device")
+        compose.onNodeWithText(openTab).performScrollTo().assertIsDisplayed().assertHasClickAction()
+        shot("answer-link")
+        compose.onNodeWithText(openTab).performClick()
+        compose.runOnIdle { assertEquals("[terminal:synthetic-report]", openedTerminalReference) }
     }
 
     /** Renaming still changes only the intended label. */

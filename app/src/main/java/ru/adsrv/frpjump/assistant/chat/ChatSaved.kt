@@ -12,14 +12,16 @@ import ru.adsrv.frpjump.assistant.tools.*
     @Transient val chars = id.length.toLong() + name.length + arguments.toString().length
     fun value() = ToolCall(id, name, arguments)
 }
+@Serializable internal data class SavedReference(val token: String, val label: String)
 @Serializable internal data class SavedResult(val callId: String, val name: String, val text: String, val outcome: String, val omittedChars: Int = 0,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val references: List<SavedReference> = emptyList(),
     @Transient val original: ToolResult? = null,
     /** Why this call ran without a question (memory only: never written, so a conversation restored from the saved history shows none). */
     @Transient val noQuestion: ru.adsrv.frpjump.settings.NoQuestion? = null) {
-    @Transient val chars = callId.length.toLong() + name.length + text.length
+    @Transient val chars = callId.length.toLong() + name.length + text.length + references.sumOf { it.token.length + it.label.length }
     /** An outcome name this version does not know (written by a newer one) reads as a failure: not success, not declined. */
-    fun value() = original ?: ToolResult(callId, name, text, ToolOutcome.entries.firstOrNull { it.name == outcome } ?: ToolOutcome.FAILED, omittedChars)
-    companion object { fun of(value: ToolResult) = SavedResult(value.callId, value.name, value.text, value.outcome.name, value.omittedChars, value) }
+    fun value() = original ?: ToolResult(callId, name, text, ToolOutcome.entries.firstOrNull { it.name == outcome } ?: ToolOutcome.FAILED, omittedChars, references.map { ToolReference(it.token, label = it.label) })
+    companion object { fun of(value: ToolResult) = SavedResult(value.callId, value.name, value.text, value.outcome.name, value.omittedChars, value.references.map { SavedReference(it.token, it.label) }, value) }
 }
 @Serializable internal data class SavedReply(val text: String = "", val calls: List<SavedCall> = emptyList(), val continuation: String? = null,
     @Transient val localContinuation: AgentContinuation? = null) {

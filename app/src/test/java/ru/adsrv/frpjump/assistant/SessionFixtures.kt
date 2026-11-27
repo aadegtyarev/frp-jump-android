@@ -19,6 +19,7 @@ internal class FakeHosted(
     override val device: String = "pi", override val port: Int = 22, override val number: Int = 1, initial: SshState = SshState.Open,
     override val tmuxInUse: Boolean = true, override val key: SessionKey? = null, override var name: TabName? = null,
 ) : HostedSession {
+    override var reference: String? = null
     override var sessionGone = false
     val flow = MutableStateFlow(initial)
     override val state: StateFlow<SshState> = flow
@@ -32,6 +33,7 @@ internal class FakeHost : SessionHost {
     val log = ArrayList<String>()
     var comes: SshState = SshState.Open
     var tmux = true
+    var issuedReference: String? = null
     /** The tmux sessions that still run on the device: an attach-only session to another one finds it gone. */
     var running: Set<String>? = null
     /** The probe of an attach-only session gets no answer: it ends, but not as gone. */
@@ -50,6 +52,7 @@ internal class FakeHost : SessionHost {
         val gone = attachOnly && tmuxName != null && running?.let { tmuxName !in it } == true
         val s = FakeHosted(id ?: next++, SessionOpener.ASSISTANT, spec.profile, spec.user, spec.device, spec.port, number, if (gone) SshState.Ended("gone") else comes, tmux,
             SessionKey(spec.profile, spec.device, spec.port, spec.user, tmuxName ?: "frpjump-0a1b2c-$number"))
+        s.reference = issuedReference
         s.sessionGone = gone
         if (attachOnly && probeTimesOut) s.flow.value = SshState.Ended("no answer")
         sessions += s

@@ -156,6 +156,7 @@ fun TerminalScreen(
     /** Profile id to its colour's name, for the tabs' dots. */
     profileColors: Map<String, String>,
     initialId: Int,
+    initialReference: String? = null,
     onBack: () -> Unit,
     /**
      * Terminal > menu > "Ask the assistant": gets the text selected in the shown tab as a quote block for the chat draft, or null
@@ -179,6 +180,19 @@ fun TerminalScreen(
     // A tab closed, or its tunnel disconnected, while the Undo is on screen is not shown; it still runs.
     val list = remember(all, hidden) {
         all.filterNot { sessionHidden(hidden, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) }
+    }
+    var referenceAdmitted by remember { mutableStateOf(initialReference == null) }
+    if (!referenceAdmitted) {
+        val exact = list.firstOrNull { it.id == initialId && it.assistantReference == initialReference && it.state.value == SshState.Open }
+        if (exact == null) {
+            val context = LocalContext.current
+            LaunchedEffect(initialReference) {
+                context.notice(context.getString(R.string.terminal_not_open), NoticeKind.WARN)
+                onBack()
+            }
+            return
+        }
+        SideEffect { referenceAdmitted = true }
     }
     // One deleted while its Undo is on screen is not offered.
     val snippets = remember(stored, hidden) { stored.filter { PendingUndo.snippetKey(it.id) !in hidden } }

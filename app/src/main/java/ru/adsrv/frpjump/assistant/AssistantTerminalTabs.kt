@@ -54,6 +54,7 @@ internal data class TerminalTab(
     /** Who opened it: the assistant's own sessions are listed as such, with whether the owner has them as a tab. */
     val openedBy: ru.adsrv.frpjump.ssh.SessionOpener = ru.adsrv.frpjump.ssh.SessionOpener.OWNER,
     val shown: Boolean = true,
+    val reference: String? = null,
 )
 
 /**
@@ -75,6 +76,7 @@ internal interface TabHandle {
     val openedBy: ru.adsrv.frpjump.ssh.SessionOpener get() = ru.adsrv.frpjump.ssh.SessionOpener.OWNER
     /** Whether the owner has the session as a tab. */
     val shown: Boolean get() = true
+    val reference: String? get() = null
     /** A session remembered from before a restart, not attached yet: no connection, no buffer until [AssistantTerminalTabs] attaches it. */
     val detached: Boolean get() = false
     /** The tab's own name (owner- or assistant-set), null when it has none. */
@@ -119,6 +121,7 @@ internal class SessionTab(private val session: SshSession) : TabHandle {
     override val state get() = session.state.value
     override val openedBy get() = session.openedBy
     override val shown get() = session.shown.value
+    override val reference get() = session.assistantReference
     override val customName get() = session.tabName.value?.text
     // Named by the assistant: the tab's chip shows it together with the automatic label until the owner saves it.
     override fun rename(name: String?) = session.rename(name, ru.adsrv.frpjump.ssh.NameSetter.ASSISTANT)
@@ -246,7 +249,7 @@ class AssistantTerminalTabs internal constructor(
 
     private fun describe(tab: TabHandle) = TerminalTab(
         tab.id, tab.profileId, profileName(tab.profileId) ?: tab.profileId, tab.device, tab.user, tab.number,
-        connectionName(tab.profileId, tab.device, tab.port), stateOf(tab), tab.tmuxName != null, tab.customName, tab.openedBy, tab.shown,
+        connectionName(tab.profileId, tab.device, tab.port), stateOf(tab), tab.tmuxName != null, tab.customName, tab.openedBy, tab.shown, tab.reference,
     )
 
     /** The tab's state as the model is told: [TabState.DETACHED] while a remembered assistant session is not attached. */

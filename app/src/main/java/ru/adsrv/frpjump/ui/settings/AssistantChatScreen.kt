@@ -53,7 +53,7 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 
 @Composable
-fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit, onOpenTerminal: (Int) -> Unit = {}) {
+fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit, onOpenTerminal: (Int) -> Unit = {}, onTerminalReference: (String) -> Unit = {}) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val provider by vm.provider.collectAsStateWithLifecycle()
     val toolsState by vm.tools.state.collectAsStateWithLifecycle()
@@ -69,7 +69,7 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
         AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
             confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF,
             tools = toolsState.committed, onTurnOn = vm::turnOnRequested, toolsFailed = toolsState.failed,
-            asks = vm.ownerAsks.collectAsStateWithLifecycle().value, onOpenAsk = { vm.openAsk(it, onOpenTerminal) }, onDismissAsk = vm::dismissAsk)
+            onTerminalReference = onTerminalReference, asks = vm.ownerAsks.collectAsStateWithLifecycle().value, onOpenAsk = { vm.openAsk(it, onOpenTerminal) }, onDismissAsk = vm::dismissAsk)
     }
 }
 
@@ -89,6 +89,7 @@ internal fun AssistantChatContent(
     /** What the assistant asked the owner to act on in its own sessions: a card each, with Open (the session as a tab). */
     asks: List<ru.adsrv.frpjump.assistant.OwnerAsk> = emptyList(), onOpenAsk: ((ru.adsrv.frpjump.assistant.OwnerAsk) -> Unit)? = null,
     onDismissAsk: ((ru.adsrv.frpjump.assistant.OwnerAsk) -> Unit)? = null,
+    onTerminalReference: (String) -> Unit = {},
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
@@ -222,7 +223,13 @@ internal fun AssistantChatContent(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (turn.unanswered) Text(stringResource(R.string.chat_unanswered), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_unanswered"))
                                 else if (turn.interrupted) Text(stringResource(R.string.chat_interrupted), color = AppTheme.colors.muted)
-                                SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
+                                val answer = remember(turn.answer, turn.receipts) { referenceAnswer(turn.answer, turn.receipts) }
+                                SelectionContainer { AssistantAnswerMarkdown(answer.text) }
+                                answer.references.forEach { reference ->
+                                    TextButton(onClick = { onTerminalReference(reference.token) }) {
+                                        Text(stringResource(R.string.chat_open_terminal, reference.label))
+                                    }
+                                }
                                 ChatSources(turn.sources)
                                 // Only under the latest reply; see requestedTools for when it shows.
                                 if (onTurnOn != null && index == state.turns.lastIndex) requestedTools(state, enabled, tools).forEach { id ->

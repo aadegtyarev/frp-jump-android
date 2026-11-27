@@ -1666,4 +1666,5 @@
     <string name="tunnels_picker_done">Готово</string>
     <string name="tunnels_picker_clear">Сбросить</string>
     <string name="tunnels_add_button">Добавить туннель</string>
+    <string name="chat_open_terminal">Открыть терминал %1$s</string>
 </resources>

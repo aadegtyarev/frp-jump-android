@@ -36,7 +36,10 @@ internal class TerminalOpenTool(private val sessions: AssistantSessions, private
     override val invalidArguments = ToolOutput(PROVIDE_IDS, ToolOutcome.FAILED)
 
     override suspend fun run(args: SavedTunnelIds): ToolOutput = when (val r = sessions.open(args, limit)) {
-        is OpenResult.Opened -> ToolOutput("Session opened: tab_id ${r.id} (${shown(r.user)}@${shown(r.device)}). Type with terminal_input and read with terminal_read.")
+        is OpenResult.Opened -> {
+            val text = "Session opened: tab_id ${r.id} (${shown(r.user)}@${shown(r.device)}). Type with terminal_input and read with terminal_read." + (r.reference?.let { " | $it" } ?: "")
+            ToolOutput(text, references = r.reference?.let { listOf(ru.adsrv.frpjump.agent.ToolReference(it, text, "${r.id} · ${shown(r.user)}@${shown(r.device)}")) }.orEmpty())
+        }
         is OpenResult.TooMany -> ToolOutput("Already ${r.atOnce} sessions of yours, the most at once. Close one with terminal_close first.", ToolOutcome.FAILED)
         OpenResult.Unavailable -> ToolOutput(SshRefusalTexts.TARGET_UNAVAILABLE, ToolOutcome.FAILED)
         OpenResult.NeedsSetup -> ToolOutput(SshRefusalTexts.NEEDS_SETUP, ToolOutcome.FAILED)
