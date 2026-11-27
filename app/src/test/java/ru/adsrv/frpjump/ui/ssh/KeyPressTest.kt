@@ -19,6 +19,27 @@ class KeyPressTest {
     }
 
     @Test
+    fun functionKeysUseTermuxCodesAndConsumeModifiers() {
+        val keys = listOf(ExtraKey.F1, ExtraKey.F2, ExtraKey.F3, ExtraKey.F4, ExtraKey.F5, ExtraKey.F6,
+            ExtraKey.F7, ExtraKey.F8, ExtraKey.F9, ExtraKey.F10, ExtraKey.F11, ExtraKey.F12)
+        keys.forEachIndexed { index, key ->
+            modifiers.ctrl = true
+            modifiers.alt = true
+            modifiers.shift = true
+            assertEquals(KeyPress.Code(KeyEvent.KEYCODE_F1 + index,
+                KeyHandler.KEYMOD_CTRL or KeyHandler.KEYMOD_ALT or KeyHandler.KEYMOD_SHIFT), pressFor(key, modifiers))
+            assertFalse(modifiers.ctrl || modifiers.alt || modifiers.shift)
+            assertTrue(KeyHandler.getCode(key.keyCode!!, 0, false, false).isNotEmpty())
+        }
+    }
+
+    @Test
+    fun forwardDeleteUsesItsOwnKeyCode() {
+        assertEquals(KeyPress.Code(KeyEvent.KEYCODE_FORWARD_DEL, 0), pressFor(ExtraKey.DEL, modifiers))
+        assertEquals(KeyPress.Code(KeyEvent.KEYCODE_DEL, 0), pressFor(ExtraKey.BACKSPACE, modifiers))
+    }
+
+    @Test
     fun backspaceIsDel() {
         assertEquals("\u007f", bytes(ExtraKey.BACKSPACE))
     }
@@ -50,6 +71,7 @@ class KeyPressTest {
         assertEquals("\u0004", bytes(ExtraKey.CTRL_D))
         assertEquals("\u001a", bytes(ExtraKey.CTRL_Z))
         assertEquals("\u0012", bytes(ExtraKey.CTRL_R))
+        assertEquals("\u0016", bytes(ExtraKey.CTRL_V))
     }
 
     @Test
@@ -77,7 +99,7 @@ class KeyPressTest {
 
     @Test
     fun theFirstGroupKeepsItsOrderWithShiftAfterAlt() {
-        assertEquals(listOf("ESC", "TAB", "Ctrl", "Alt", "Shift", "CTRL_D", "CTRL_Z", "CTRL_R"), comboSlotNames())
+        assertEquals(listOf("ESC", "Ctrl", "Alt", "Shift", "CTRL_D", "CTRL_R", "PAGE_UP", "PAGE_DOWN"), comboSlotNames())
     }
 
     @Test

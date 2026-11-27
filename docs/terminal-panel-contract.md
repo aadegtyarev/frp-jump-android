@@ -32,10 +32,16 @@ Keys is the initial surface. There is no dedicated Keys/Text selector row.
 | Enter Text | Collapse additional rows. Show only the editor in the input area: no main key row, additional rows, disclosure or command chips. |
 | `>_` in Text | Return to Keys without inserting or discarding the draft; additional rows remain collapsed. |
 
-Additional keys start collapsed. Keep their order: Esc, Tab, sticky Ctrl,
-Alt, Shift, ^D, ^Z, ^R, then Home, End, PgUp, PgDn, `|`, `~`, `/`, `-`.
-Sticky Ctrl, Alt and Shift apply to the next key, then release; they combine.
-They are also released by ready combos (^C ^D ^Z ^R, unapplied), entering Text
+Additional keys start collapsed. The normal rows are Esc, Ctrl, Alt, Shift,
+^D, ^R, PgUp, PgDn; then Home, End, `|`, `~`, `/`, `-`, Tab, Fn.
+Fn opens rows Esc, Ctrl, Alt, Shift, ^D, ^Z, ^R, ^V; F1–F8;
+then F9–F12, Tab, Del, 123, Fn. The 123 switch replaces the last two
+rows with 1–8; then 9, 0, `-`, `.`, `/`, Tab, 123, Fn. Fn returns
+to the normal rows; all layers work with the system keyboard hidden. The
+function keys use the emulator's key-code path; ^V sends control byte 0x16,
+independent of Paste. Sticky Ctrl, Alt and Shift apply to the next key, then
+release; they combine.
+They are also released by ready combos (^C ^D ^Z ^R ^V, unapplied), entering Text
 mode, snippet send and the confirmed multi-line paste; a direct paste leaves
 sticky modifiers as they are. Shift sends the arrows, Tab, Home and End with the
 Shift modifier as the terminal emulator encodes it (Shift+Tab is `ESC [ Z`,
@@ -77,18 +83,17 @@ change the persisted direct-input preference.
 
 ## Shared geometry and accessibility
 
-- All rows use the main row's nine column tracks. Reserve the last visual
+- The extra-key rows use the main row's nine column tracks. Reserve the last visual
   cell above the keyboard for the independent disclosure, not another key.
-- Eight extra keys use the same cell widths; on wide screens sixteen use
-  half-cells in one row. Wrapped rows use whole-cell multiples, with a
+- Eight extra keys use the same cell widths. Wrapped rows use whole-cell multiples, with a
   larger minimum width for large fonts. Do not stretch each row onto an
   unrelated set of columns.
-- Preserve compact heights: main keys are 44 dp high, extra keys 36 dp,
+- Preserve compact heights: main keys are 44 dp high, existing extra keys 36 dp,
   with 3 dp gaps. The extra-key minimum width is 36 dp scaled upward with
   font scale, never downward below the normal-font minimum.
 - Anchor the disclosure to the main row. Centre its symbol horizontally on
   the keyboard column and vertically on the last extra row. Do not reserve
-  a separate full-width header row.
+  a separate full-width disclosure header row.
 - Keep its full touch target independent of the keyboard and all real
   keys, including when additional rows are open. The target ends above the
   main row and stays inside the panel viewport. Its height is 48 dp; its
