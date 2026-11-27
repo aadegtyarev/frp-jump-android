@@ -11,11 +11,12 @@ fun selectAgentWindow(
     limits: AgentLimits,
     counter: TokenCounter = Utf8TokenEstimate,
     ownerInstructions: String = "",
+    finalSynthesis: Boolean = false,
 ): AgentWindow {
     val budget = limits.contextTokens - limits.outputReserveTokens
     var retained = current
     var removed = 0
-    fun request(turns: List<AgentTurn>) = AgentRequest(instructions, tools, turns, limits.outputReserveTokens, ownerInstructions, limits.modelTimeoutMs)
+    fun request(turns: List<AgentTurn>) = AgentRequest(instructions, tools, turns, limits.outputReserveTokens, ownerInstructions, limits.modelTimeoutMs, finalSynthesis)
     var tokens = counter.count(request(listOf(retained)))
     while (tokens > budget && retained.exchanges.size > 1) {
         retained = retained.copy(exchanges = retained.exchanges.drop(1))

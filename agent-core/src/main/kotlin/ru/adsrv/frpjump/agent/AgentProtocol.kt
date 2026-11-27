@@ -39,7 +39,9 @@ data class AgentRequest(val instructions: String, val tools: List<ToolSpec>, val
      * How long the provider may take to answer this request: the run's model timeout ([AgentLimits.modelTimeoutMs]), the ONE limit. A provider with a fixed
      * transport timeout shorter than it must not cut the call sooner. Null: the provider's own default (calls that are not part of a run).
      */
-    val timeoutMs: Long? = null)
+    val timeoutMs: Long? = null,
+    /** Final answer after tool steps: exactly one provider request, no tools or provider-backed compaction. */
+    val finalSynthesis: Boolean = false)
 
 /** Fixed, model-facing heading of the owner's own instructions; the text follows after one line break. */
 const val OWNER_INSTRUCTIONS_HEADER = "## Owner's additional instructions"

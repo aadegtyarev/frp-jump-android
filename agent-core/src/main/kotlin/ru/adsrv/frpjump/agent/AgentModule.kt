@@ -92,18 +92,20 @@ class AgentModule(
             val exchanges = ArrayList<AgentExchange>()
             val usedCalls = HashSet<String>()
             fun finish(reason: AgentFinish) = AgentRunResult(AgentTurn(user, exchanges.toList()), reason)
-            repeat(limits.maxSteps) {
+            repeat(limits.maxSteps + 1) { step ->
+                // After the last tool step, allow one answer-only request under the same owner and deadline.
+                val requestSpecs = if (step == limits.maxSteps) emptyList() else specs
                 checkOwner()
                 val prepared = try {
                     withTimeout(limits.modelTimeoutMs) {
-                        prepareRequest(AgentRequest(instructions, specs, past + AgentTurn(user, exchanges.toList()), limits.outputReserveTokens, ownerInstructions, limits.modelTimeoutMs))
+                        prepareRequest(AgentRequest(instructions, requestSpecs, past + AgentTurn(user, exchanges.toList()), limits.outputReserveTokens, ownerInstructions, limits.modelTimeoutMs, finalSynthesis = step == limits.maxSteps))
                     }
                 } catch (timeout: TimeoutCancellationException) { checkOwner(); return@coroutineScope finish(AgentFinish.MODEL_TIMEOUT) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { checkOwner(); return@coroutineScope finish(AgentFinish.PROVIDER_FAILED) }
                 checkOwner()
-                require(prepared.instructions == instructions && prepared.ownerInstructions == ownerInstructions && prepared.tools == specs && prepared.maxOutputTokens == limits.outputReserveTokens && prepared.turns.last().user == user)
-                val window = selectAgentWindow(instructions, specs, prepared.turns.dropLast(1), prepared.turns.last(), limits, counter, ownerInstructions)
+                require(prepared.instructions == instructions && prepared.ownerInstructions == ownerInstructions && prepared.tools == requestSpecs && prepared.finalSynthesis == (step == limits.maxSteps) && prepared.maxOutputTokens == limits.outputReserveTokens && prepared.turns.last().user == user)
+                val window = selectAgentWindow(instructions, requestSpecs, prepared.turns.dropLast(1), prepared.turns.last(), limits, counter, ownerInstructions, finalSynthesis = step == limits.maxSteps)
                 val request = window.request ?: return@coroutineScope finish(AgentFinish.CONTEXT_FULL)
                 onEvent(AgentEvent.Window(window.omittedTurns, window.omittedExchanges, window.estimatedTokens))
                 checkOwner()
@@ -119,6 +121,7 @@ class AgentModule(
                     return@coroutineScope finish(AgentFinish.PROVIDER_FAILED)
                 }
                 checkOwner()
+                if (step == limits.maxSteps && received.calls.isNotEmpty()) return@coroutineScope finish(AgentFinish.STEP_LIMIT)
                 if (received.calls.size > limits.maxCallsPerStep) return@coroutineScope finish(AgentFinish.INVALID_REPLY)
                 val reply = received.copy(calls = received.calls.toList())
                 if (reply.continuation?.let { it.sizeChars < 0 || it.estimatedTokens !in 0..1_000_000 } == true) return@coroutineScope finish(AgentFinish.INVALID_REPLY)

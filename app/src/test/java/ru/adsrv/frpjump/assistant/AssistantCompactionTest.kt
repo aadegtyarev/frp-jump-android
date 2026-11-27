@@ -317,6 +317,63 @@ class AssistantCompactionTest {
         }
     }
 
+    @Test fun `final synthesis uses existing archive summary without restoring covered raw content`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val history = AssistantChatHistory(Memory(), Box(), scope, Dispatchers.Unconfined)
+        val snapshot = AssistantProviderSnapshot(AssistantProviderSettings(model = "chat", contextTokens = 12_000, outputTokens = 512), "revision")
+        val old = record("old question", said("covered raw secret"))
+        history.save(SavedChat().bind(snapshot.settings).copy(records = listOf(old, record("recent question", said("recent answer"))), summary = SavedSummary("saved summary fact", 1, 0))); history.load()
+        val requests = mutableListOf<AgentRequest>()
+        val model = AgentProvider { request ->
+            requests += request
+            if (requests.size == 1) AgentReply(calls = listOf(ToolCall("ghost", "ghost", buildJsonObject {}))) else AgentReply("answer")
+        }
+        val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot }, { model }, {}, AgentModule(true),
+            limits = { _, _ -> AgentLimits(contextTokens = 12_000, outputReserveTokens = 512, maxSteps = 1) }, io = Dispatchers.Unconfined,
+            historyStore = history, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
+        try {
+            chat.ready(); chat.edit("Continue"); chat.send(); chat.ready()
+            assertEquals(2, requests.size)
+            val final = requests.last()
+            assertTrue(final.finalSynthesis)
+            val texts = final.turns.flatMap { t -> listOf(t.user) + t.exchanges.flatMap { e -> listOf(e.reply.text) + e.results.map { it.text } } }
+            assertTrue("final texts: $texts", texts.any { it.contains("saved summary fact") })
+            assertFalse(texts.any { it.contains("covered raw secret") })
+            assertEquals("ghost", final.turns.last().exchanges.single().results.single().name)
+        } finally { chat.close(); scope.cancel() }
+    }
+
+    @Test fun `final synthesis does not summarize or retry provider overflow`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val history = AssistantChatHistory(Memory(), Box(), scope, Dispatchers.Unconfined)
+        val snapshot = AssistantProviderSnapshot(AssistantProviderSettings(model = "chat", contextTokens = 12_000, outputTokens = 512), "revision")
+        history.save(SavedChat(records = manyAnswers(10)).bind(snapshot.settings)); history.load()
+        var mainCalls = 0
+        var summariesAfterTool = 0
+        val model = AgentProvider { request ->
+            if (request.instructions == TestPrompts.real.summary) {
+                if (mainCalls > 0) summariesAfterTool++
+                AgentReply("Summary of older exchanges")
+            } else {
+                mainCalls++
+                if (mainCalls == 1) AgentReply(calls = listOf(ToolCall("ghost", "ghost", buildJsonObject { put("blob", "x".repeat(5000)) })))
+                else {
+                    assertTrue(request.finalSynthesis); assertTrue(request.tools.isEmpty())
+                    throw OpenAiProviderException(ProviderFailure.HTTP, 400, contextTooLong = true)
+                }
+            }
+        }
+        val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot }, { model }, {}, AgentModule(true),
+            limits = { _, _ -> AgentLimits(contextTokens = 12_000, outputReserveTokens = 512, maxSteps = 1) }, io = Dispatchers.Unconfined,
+            historyStore = history, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
+        try {
+            chat.ready(); chat.edit("Continue"); chat.send(); chat.ready()
+            assertEquals(2, mainCalls)
+            assertEquals(0, summariesAfterTool)
+            assertNotNull(chat.state.value.problem)
+        } finally { chat.close(); scope.cancel() }
+    }
+
     @Test fun `any other provider error is not retried and keeps its own message`() {
         sendWith(OpenAiProviderException(ProviderFailure.HTTP, 400), summaryFails = false) { mains, summaries, chat, _ ->
             assertEquals(1, mains); assertEquals(0, summaries); assertEquals(ChatProblem.PROVIDER, chat.state.value.problem)
