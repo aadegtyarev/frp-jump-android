@@ -89,7 +89,7 @@ import ru.adsrv.frpjump.assistant.tools.*
             val name = try { StrictArgs(receipt.call.arguments).string("name") } catch (_: InvalidArguments) { return@mapNotNull null }
             name.takeIf { AssistantToolId.fromWire(it) != null && result.text == AssistantRequestTool.askedText(it) }
         }.distinct()
-        return ChatTurn(user, if (status == SavedTurnState.COMPLETE) exchanges.lastOrNull()?.reply?.text.orEmpty() else "",
+        return ChatTurn(user, if (status == SavedTurnState.COMPLETE) exchanges.lastOrNull()?.reply?.takeIf { it.calls.isEmpty() }?.text.orEmpty() else "",
             sources.map { ChatSource(it.title, it.url) }, failures.isNotEmpty(), failures, information,
             interrupted = status != SavedTurnState.COMPLETE, receipts = receipts,
             unanswered = status == SavedTurnState.INTERRUPTED && exchanges.lastOrNull()?.results?.lastOrNull()

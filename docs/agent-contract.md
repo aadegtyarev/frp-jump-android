@@ -794,8 +794,7 @@ setting, makes no network request and returns at once with a fixed text:
   are off now, or is a tool that is on; a missing `why` or `name`; an extra
   argument; a `why` that is blank, over 300 characters or has a lone
   surrogate): `Provide name (one of the listed tools) and why (one short
-  sentence) only.` (outcome failed). In receipts a `request_tool` call is titled
-  "Request to turn on a tool".
+  sentence) only.` (outcome failed).
 
 The tool stays off for the rest of that request ("Tool set captured at Send"
 is unchanged).
@@ -806,8 +805,7 @@ same disclosure warning that Tools shows under that tool's switch (FULL SSH
 ACCESS for `ssh_command`) and, when that attempt called a web tool, even if the
 call failed or was unknown, the mark "In this attempt the assistant read web
 pages". "No thanks" is announced with the tool's name ("No thanks: <tool>").
-`why` is never shown with the buttons; like every call argument it stays
-visible in the call's receipt. The buttons are not shown while an attempt
+`why` is never shown with the buttons; tool arguments remain in the bounded conversation record and are not displayed as receipts. The buttons are not shown while an attempt
 runs, while the assistant is off, when the tool is on (they also go when it is
 turned on in Tools) or declined, after a new Send, or after a history clear;
 they are not saved, they follow from the saved reply and result.
@@ -1096,7 +1094,7 @@ Action classes (catalog `actionClass`; the class never decides by itself whether
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
 | `terminal_tabs` | `READ_REMOTE` | none: app state, and for tmux tabs one probe on the tab's own connection | no arguments | the owner's open (not hidden) terminal tabs; the call returns within 3 s of the probe start, probes in parallel; about 7,800 characters | never | tab ids, profile, device, connection and user names, state and the foreground program go to the model | optional, default off (shared switch with `terminal_read`) |
 | `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) and `from` (a cursor from an earlier read or input) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; a read over a connection returns within 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
-| `terminal_rename` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: the tab's label in this app only, remembered app-privately for tmux tabs like the owner's own rename; no connection, session or device is touched | exactly `tab_id` (integer from 1) and `name` (at most 24 characters, one line; empty restores the automatic name) | the owner's tab-name rule; unknown, hidden or closed tabs are refused | never: an app-local label the owner can change from the tab's menu, shown with the tab's user and device on every card, call line and receipt | the name is model text shown to the owner; `terminal_tabs` shows it to the model | optional, default off (shared switch with `terminal_tabs`) |
+| `terminal_rename` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: the tab's label in this app only, remembered app-privately for tmux tabs like the owner's own rename; no connection, session or device is touched | exactly `tab_id` (integer from 1) and `name` (at most 24 characters, one line; empty restores the automatic name) | the owner's tab-name rule; unknown, hidden or closed tabs are refused | never: an app-local label the owner can change from the tab's menu, shown with the tab's user and device on every relevant card | the name is model text shown to the owner; `terminal_tabs` shows it to the model | optional, default off (shared switch with `terminal_tabs`) |
 | `wait_for` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: a background wait in the app's memory over tab and tunnel state, the tab's output source and the clock | `event` (`tab_connected`, `tab_closed`, `tab_text`, `tab_quiet`, `tunnel_on`, `tunnel_off` or `time`, only the kinds available now), `minutes` (1 to the owner's longest wait), `tab_id` or `profile_id` and `connection_id`, `text` (`tab_text`, 1 to 200 characters, one line), optional `from` (a cursor, `tab_text` and `tab_quiet` only) and `seconds` (`tab_quiet` only, 1 to the owner's longest wait in seconds, default 10) | at most the owner's number of waits at once | never: it changes only this app, the owner sees every wait and can cancel it | the tab's or tunnel's name is shown to the owner; an event message (never the screen) goes to the model | optional, default off (switch `assistant_waits`; tab events need Terminal tabs, tunnel events Profile information) |
 | `terminal_open` | `CHANGE_REMOTE`, no confirmation (flag `confirms = false`) | a session of the assistant's own: a tmux session on a saved SSH tunnel's device (that is on and ready; none is started), logged in with the tunnel's stored login (no dialog, no password), no tab for the owner | `profile_id` and `connection_id` (from `profile_information`) | at most the owner's «Сессий помощника» at once (default 3, 1 to 10); the device must have a working tmux | never: it changes nothing on the device but a tmux session, and shows in the chat and in Sessions | `Session opened: tab_id <id> (<user>@<device>)…` | optional, default off (switch `assistant_sessions`; works only with Terminal tabs and Typing into tabs on) |
 | `terminal_show` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: the owner is asked (a card in the chat, a notification while the chat is not on screen) | `tab_id` of one of the assistant's sessions and `reason` (1 to 80 characters, shown to the owner as plain text) | one ask per session at a time | never: it only asks | the reason is model text shown to the owner | same switch as `terminal_open` |
@@ -1188,7 +1186,7 @@ carries no payload: no server detail, host, URL, exception message or class name
 HTTP body or frpc text. The kinds are a model-visible format: adding, removing or
 renaming one is a contract change, and a unit test pins the exact set per field.
 Chats saved by 0.3.70 and earlier hold the former fixed phrases (a string in these
-fields); they are re-sent as saved and the chat's facts view accepts both shapes.
+fields); they remain in the saved record and are re-sent as saved.
 Typed facts such as relay after direct failure, waiting and device-missing remain
 separate; diagnostic text alone is not classified as a failure. Credentials,
 keys, tokens, certificates and runtime/store objects are never serialized.
@@ -1218,17 +1216,11 @@ In the four server-kind fields (`device_list.error`,
 outside the field's set is told as `UNEXPECTED`, so these sets stay true.
 `load_error` and `mismatch` take only their own kinds.
 
-The tool uses the existing captured-per-Send set, progress/failure feedback,
-result/context/history bounds, omission, cancellation, slot and module ownership
-rules. Chat retains the same bounded received result with an off-Main parsed
-presentation charged separately to the aggregate history budget. A selectable
-localized facts view is available on demand with completed turns and opens
-automatically for an incomplete attempt's provider/context failure. Received
-facts therefore do not depend on another model explanation. They clear with
-the next current attempt, their whole-turn eviction, revocation or close; late
-unauthorized output is still withheld. Information retained in successful chat
-exchanges follows the same bounded encrypted-history lifecycle; a later tool-switch change
-does not erase that history.
+The tool uses the captured-per-Send set and existing result/context/history,
+omission, cancellation, slot and ownership bounds. Its bounded result remains
+in the encrypted conversation for model context, without a separate automatic
+facts view. Late unauthorized output remains withheld; a later tool-switch
+change does not erase accepted history.
 This informational tool does not authorize connection control, SSH, device
 HTTP, Files or MQTT tools. It has an accurate private-data disclosure, not a
 full-access claim.
@@ -1311,10 +1303,8 @@ contain secrets; the switch's hint says so.
   invalid arguments (a `from` that is not a cursor of this app included) say `Provide tab_id (an integer from terminal_tabs), optional
   lines 0..1000 and optional from (a cursor from an earlier read or input) only.` (`terminal_tabs takes no arguments.` for the
   other). A tab can change at any time; the screen is untrusted data.
-- The chat's receipt for `terminal_read` names the tab (`profile · user@device
-  №number` in Russian, `profile · user@device #number` in English) when the same turn's `terminal_tabs` result names it, else `tab <id>`.
-  When that result gives the tab a name, the line is `"name" · profile · user@device #number`: a name is owner or model text and is
-  shown only together with the tab's user and device, on call lines, in the typing card and in receipts, never alone.
+- Terminal identity remains available in the typing confirmation card and tool
+  results; calls and raw results are not displayed as transcript receipts.
 - `terminal_rename` takes exactly `tab_id` (integer, at least 1) and `name`, and renames one open tab as the owner's **Rename…**
   does: the same rule (`checkTabName`: trimmed, at most 24 code points, one line, no control, invisible or bidi characters, no `|`;
   the 24 is the owner's own limit, one value) and the same store path, so a tmux tab renamed by the assistant is remembered like
@@ -1322,7 +1312,7 @@ contain secrets; the switch's hint says so.
   only the tab's label in this app: it opens no channel, types nothing and touches no session, connection or device. Its catalog
   effect is `CHANGE_LOCAL` with the flag `confirms = false`, so it asks for no confirmation (the confirmation policy and the change check
   key on `effect.changes && confirms`; a changing tool that is not an `AppTool` is still refused): the basis is that the change is an
-  app-local label the owner can undo from the tab's menu, and the tab's chip, every card, call line and receipt show the name together with
+  app-local label the owner can undo from the tab's menu, and the tab's chip and relevant confirmation cards show the name together with
   the tab's user and device. A name the assistant set is shown on the chip as `<automatic label> · <name>` until the owner saves the name
   in the Rename… dialog (even unchanged), which makes it the owner's and shows it alone; the store keeps who set it, so a restored name
   keeps it. Names cannot hold `"`, `«`, `»`, `·` or `|`, nor invisible fillers (they must show as they are, with a visible character), so a
@@ -1330,9 +1320,7 @@ contain secrets; the switch's hint says so.
   bidi-isolated and is plain text. A tab that is
   unknown, hidden or `closed` is not renamed. Replies (fixed texts): `Tab <id> is now named "<name>".`; `Tab <id> has its
   automatic name again.`; `Tab <id> is closed. Nothing was renamed.`; invalid arguments or an invalid name say `Provide tab_id from
-  terminal_tabs and name: up to 24 characters, one line, no control characters.` and change nothing. The chat shows a call line
-  `Tab name · "name" · user@device #number` (the name with the tab's user and device from the same turn's `terminal_tabs`
-  result, else `tab <id>` alone) and, expanded, `before → after` (each the name or the automatic `user@device #number`) and the reply.
+  terminal_tabs and name: up to 24 characters, one line, no control characters.` and change nothing.
 
 ### Optional tunnel tools
 
@@ -1358,8 +1346,7 @@ and `ssh_command` still never starts one.
   nothing was executed.`, or the "Provide…" reply when it is gone). A stop of a tunnel that is unknown, hidden or not on (also one already stopping) asks nothing and shows no card: it replies `Provide profile_id and connection_id from profile_information.` or `Tunnel <name> was not on. Nothing was stopped.` The at-once stop counts as going down from its start until the tunnel is down, so a start in that window is refused as above. Replies: `Tunnel <name> is off. Its terminal and MQTT sessions closed; tmux sessions on the
   device stay.`; `Tunnel <name> was not on. Nothing was stopped.`; declined and unanswered questions use the common texts; any other failure:
   `Could not stop the tunnel.` (not in the approved list yet).
-- The chat's call lines are `Start tunnel · profile · "name"` and `Stop tunnel · profile · "name"` (the names as the received
-  `profile_information` facts hold them, the profile before the tunnel's name, which is plain owner text, bidi-isolated).
+
 
 ### Optional event waits
 
@@ -1417,7 +1404,7 @@ tabs and Typing into tabs are on; turning either off turns it off, and turning t
 - `terminal_close` goes through the common confirmation (card «Закрыть сессию?» / "Close session?", the identity line, `Всё, что в ней запущено, остановится.` / `Anything running in it stops.`;
   no "For session": `terminal_close` is not grantable although it shares the `CONNECTION_CHANGE` class with the grantable `ssh_command` and `terminal_input`, and a grant of that class never covers it). An owner's tab is never closed by it (`Tab <id> is the owner's; only the owner closes it.`). Reply `Session <id> is closed.`; a remembered session is attached first, and
   when it cannot be reached nothing is closed. Open failure: `Could not open a session. Check terminal_tabs.`; a Stop in the middle closes the half-open session.
-- Owner UI: Sessions lists the assistant's sessions with the owner's other sessions, without a separate group. A visible and accessible ✦ marks assistant ownership even after the owner opens the session as a tab. The ordinary row opens it, its close action uses shared Undo, and its identity includes the profile and SSH target. If an owner open or committed close fails, target-specific feedback and the device's Tunnels link offer recovery. Opening that link only navigates to Tunnels. The owner's confirmed close uses the SSH persistence contract's verified owner path. Chat progress and call lines remain «Открываю сессию…», «Закрываю сессию…», «Прошу ваш ввод…» and «Открыть сессию», «Закрыть сессию», «Нужен ваш ввод».
+- Owner UI: Sessions lists the assistant's sessions with the owner's other sessions, without a separate group. A visible and accessible ✦ marks assistant ownership even after the owner opens the session as a tab. The ordinary row opens it, its close action uses shared Undo, and its identity includes the profile and SSH target. If an owner open or committed close fails, target-specific feedback and the device's Tunnels link offer recovery. Opening that link only navigates to Tunnels. The owner's confirmed close uses the SSH persistence contract's verified owner path.
 - Old -> new: the assistant worked only in the owner's open tabs; it may now open its own tmux sessions on a saved SSH tunnel that is on, only with the switch on (default off), at most the
   owner's limit; they stay on the device until it or the owner closes them and are always listed in Sessions. Closing one asks like every changing tool. A read or input on a detached session logs in again over the tunnel's saved login (the owner's «Свои сессии» switch on).
 
@@ -1493,9 +1480,9 @@ switch. The tool has the catalog effect `CHANGE_REMOTE`.
 - Confirmation is the common one (see [Confirmation of changing calls](#confirmation-of-changing-calls)): the card shows the tab, the
   program, the text and the keys; the description is pure and does no I/O; an answer of Decline or none types nothing. There is no
   lock gate in the tool: while the app is locked the card waits behind the lock like every card, and the five minutes run on.
-- The text and keys never go to a log or to a `toString`. The chat's receipt is titled "Type into tab" («Ввод во вкладку»), names the
-  tab as the one of `terminal_read` does, and its expanded body shows the typed text with visible escapes and a `Keys: Enter, Ctrl+C` line
-  («Клавиши: …»); a refusal or failure adds its outcome and text. A successful call shows the input only: the cursor it returned is for the model.
+- The text and keys never go to a log or to a `toString`. The confirmation
+  card shows the text and keys when approval is required; results remain in the
+  bounded model context without a separate transcript receipt.
 
 ### Optional SSH command
 
@@ -1545,8 +1532,7 @@ least 1,500 characters (or all of it, if shorter); stdout gets the rest. The
 excess is drained and counted, not retained; a cut stream ends with the note
 `[truncated: N of M characters]`, where N is what the model receives for that
 stream and M is the exact total, both in UTF-16 characters. A cut never splits
-a surrogate pair. The note is part of the result text for the model and the UI
-receipt. The stdout and stderr texts stay separately labelled, with actual
+a surrogate pair. The note is part of the result text for the model. The stdout and stderr texts stay separately labelled, with actual
 nullable exit status/signal or explicit unknown. Only known exit 0 without a
 signal is success; EOF, local close/join, nonzero/missing status and failures
 are not invented remote success. Kernel/result/context limits continue to apply.
@@ -1683,25 +1669,19 @@ every exit; only bounded model-response/provenance text enters history.
 Tool failures use short fixed understandable descriptions, with known numeric
 HTTP status/limits when available: public-address refusal, network/HTTP failure,
 unsupported/empty/oversized content, request/rate budget and image API failure.
-They remain explicit tool results and visible current-attempt failure feedback;
-normal dialogue may explain them. No raw body, exception message/stack, credential
-or private app context is disclosed. Nonempty model inability text is data, not a
-client-classified technical failure.
-
-Chat shows localized tool progress and tool/outcome failure labels. Each received
-failure retains the same bounded sanitized tool-result text and, for a valid
-search call, its generated query. These literal selectable details are shown
-directly, including while the next model reply is pending or after that provider
-request fails; an explanation from the model is not required. They accompany
-completed turns and interrupted history entries. Current-attempt presentation
-advances with the next attempt; closing the conversation releases its memory, not the accepted
-checkpoint. Late unauthorized output remains suppressed. These details reference
-already budgeted call/result data, not a separate persistent diagnostic log.
-Raw internal exceptions, credentials and withheld late output are not added.
+They remain explicit bounded tool results for the model; the assistant may
+explain relevant failures in its answer. No raw body, exception message, stack,
+credential or private app context is disclosed. Nonempty model inability text
+is data, not a client-classified technical failure. Chat does not render separate tool
+receipts, raw results or tool errors, including after history restoration. It
+shows quiet progress, genuine pending confirmations and requests, and localized
+app/provider problems. Tool calls and results continue to follow the existing
+encrypted-history and model-context lifecycle; late unauthorized output is
+withheld. The assistant may quote relevant available output on explicit request.
 Selectable fetched titles/URLs remain separate from arbitrary model Markdown.
-Retrieval is not proof of generated claims. A generic omission label covers both older turns and current exchanges;
-current-attempt failure feedback is independent of any prior completed turn's
-failure indicator. Links/images in answers remain inert: no automatic opening/loading.
+Retrieval is not proof of generated claims. A generic omission label covers both
+older turns and current exchanges. Links/images in answers remain inert: no
+automatic opening/loading.
 Source metadata follows the same complete canonical records, archive limits and
 512,000-character current-record bound, not an unbounded separate page registry.
 Summarization changes request context, not the original selectable sources.

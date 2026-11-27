@@ -26,10 +26,10 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test: one hash per asset.
-        assertEquals(18, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(19, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(3, AssistantPrompts.SUMMARY_VERSION)
         val pinned = mapOf(
-        "assistant/skill.md" to "2bbd6e3c5d3c6fe13ba5af476d768c2be1203d43309c7925ef0edf9de6d92fed",
+        "assistant/skill.md" to "63799dcffeba98d471d22d4bc08f3aa45a6e4cea72445df7a32ee29074040954",
         "assistant/skills/skill-authoring.md" to "0dc9c271051c1ecdab74f24fbe9b12ea645785fc9cc5ad304fa360ab446dd4d0",
         "assistant/tools/skills.md" to "03cf883318f91b760c5be8cb946b54ba1f823286730017d3f124eeef3a1ab585",
         "assistant/summary.md" to "b1d30cb5d6ed25e55fe6c1f81e989a91972747723e7b39647b3c21333bfdadeb",
@@ -54,7 +54,7 @@ class AssistantPromptsTest {
         "Solve the user's task, not merely a tool call.",
         "Get the facts yourself with every tool available and finish the investigation: do not offer a check you can do now or leave steps to the user.",
         "Answer concisely in the user's language, with the useful result and any necessary next step.",
-        "Answer briefly: give the answer first, do not retell raw output, and add no caveats beyond the required disclosures below unless asked; use a table only when it is clearer than a list.",
+        "Answer briefly: give the answer first, do not retell raw output, and add no caveats beyond the required disclosures below unless asked; quote relevant tool output only when the user explicitly requests it; use a table only when it is clearer than a list.",
         "Use only the tools provided in this request.",
         "Never invent tools, credentials, IDs or successful results.",
         "If a needed tool is missing, say so.",
@@ -122,6 +122,13 @@ class AssistantPromptsTest {
     @Test fun `with every switch on the composed prompt holds every old sentence exactly once`() {
         val text = TestPrompts.real.system(on)
         for (sentence in oldSentences) assertEquals(sentence, 1, Regex(Regex.escape(sentence)).findAll(text).count())
+    }
+
+    @Test fun `partial command output is useful without claiming success`() {
+        val prompt = TestPrompts.real.system(off)
+        assertTrue(prompt.contains("Use relevant partial output even when a command exits nonzero"))
+        assertTrue(prompt.contains("without calling the command successful"))
+        assertTrue(prompt.contains("quote relevant tool output only when the user explicitly requests it"))
     }
 
     @Test fun `a tool's text is in the prompt only while its switch is on, the core rules always are`() {

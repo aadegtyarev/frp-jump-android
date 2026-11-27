@@ -651,8 +651,8 @@ class AssistantChatScreenTest {
         compose.waitUntil(WAIT_MS) { selection() == androidx.compose.ui.text.TextRange("Sent text".length) }
     }
 
-    /** Two profile-information calls in a row: one running line with the count, a summary that opens straight onto the facts. */
-    @Test fun twoProfileCallsShowAsOneGroupWhileRunningAndWhenFinished() {
+    /** Tool calls remain available to the model while the conversation stays quiet. */
+    @Test fun twoProfileCallsStayQuietWhileRunningAndWhenFinished() {
         informationFixture = ProfileInformationFixture(); information = informationFixture!!.information
         mode = "two-profile-calls"; settings.update { it.copy(assistantProfileInformation = true) }
         // Two pages of facts are far over the default context budget; the turn must run to its answer, not fail on size.
@@ -662,36 +662,16 @@ class AssistantChatScreenTest {
         button("chat_send").performClick()
         compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 2 && r.all { it.result != null } } }
         compose.waitForIdle()
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_call_0"))
-        // Two pages of one search: two lines, told apart by the page ("from record 14"), not one "×2".
-        compose.onNodeWithTag("chat_tool_call_0").assertTextContains("board150", substring = true)
-        compose.onNodeWithTag("chat_tool_call_1").assertTextContains("14", substring = true).assertTextContains("board150", substring = true)
-        compose.onNode(hasTestTag("chat_tool_call_0") and hasText("14", substring = true)).assertDoesNotExist()
-        compose.onNodeWithTag("chat_tool_call_2").assertDoesNotExist()
+        compose.onAllNodesWithTag("chat_tool_call_0").assertCountEquals(0)
         assertFieldEmpty(); button("chat_stop").assertIsDisplayed()
-        shot("calls-running")
         compose.runOnIdle { heldProviderReply.complete(Unit) }
         awaitIdle()
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
-        compose.onNodeWithTag("chat_tool_receipts").assertTextContains("×2", substring = true).assertIsDisplayed()
-        compose.onNodeWithTag("chat_tool_calls_list").assertDoesNotExist()
-        shot("calls-collapsed")
-        compose.onNodeWithTag("chat_tool_receipts").performClick()
-        compose.onNodeWithTag("chat_tool_group_0").assertDoesNotExist()
-        compose.onNodeWithTag("chat_tool_group_0_item_1").assertExists()
-        compose.onAllNodesWithTag("chat_profile_information_facts").assertCountEquals(2)
-        compose.onAllNodesWithText("profile_information", substring = true).assertCountEquals(0)
-        scrollHistoryTo(hasTestTag("chat_profile_information_facts"))
-        compose.onAllNodes(hasTestTag("chat_profile_information_facts"))[0].assertIsDisplayed()
-        shot("calls-expanded")
-        // The second page's label says where it starts; its facts follow.
-        compose.onNodeWithTag("chat_tool_group_0_item_1").performScrollTo().assertIsDisplayed()
-        compose.onNode(hasAnyAncestor(hasTestTag("chat_tool_group_0_item_1")) and hasText(localizedText(ru.adsrv.frpjump.R.string.chat_detail_from).format(14), substring = true)).assertExists()
-        shot("calls-expanded-page2")
+        compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
+        compose.onAllNodesWithTag("chat_profile_information_facts").assertCountEquals(0)
     }
 
-    /** terminal_tabs then terminal_read: the receipt of the read names the tab from the list, the screen text is in the expanded receipt. */
-    @Test fun terminalTabsThenReadShowAsNamedReceipts() {
+    /** Terminal results stay in the model context, outside the transcript. */
+    @Test fun terminalTabsAndReadStayInModelContextWithoutReceipts() {
         terminalTabs = AssistantTerminalTabs(
             tabs = { listOf(SyntheticTab(1, 1, null, "pi@synthetic-device:~$ ls\nreport.txt  notes.txt\npi@synthetic-device:~$"), SyntheticTab(2, 2, "frpjump-0a1b2c-2", "")) },
             hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" })
@@ -701,38 +681,20 @@ class AssistantChatScreenTest {
         button("chat_send").performClick()
         compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 2 && r.all { it.result != null } } }
         compose.waitForIdle()
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_call_0"))
-        compose.onNodeWithTag("chat_tool_call_0").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_tabs_receipt), substring = true)
-        compose.onNodeWithTag("chat_tool_call_1").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_read_receipt), substring = true)
-            .assertTextContains("Synthetic profile · pi@synthetic-device", substring = true)
-        compose.onAllNodesWithText("terminal_read", substring = true).assertCountEquals(0)
-        shot("terminal-calls-running")
+        compose.onAllNodesWithTag("chat_tool_call_0").assertCountEquals(0)
         compose.runOnIdle { heldProviderReply.complete(Unit) }
         awaitIdle()
         compose.runOnIdle {
-            val results = owner!!.state.value.receipts.ifEmpty { owner!!.state.value.turns.last().receipts }.map { it.result!! }
-            assertTrue(results[0].text, results[0].text.contains("tab_id: 1 | profile: Synthetic profile (profile_id: synthetic-profile) | device: synthetic-device | tunnel: Synthetic shell | user: pi | tab: 1 | state: connected | tmux: no"))
-            assertTrue(results[0].text, results[0].text.contains("tab_id: 2 |") && results[0].text.endsWith("| tmux: yes | program: htop"))
-            val screen = "pi@synthetic-device:~$ ls\nreport.txt  notes.txt\npi@synthetic-device:~$"
-            assertEquals("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer, cursor: ${ru.adsrv.frpjump.assistant.TabText(SyntheticTab.sourceOf(screen, -1)).cursor}\n$screen", results[1].text)
+            val results = owner!!.state.value.turns.last().receipts.map { it.result!! }
+            assertTrue(results[0].text.contains("tab_id: 1"))
+            assertTrue(results[1].text.contains("report.txt"))
         }
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
-        compose.onNodeWithTag("chat_tool_receipts").assertIsDisplayed()
-        shot("terminal-calls-collapsed")
-        compose.onNodeWithTag("chat_tool_receipts").performClick()
-        compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains("Synthetic profile · pi@synthetic-device", substring = true)
-        // The expanded body is the result alone: no wire name, no raw arguments, no outcome word for a success.
-        for (index in 0..1) {
-            val body = compose.onNodeWithTag("chat_tool_receipt_$index").fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
-            assertFalse(body, body.contains("terminal_tabs") || body.contains("terminal_read") || body.contains("tab_id\"") || body.contains("SUCCESS") || body == "{}")
-        }
-        compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer", substring = true)
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_1"))
-        shot("terminal-calls-expanded")
+        compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
+        compose.onAllNodesWithText("report.txt", substring = true).assertCountEquals(0)
     }
 
-    /** terminal_rename: its call line is the name with the tab's user and device; expanded, "before → after" and the approved reply. */
-    @Test fun terminalRenameShowsItsCallLineAndBeforeAfterAndRenamesOnlyTheLabel() {
+    /** Renaming still changes only the intended label. */
+    @Test fun terminalRenameChangesOnlyTheLabelWithoutCallReceipts() {
         val renamed = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "").also { it.customName = "old" }
         val other = SyntheticTab(1, 1, null, "")
         terminalTabs = AssistantTerminalTabs(tabs = { listOf(other, renamed) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" })
@@ -742,28 +704,14 @@ class AssistantChatScreenTest {
         button("chat_send").performClick()
         compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 2 && r.all { it.result != null } } }
         compose.waitForIdle()
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_call_1"))
-        // The name is never alone: the tab's user and device are on the line.
-        compose.onNodeWithTag("chat_tool_call_1").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_rename_receipt), substring = true)
-            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab_name, ru.adsrv.frpjump.ssh.isolateName("logs"), "pi", "synthetic-device", 2), substring = true)
-        compose.runOnIdle { assertEquals("logs", renamed.customName); assertNull(other.customName) }
-        shot("terminal-rename-running")
-        compose.runOnIdle { heldProviderReply.complete(Unit) }
+        compose.onAllNodesWithTag("chat_tool_call_1").assertCountEquals(0)
+        compose.runOnIdle { assertEquals("logs", renamed.customName); assertNull(other.customName); heldProviderReply.complete(Unit) }
         awaitIdle()
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
-        compose.onNodeWithTag("chat_tool_receipts").performClick()
-        val before = localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, ru.adsrv.frpjump.ssh.isolateName("old"))
-        val after = localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, ru.adsrv.frpjump.ssh.isolateName("logs"))
-        // Identity first (profile, user@device, number), then before -> after.
-        compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains(
-            localizedFormat(ru.adsrv.frpjump.R.string.chat_receipt_rename, "Synthetic profile", "pi", "synthetic-device", 2, before, after), substring = true)
-            .assertTextContains("Tab 2 is now named \"logs\".", substring = true)
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_1"))
-        shot("terminal-rename-expanded")
+        compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
     }
 
-    /** A rename with no `terminal_tabs` result in the turn: the call line and the expanded receipt show the tab's id only, never the name alone. */
-    @Test fun aRenameOfAnUnlistedTabNeverShowsTheNameAlone() {
+    /** Renaming an unlisted tab does not add a receipt. */
+    @Test fun renameOfUnlistedTabDoesNotShowReceipts() {
         val renamed = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "")
         terminalTabs = AssistantTerminalTabs(tabs = { listOf(SyntheticTab(1, 1, null, ""), renamed) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> null })
         mode = "terminal-rename-unlisted"; settings.update { it.copy(assistantTerminalTabs = true) }
@@ -775,11 +723,7 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertEquals("logs", renamed.customName) }
         compose.runOnIdle { heldProviderReply.complete(Unit) }
         awaitIdle()
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
-        compose.onNodeWithTag("chat_tool_receipts").performClick()
-        val text = compose.onNodeWithTag("chat_tool_receipt_0").fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
-        assertTrue(text, text.contains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab, 2)))
-        assertFalse("the name stands alone in: $text", text.contains("logs"))
+        compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
     }
 
     /** The question before typing into a tab that has a name: the name, with the tab's profile, user and device. */
@@ -922,14 +866,14 @@ class AssistantChatScreenTest {
         shot("opens-at-end")
     }
 
-    /** While a run adds tool calls the list follows: the newest call line is in view each time. */
-    @Test fun theListFollowsTheNewCallLinesWhileTheRunGoes() {
+    /** The list remains at the bottom while a quiet run continues. */
+    @Test fun theListStaysAtBottomDuringQuietToolProgress() {
         startStepsRun()
         awaitAtBottom("at the start of the run")
         for (step in 1..6) {
             releaseStep(step)
             awaitAtBottom("after call $step")
-            assertEndInView("chat_tool_call_${step - 1}", "call line ${step - 1} after call $step")
+            compose.onAllNodesWithTag("chat_tool_call_${step - 1}").assertCountEquals(0)
         }
         shot("follows-calls")
         repeat(4) { stepTickets.trySend(Unit) }
@@ -955,7 +899,7 @@ class AssistantChatScreenTest {
         awaitAtBottom("after scrolling down again")
         releaseStep(3)
         awaitAtBottom("after the third call")
-        assertEndInView("chat_tool_call_2", "call line 2 after returning to the bottom")
+        compose.onAllNodesWithTag("chat_tool_call_2").assertCountEquals(0)
         repeat(8) { stepTickets.trySend(Unit) }
         awaitIdle()
     }
@@ -1086,8 +1030,8 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertTrue(host.stopped.isEmpty()) }
     }
 
-    /** start_tunnel runs without a question; its call line names the tunnel's profile first. */
-    @Test fun startingATunnelAsksNothingAndShowsItsCallLine() {
+    /** start_tunnel runs without a confirmation or a call line. */
+    @Test fun startingATunnelAsksNothingAndShowsNoCallLine() {
         tunnelsHost = SyntheticTunnels(0, on = false)
         settings.update { it.copy(assistantTunnels = true) }
         install()
@@ -1097,11 +1041,7 @@ class AssistantChatScreenTest {
         compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 1 && r.all { it.result != null } } }
         compose.waitForIdle()
         compose.runOnIdle { assertNull("no question for a start", owner!!.state.value.confirmation); assertEquals(listOf("synthetic-device"), tunnelsHost.started.toList()) }
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_call_0"))
-        // The tunnel's name is on the line, whole (from the reply: no facts were received in this turn), with no profile id in front of it.
-        compose.onNodeWithTag("chat_tool_call_0").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_start_tunnel_receipt), substring = true)
-            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, ru.adsrv.frpjump.ssh.isolateName("pi ssh")), substring = true)
-        shot("tunnel-start-line")
+        compose.onAllNodesWithTag("chat_tool_call_0").assertCountEquals(0)
         compose.runOnIdle { heldProviderReply.complete(Unit) }
         awaitIdle()
     }
@@ -1122,8 +1062,8 @@ class AssistantChatScreenTest {
         shot("tools-tunnels-on")
     }
 
-    /** An expanded ssh_command call: the full command as `$ command`, a word for the failed outcome, the result; never the wire name or JSON. */
-    @Test fun expandedSshCallShowsTheFullCommandAndAnOutcomeWordOnly() {
+    /** SSH failure is available to the model without an automatic receipt. */
+    @Test fun sshFailureDoesNotExposeCommandReceipt() {
         settings.setAssistantConfirmations(ru.adsrv.frpjump.settings.ConfirmationMode.OFF)
         settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true)
         sshCommandText = "printf 'synthetic-long-command-' && echo \"a long synthetic command that the label above cuts short\""
@@ -1131,17 +1071,8 @@ class AssistantChatScreenTest {
         compose.runOnIdle { mode = "tool-ssh" }
         input().performTextInput("Run synthetic command")
         sendAndAwait()
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
-        compose.onNodeWithTag("chat_tool_receipts").performClick()
-        // The receipt is one merged item: its text is the label, then the body.
-        val receipt = compose.onNodeWithTag("chat_tool_receipt_0")
-        receipt.assertTextContains("$ $sshCommandText", substring = true)
-        receipt.assertTextContains(localizedText(ru.adsrv.frpjump.R.string.chat_receipt_failed), substring = true)
-        receipt.assertTextContains("SSH target unavailable", substring = true)
-        val text = receipt.fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
-        for (raw in listOf("ssh_command", "profile_id", "connection_id", "FAILED")) assertFalse("$raw in: $text", text.contains(raw))
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_0"))
-        shot("ssh-receipt-expanded")
+        compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
+        compose.onAllNodesWithText("SSH target unavailable", substring = true).assertCountEquals(0)
     }
 
     @Test fun toolsScreenShowsOneTerminalTabsSwitchWithItsHintThatAutosaves() {
@@ -1299,17 +1230,7 @@ class AssistantChatScreenTest {
             // At once, with the cursor taken before typing: no screen in the result.
             assertTrue(result.text, Regex("Typed into tab 2\\. cursor: \\d+\\.\\d+\\.[0-9a-f]{8}").matches(result.text))
         }
-        // The receipt: titled for typing, naming the tab; expanded it shows the text with its Enter mark and the keys (the owner's call shows the input only: no screen after it).
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
-        compose.onNodeWithTag("chat_tool_receipts").performClick()
-        val receipt = compose.onNodeWithTag("chat_tool_receipt_0")
-        receipt.assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input_receipt), substring = true)
-        receipt.assertTextContains("ls -l\u23CE", substring = true)
-        receipt.assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_receipt_keys, "Ctrl+C, Enter"), substring = true)
-        val text = receipt.fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
-        for (raw in listOf("terminal_input", "tab_id", "ctrl_c", "SUCCESS")) assertFalse("$raw in: $text", text.contains(raw))
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_0"))
-        shot("receipt-terminal-input-expanded")
+        compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
     }
 
     /** A long text is shown whole: the box scrolls, with its line count and the scroll mark, and Decline types nothing. */
@@ -1548,9 +1469,7 @@ class AssistantChatScreenTest {
             assertEquals(ToolOutcome.FAILED, result.outcome)
             assertTrue(result.text.contains("unavailable")); assertTrue(owner!!.state.value.turns.last().toolFailed)
         }
-        val targetFailure = hasTestTag("chat_tool_failure_detail") and hasText("SSH target unavailable", substring = true)
-        button("chat_history").performScrollToNode(targetFailure)
-        compose.onNode(targetFailure).assertIsDisplayed().assertTextContains("SSH target unavailable", substring = true)
+        compose.onAllNodesWithTag("chat_tool_failure_detail").assertCountEquals(0)
     }
 
     @Test fun profileInformationRequiresExplicitEnabledInvocationAndShowsKnownUnavailableResult() {
@@ -1581,7 +1500,7 @@ class AssistantChatScreenTest {
         compose.onNodeWithText("App reports an unavailable synthetic profile").assertIsDisplayed()
     }
 
-    @Test fun encryptedHistoryRestoresSelectedTargetAndToolReceiptsWithoutReplay() {
+    @Test fun encryptedHistoryRestoresAnswerWithoutShowingReceiptsOrReplaying() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val id = java.util.UUID.randomUUID().toString()
         val file = java.io.File(context.noBackupFilesDir, "test-chat-$id.json")
@@ -1613,13 +1532,8 @@ class AssistantChatScreenTest {
             assertTrue(owner!!.state.value.turns.single().answer.contains("Work · board1500"))
             assertEquals("profile_information", owner!!.state.value.turns.single().receipts.single().call.name)
         }
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
-        compose.onNodeWithTag("chat_tool_receipts").performClick()
-        val fact = hasText("work / work-root") and hasAnyAncestor(hasTestTag("chat_profile_information_facts"))
-        button("chat_history").performScrollToNode(fact)
-        // At 200% in landscape the facts block is several times taller than the compact history; performScrollToNode stops short
-        // of a line deep inside one tall item, performScrollTo on the line itself brings it in.
-        compose.onNode(fact).performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
+        compose.onAllNodesWithTag("chat_profile_information_facts").assertCountEquals(0)
         input().performTextInput("Продолжай с рабочим root-подключением")
         sendAndAwait()
         compose.runOnIdle {
@@ -1629,7 +1543,7 @@ class AssistantChatScreenTest {
         }
     }
 
-    @Test fun profileSearchShowsAllVariantsAndRetainsSelectedFactsAfterProviderFailure() {
+    @Test fun profileSearchKeepsResultInContextWithoutFactsUiAfterProviderFailure() {
         informationFixture = ProfileInformationFixture()
         information = informationFixture!!.information
         mode = "profile-results"
@@ -1653,13 +1567,9 @@ class AssistantChatScreenTest {
             assertEquals(JsonPrimitive(false), selected.page!!["source_status"]!!.jsonObject["complete"])
             assertFalse(selected.result.text.contains("synthetic-private-error"))
         }
-        for (identity in listOf("work / work-root", "work / work-admin", "home / home-root")) {
-            val match = hasText(identity) and hasAnyAncestor(hasTestTag("chat_profile_information_facts"))
-            button("chat_history").performScrollToNode(match)
-            compose.onNode(match).performScrollTo().assertIsDisplayed()
-        }
-        button("chat_history").performScrollToNode(hasText(localizedText(ru.adsrv.frpjump.R.string.profile_information_partial)))
-        compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.profile_information_partial)).performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithTag("chat_profile_information_facts").assertCountEquals(0)
+        compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
+        compose.onNodeWithTag("chat_error").assertExists()
     }
 
     @Test fun toolsFlowShowsFetchedSourcesAndFailureWithoutMakingMarkdownActive() {
@@ -1692,9 +1602,8 @@ class AssistantChatScreenTest {
             assertTrue(owner!!.state.value.toolFailed)
             assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem)
         }
-        button("chat_history").performScrollToNode(hasTestTag("chat_current_tool_failure"))
-        button("chat_current_tool_failure").assertIsDisplayed()
-        compose.onNode(hasTestTag("chat_tool_failure_detail") and hasAnyAncestor(hasTestTag("chat_current_tool_failure"))).assertIsDisplayed().assertTextContains("Address refused", substring = true)
+        compose.onAllNodesWithTag("chat_current_tool_failure").assertCountEquals(0)
+        compose.onAllNodesWithTag("chat_tool_failure_detail").assertCountEquals(0)
     }
 
     /**
@@ -1752,16 +1661,11 @@ class AssistantChatScreenTest {
         if (args.getString("composerOrientation") == "landscape") compose.onNodeWithTag("chat_error").performScrollTo()
         compose.onNodeWithTag("chat_error").assertIsDisplayed()
         shot("history-keyboard")
-        // The history is at least three lines of body text high (measured from the real failure text, so it follows the font scale), the
-        // field and Send keep their room below it, and the failure of the turn is reachable by scrolling.
-        button("chat_history").performScrollToNode(hasTestTag("chat_current_tool_failure"))
-        val line = mutableListOf<androidx.compose.ui.text.TextLayoutResult>().also { out ->
-            val detail = compose.onNode(hasTestTag("chat_tool_failure_detail") and hasAnyAncestor(hasTestTag("chat_current_tool_failure")), useUnmergedTree = true).fetchSemanticsNode()
-            compose.runOnIdle { detail.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!.invoke(out) }
-        }.first().let { it.getLineBottom(0) - it.getLineTop(0) }
+        val line = layoutOf("chat_error").let { it.getLineBottom(0) - it.getLineTop(0) }
         val minimum = 3 * line
         val history = bounds("chat_history")
-        assertTrue("history is ${history.height} px high, expected at least $minimum (3 lines of $line)", history.height >= minimum)
+        assertTrue("history is ${history.height} px high, expected at least $minimum", history.height >= minimum)
+        compose.onAllNodesWithTag("chat_current_tool_failure").assertCountEquals(0)
         // Landscape is the compact layout: the whole screen scrolls, so "in the window" and "below" are not promises there.
         if (args.getString("composerOrientation") != "landscape") {
             assertTrue("the field overlaps the history", bounds("chat_input").top >= history.bottom - 1f)
@@ -1789,12 +1693,11 @@ class AssistantChatScreenTest {
         }
         button("chat_history").performScrollToIndex(0)
         compose.onNodeWithText("Unavailable page", substring = true).assertIsDisplayed()
-        button("chat_history").performScrollToNode(hasTestTag("chat_current_tool_failure"))
-        button("chat_current_tool_failure").assertIsDisplayed()
-        compose.onNode(hasTestTag("chat_tool_failure_detail") and hasAnyAncestor(hasTestTag("chat_current_tool_failure"))).assertIsDisplayed().assertTextContains("Address refused", substring = true)
+        compose.onAllNodesWithTag("chat_current_tool_failure").assertCountEquals(0)
+        compose.onAllNodesWithTag("chat_tool_failure_detail").assertCountEquals(0)
     }
 
-    @Test fun toolFailureReasonSurvivesProviderFailureWithoutModelExplanation() {
+    @Test fun providerFailureDoesNotExposeRawToolFailure() {
         mode = "search-failure-provider-fail"
         settings.update { it.copy(assistantSearch = true) }
         settings.assistantChat.publicWeb = PublicFetcher { url, _, attempt ->
@@ -1808,10 +1711,9 @@ class AssistantChatScreenTest {
             assertTrue(owner!!.state.value.toolFailed)
             assertTrue(owner!!.state.value.turns.isEmpty())
         }
-        scrollHistoryTo(hasText("HTTP 202", substring = true))
-        compose.onNodeWithText("HTTP 202", substring = true).assertIsDisplayed()
-        scrollHistoryTo(hasText("synthetic generated documentation query", substring = true))
-        compose.onNodeWithText("synthetic generated documentation query", substring = true).assertIsDisplayed()
+        compose.onAllNodesWithText("HTTP 202", substring = true).assertCountEquals(0)
+        compose.onAllNodesWithText("synthetic generated documentation query", substring = true).assertCountEquals(0)
+        compose.onNodeWithTag("chat_error").assertExists()
     }
 
     @Test fun actualAndroidImageBoundsAndOptimisticObservationReleasePixelsAndFailTruthfully() = runBlocking {
@@ -2117,7 +2019,7 @@ class AssistantChatScreenTest {
         compose.waitUntil(WAIT_MS) { owner?.state?.value?.busy == false }
     }
 
-    @Test fun declineExecutesNothingAndShowsDeclinedNotAFailure() {
+    @Test fun declineExecutesNothingAndShowsNoToolReceipt() {
         startConfirmation()
         shown("chat_confirm_decline").performClick()
         awaitIdle()
@@ -2127,9 +2029,7 @@ class AssistantChatScreenTest {
             assertTrue(result.text.startsWith("The owner declined this call. Nothing was executed."))
             assertNull(owner!!.state.value.confirmation); assertFalse(owner!!.state.value.turns.last().toolFailed)
         }
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_declined"))
-        compose.onNodeWithTag("chat_tool_declined").assertIsDisplayed()
-        compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.tool_failure_declined).replace("%1\$s", localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command))).assertIsDisplayed()
+        compose.onAllNodesWithTag("chat_tool_declined").assertCountEquals(0)
         compose.onAllNodesWithTag("chat_current_tool_failure").assertCountEquals(0)
         // After an answer the message field and the history are back.
         button("chat_input").assertIsDisplayed(); button("chat_history").assertExists()

@@ -208,13 +208,12 @@ class AssistantToolRequestScreenTest {
         settingsFile.fail = false
     }
 
-    @Test fun theReceiptTitlesTheRequest() {
+    @Test fun theToolRequestHasNoTechnicalReceipt() {
         asks = listOf(ask("a", "ssh_command"))
         show(); send()
-        compose.waitUntil(15_000) { compose.onAllNodesWithTag("chat_tool_receipts").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("chat_tool_receipts").performScrollTo().performClick()
-        compose.onNodeWithTag("chat_tool_receipt_0").performScrollTo().assertTextContains(text(R.string.tool_request_title), substring = true)
-        assertEquals(if (russian) "Просьба включить инструмент" else "Request to turn on a tool", text(R.string.tool_request_title))
+        compose.waitUntil(15_000) { conversation.state.value.turns.isNotEmpty() }
+        compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
+        assertTrue(conversation.state.value.turns.single().askedTools.contains("ssh_command"))
     }
 
     @Test fun theOfferSwitchRowRendersAndTurnsTheOfferOff() {

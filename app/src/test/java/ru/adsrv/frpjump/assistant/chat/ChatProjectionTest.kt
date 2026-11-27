@@ -70,4 +70,23 @@ class ChatProjectionTest {
         val settled = project(SavedChat(records = listOf(done, current.copy(status = SavedTurnState.COMPLETE))), archive = true, running = false)
         assertTrue(settled.receipts.isEmpty()); assertFalse(settled.toolFailed); assertTrue(settled.toolFailures.isEmpty()); assertTrue(settled.information.isEmpty())
     }
+    @Test fun `only final reply without calls is displayed while exchanges stay intact`() {
+        val call = SavedCall("c", "ssh_command", buildJsonObject { put("command", "synthetic") })
+        val raw = SavedResult("c", "ssh_command", "private raw output", "SUCCESS")
+        val proposal = SavedExchange(SavedReply("intermediate draft", listOf(call)), listOf(raw))
+        val running = SavedTurn("question", listOf(proposal), status = SavedTurnState.RUNNING)
+        assertEquals("", running.view().answer)
+        val incompleteFinal = running.copy(status = SavedTurnState.COMPLETE)
+        assertEquals("", incompleteFinal.view().answer)
+        val completed = incompleteFinal.copy(exchanges = listOf(proposal, SavedExchange(SavedReply("final answer"))))
+        assertEquals("final answer", completed.view().answer)
+        assertEquals("private raw output", completed.exchanges.first().results.single().text)
+    }
+    @Test fun `unanswered confirmation remains distinct from explicit decline`() {
+        val call = SavedCall("c", "ssh_command", JsonObject(emptyMap()))
+        fun turn(text: String) = SavedTurn("q", listOf(SavedExchange(SavedReply(calls = listOf(call)),
+            listOf(SavedResult("c", "ssh_command", text, "DECLINED")))), status = SavedTurnState.INTERRUPTED)
+        assertTrue(turn(ru.adsrv.frpjump.settings.ConfirmationTexts.NO_ANSWER).view().unanswered)
+        assertFalse(turn(ru.adsrv.frpjump.settings.ConfirmationTexts.DECLINED).view().unanswered)
+    }
 }
