@@ -29,7 +29,10 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
         descendantFocusability = FOCUS_BEFORE_DESCENDANTS
         addView(terminal, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         terminal.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) onEditorKeyboard?.invoke() ?: requestFocus()
+            if (hasFocus) {
+                if (onEditorKeyboard == null) requestFocus()
+                else if (keyboardOnTap) onEditorKeyboard?.invoke()
+            }
         }
     }
 
@@ -37,12 +40,13 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
      * Offered each tap (a short touch that did not move) before the view
      * acts on it; true takes it: the view gets a cancel instead of the
      * lift, so it neither clicks (mouse reporting) nor counts a tap; the
-     * taker shows the keyboard. See [TerminalTap].
+     * taker handles focus and the keyboard setting. See [TerminalTap].
      */
     var onTap: ((MotionEvent) -> Boolean)? = null
 
     /** While Text mode owns the IME, terminal taps must return focus to that editor. */
     var onEditorKeyboard: (() -> Unit)? = null
+    var keyboardOnTap: Boolean = false
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var tapX = 0f
@@ -71,12 +75,16 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
     }
 
     /**
-     * Shows the soft keyboard: implicitly for a tap on the terminal; [explicit]
+     * Focuses the input and shows the soft keyboard when enabled for a tap; [explicit]
      * for ⌨, so it shows after Back hid it and with a hardware keyboard too.
      */
     fun showKeyboard(explicit: Boolean = false) {
-        onEditorKeyboard?.let { it(); return }
+        onEditorKeyboard?.let {
+            if (explicit || keyboardOnTap) it()
+            return
+        }
         requestFocus()
+        if (!explicit && !keyboardOnTap) return
         val flags = if (explicit) 0 else InputMethodManager.SHOW_IMPLICIT
         context.getSystemService(InputMethodManager::class.java).showSoftInput(this, flags)
     }

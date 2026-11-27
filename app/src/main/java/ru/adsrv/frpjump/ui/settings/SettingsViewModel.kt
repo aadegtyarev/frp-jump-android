@@ -102,6 +102,7 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     fun setDirect(direct: Boolean) = save { it.copy(direct = direct) }
 
+    fun setTerminalKeyboardOnTap(enabled: Boolean) = save { it.copy(terminalKeyboardOnTap = enabled) }
     fun setTerminalDirectInput(direct: Boolean) = save { it.copy(terminalDirectInput = direct) }
 
     fun setTerminalHistoryRows(rows: Int) = save { it.copy(terminalHistoryRows = rows) }

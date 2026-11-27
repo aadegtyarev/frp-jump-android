@@ -371,6 +371,7 @@ fun TerminalScreen(
     val inputSettings by (context.applicationContext as FrpJumpApp).settings.settings.collectAsStateWithLifecycle()
     SideEffect {
         input.directInput = inputSettings.terminalDirectInput
+        input.keyboardOnTap = inputSettings.terminalKeyboardOnTap
         input.onEditorKeyboard = if (draft.textMode) ({ if (!locked) { runCatching { editorFocus.requestFocus() }; keyboard?.show() }; Unit }) else null
     }
     val view = input.terminal

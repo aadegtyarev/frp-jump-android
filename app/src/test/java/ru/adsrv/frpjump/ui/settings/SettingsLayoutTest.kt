@@ -39,7 +39,7 @@ class SettingsLayoutTest {
             .map { m -> m.groupValues[1].ifEmpty { m.groupValues[2].ifEmpty { m.groupValues[3].ifEmpty { m.groupValues[4] } } } }.toList()
         assertEquals(
             listOf("setting_direct", "local_ports", "background_poll", "BatteryRow", "setting_app_lock", "setting_lock_after", "setting_hide_in_recents",
-                "ssh_keys", "terminal_history_rows", "setting_terminal_direct_input", "terminal_text_input", "assistant_title", "mqtt_ingress_title",
+                "ssh_keys", "terminal_history_rows", "setting_terminal_direct_input", "setting_terminal_keyboard_on_tap", "terminal_text_input", "assistant_title", "mqtt_ingress_title",
                 "mqtt_cache_title", "plugins_title", "language", "theme", "ProfileGroup", "VersionRow", "licenses"),
             rows,
         )
@@ -91,7 +91,7 @@ class SettingsLayoutTest {
     @Test fun `labels are short nouns or states without a trailing period, in both languages`() {
         val labels = listOf(
             "setting_direct", "local_ports", "background_poll", "battery", "setting_app_lock", "setting_lock_after", "setting_hide_in_recents", "ssh_keys",
-            "terminal_history_rows", "setting_terminal_direct_input", "terminal_text_input", "assistant_title", "assistant_enabled", "mqtt_ingress_title",
+            "terminal_history_rows", "setting_terminal_direct_input", "setting_terminal_keyboard_on_tap", "terminal_text_input", "assistant_title", "assistant_enabled", "mqtt_ingress_title",
             "mqtt_cache_title", "plugins_title", "language", "theme", "name_and_color", "forget_profile", "licenses", "assistant_provider_title",
             "assistant_tools", "assistant_owner_title", "assistant_limits_title", "chat_text_size", "assistant_open_chat",
             "settings_tunnels", "settings_background", "settings_security", "settings_terminal", "settings_mqtt", "settings_appearance", "settings_about",

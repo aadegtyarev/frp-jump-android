@@ -543,8 +543,9 @@ and the rows wrapped into it at the margin (one logical line); a tap past
 the end of the text goes to its end. A row the shell broke with a real line
 break (a pasted multi-line command, a `for` loop's `>` lines), output above
 and the empty screen below keep the usual tap, except a tap on a link (see
-[Links in the output](#7-ssh-console)): it shows the keyboard (the
-tap on the command line shows it too). The arrows are plain keys: a held
+[Links in the output](#7-ssh-console)). Settings → Terminal → Keyboard on tap
+(default off) shows the keyboard on these taps and command-line taps. The
+keyboard button and Text input open it explicitly. The arrows are plain keys: a held
 Ctrl / Alt / Shift stays held. Until their echo shows (at most 400 ms), another
 tap on the command line does nothing: it would count from where the
 cursor was. With TalkBack's touch exploration on, taps stay as
@@ -569,7 +570,7 @@ What reads the arrows:
   one: nothing, never a late click. One question at a time: a tap while
   one is out is dropped, and one open 2.5 s counts as no answer; an
   answer stands 400 ms for an unchanged line. A `read` prompt of a script runs in `bash` too, so it gets the arrows,
-  and without `read -e` shows them as `^[[D`. The keyboard shows once
+  and without `read -e` shows them as `^[[D`. When enabled, the keyboard shows once
   tmux has answered: coming up, it resizes the terminal and tmux redraws.
 - The text right of the cursor counts as the line: zsh's RPROMPT, or an
   autosuggestion (fish, zsh-autosuggestions) shown after the cursor. A tap

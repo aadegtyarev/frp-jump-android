@@ -1244,6 +1244,7 @@
     <string name="template_unknown_name">Используется имя, которого нет в шаблоне статуса</string>
     <string name="template_same_as_status">Совпадает с шаблоном статуса — оставьте пустым</string>
     <string name="settings_terminal">Терминал</string>
+    <string name="setting_terminal_keyboard_on_tap">Клавиатура по нажатию</string>
     <string name="setting_terminal_direct_input">Прямой ввод</string>
     <string name="setting_terminal_direct_input_hint">Клавиши сразу уходят в терминал</string>
     <string name="terminal_text_input">Ввод текста</string>

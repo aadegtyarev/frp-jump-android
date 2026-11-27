@@ -155,7 +155,7 @@ class SettingsR39Test {
         compose.setContent { SettingsOnly(vm, ThemeMode.LIGHT) }
         val labels = listOf(
             R.string.setting_direct, R.string.local_ports, R.string.background_poll, R.string.battery, R.string.setting_app_lock, R.string.setting_lock_after,
-            R.string.setting_hide_in_recents, R.string.ssh_keys, R.string.terminal_history_rows, R.string.setting_terminal_direct_input, R.string.terminal_text_input,
+            R.string.setting_hide_in_recents, R.string.ssh_keys, R.string.terminal_history_rows, R.string.setting_terminal_direct_input, R.string.setting_terminal_keyboard_on_tap, R.string.terminal_text_input,
             R.string.mqtt_ingress_title, R.string.mqtt_cache_title, R.string.plugins_title, R.string.language, R.string.theme, R.string.name_and_color,
             R.string.forget_profile, R.string.licenses,
         ).map { text(it) }
