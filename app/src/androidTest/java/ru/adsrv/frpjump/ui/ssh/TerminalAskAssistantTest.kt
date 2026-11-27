@@ -27,6 +27,9 @@ import ru.adsrv.frpjump.ui.askAssistant
 import ru.adsrv.frpjump.ui.assistantRoutes
 import ru.adsrv.frpjump.ui.openAssistant
 import androidx.activity.ComponentActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -272,6 +275,52 @@ class TerminalAskAssistantTest {
     private fun openMenu() {
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.more)).performClick()
         compose.waitForIdle()
+    }
+
+    @Test fun terminalTapRespectsKeyboardSettingAndTheExplicitButtonStillOpensIt() {
+        val previous = app.settings.settings.value.terminalKeyboardOnTap
+        fun configure(on: Boolean) {
+            compose.runOnUiThread { app.settings.update { it.copy(terminalKeyboardOnTap = on) } }
+            compose.waitForIdle()
+        }
+        fun imeVisible() = compose.runOnUiThread {
+            ViewCompat.getRootWindowInsets(compose.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        }
+        fun hideIme() {
+            compose.runOnUiThread {
+                val window = compose.activity.window
+                WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.ime())
+            }
+            compose.waitUntil(5000) { !imeVisible() }
+        }
+        fun tapOutput() {
+            compose.runOnUiThread {
+                val view = requireNotNull(findTerminalView(compose.activity.window.decorView))
+                val input = view.parent as TerminalInput
+                val down = SystemClock.uptimeMillis()
+                for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                    val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, input.width / 2f, input.height / 2f, 0)
+                    try { input.dispatchTouchEvent(event) } finally { event.recycle() }
+                }
+            }
+        }
+        try {
+            configure(false)
+            start(assistantOn = false)
+            hideIme()
+            tapOutput()
+            SystemClock.sleep(400)
+            assertTrue("output tap leaves the keyboard hidden", !imeVisible())
+            compose.onNodeWithTag("terminal_keyboard").performClick()
+            compose.waitUntil(5000) { imeVisible() }
+            hideIme()
+            configure(true)
+            tapOutput()
+            compose.waitUntil(5000) { imeVisible() }
+        } finally {
+            hideIme()
+            configure(previous)
+        }
     }
 
     @Test fun theItemIsOfferedWhileTheAssistantIsOnAndOpensTheChatWithoutAQuote() {

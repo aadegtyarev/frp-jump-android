@@ -16,6 +16,19 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `terminal keyboard on tap defaults off for new and old settings and persists both choices`() {
+        assertEquals(false, SettingsStore(MemoryStorage()).settings.value.terminalKeyboardOnTap)
+        val storage = MemoryStorage("""{"direct":false}""")
+        assertEquals(false, SettingsStore(storage).settings.value.terminalKeyboardOnTap)
+        for (choice in listOf(true, false)) {
+            SettingsStore(storage).update { it.copy(terminalKeyboardOnTap = choice) }
+            val reread = SettingsStore(storage).settings.value
+            assertEquals(choice, reread.terminalKeyboardOnTap)
+            assertEquals(false, reread.direct)
+        }
+    }
+
+    @Test
     fun `terminal direct input is on for fresh installations and files without the setting`() {
         assertEquals(true, SettingsStore(MemoryStorage()).settings.value.terminalDirectInput)
         val old = SettingsStore(MemoryStorage("""{"direct":false,"terminal_fullscreen":true}""")).settings.value

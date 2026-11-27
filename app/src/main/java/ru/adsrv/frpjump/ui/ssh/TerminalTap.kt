@@ -36,7 +36,7 @@ import kotlin.math.abs
  * The arrows go as plain keys (a held Ctrl / Alt / Shift is not used up), in
  * pieces of whole arrows ([arrowPieces]); until they have shown, taps on
  * the command line are dropped ([TapEchoHold]). The
- * keyboard shows as for any tap; under tmux once tmux has answered, as the
+ * keyboard follows the tap setting; under tmux it shows once tmux has answered, as the
  * keyboard coming up resizes the terminal and tmux redraws it, which
  * would otherwise land between the tap and the answer.
  */

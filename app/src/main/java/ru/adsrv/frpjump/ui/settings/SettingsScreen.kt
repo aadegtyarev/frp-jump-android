@@ -102,6 +102,7 @@ import ru.adsrv.frpjump.ui.PortGlyph
 import ru.adsrv.frpjump.ui.HistoryGlyph
 import ru.adsrv.frpjump.ui.LucideTerminalGlyph
 import ru.adsrv.frpjump.ui.KeyboardGlyph
+import ru.adsrv.frpjump.ui.PencilGlyph
 import ru.adsrv.frpjump.ui.AssistantGlyph
 import ru.adsrv.frpjump.ui.LucideInfoGlyph
 import ru.adsrv.frpjump.ui.TriangleAlertGlyph
@@ -330,8 +331,16 @@ fun SettingsScreen(
                 onChange = vm::setTerminalDirectInput,
             )
             RowDivider()
-            SettingRow(
+            SwitchRow(
                 tile = { IconTile(KeyboardGlyph) },
+                label = stringResource(R.string.setting_terminal_keyboard_on_tap),
+                hint = null,
+                checked = settings.terminalKeyboardOnTap,
+                onChange = vm::setTerminalKeyboardOnTap,
+            )
+            RowDivider()
+            SettingRow(
+                tile = { IconTile(PencilGlyph) },
                 label = stringResource(R.string.terminal_text_input),
                 hint = stringResource(R.string.terminal_text_input_hint),
                 onClick = null,

@@ -244,7 +244,7 @@ the owner's config changes it); the app does not set it, and the "Terminal histo
 events and taps clicks. `mouse on` lets tmux enter copy mode to scroll history
 and leave it at the bottom. Long press still selects/copies visible text,
 including history scrolled into view; phone copying does not use tmux drag
-selection. Tap-to-cursor exceptions belong to the shared SSH-console rules.
+selection. Tap-to-cursor exceptions and the keyboard-on-tap setting belong to the shared SSH-console rules.
 
 After an observed outgoing wheel-up, hold the next owner input (key, extra
 key, snippet or paste) until one exec asks tmux to cancel pane mode:

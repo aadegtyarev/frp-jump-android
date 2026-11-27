@@ -105,6 +105,7 @@ data class AppSettings(
     @SerialName("terminal_fullscreen") val terminalFullscreen: Boolean = false,
     /** Send IME composing text immediately by default; an explicit saved choice takes precedence. */
     @SerialName("terminal_direct_input") val terminalDirectInput: Boolean = true,
+    @SerialName("terminal_keyboard_on_tap") val terminalKeyboardOnTap: Boolean = false,
     /** Main terminal buffer rows (visible rows included), used only when a new terminal is created. */
     @SerialName("terminal_history_rows") val terminalHistoryRows: Int = DEFAULT_TERMINAL_HISTORY_ROWS,
     /** Files › ⋮ › Show hidden files: names starting with a dot. */
