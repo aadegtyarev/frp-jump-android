@@ -156,7 +156,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         try {
             complete(active, bounded)
         } catch (failure: ProviderException) {
-            if (!failure.contextTooLong || !env.archive) failed(failure)
+            if (request.finalSynthesis || !failure.contextTooLong || !env.archive) failed(failure)
             // The provider says the request is too long: shorten the history right away and send it once more. If it cannot be made smaller, the provider's failure stands.
             val raw = rawRequest ?: failed(failure)
             val shorter = try { summary.shortenAfterOverflow(raw) }
@@ -185,7 +185,9 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         })
 
     private suspend fun prepared(summary: AssistantSummary, request: AgentRequest): AgentRequest =
-        if (!env.archive) request else try { rawRequest = request; summary.prepare(request) }
+        if (!env.archive) request else try {
+            if (request.finalSynthesis) summary.existingView(request) else { rawRequest = request; summary.prepare(request) }
+        }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) {
             // The red "does not fit" text is only for that case; any other failure of the preparation is an ordinary setup problem (key and read problems keep their own).

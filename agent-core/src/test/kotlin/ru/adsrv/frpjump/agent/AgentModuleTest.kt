@@ -117,7 +117,45 @@ class AgentModuleTest {
         var step = 0
         var calls = 0
         val result = AgentModule(true).run(AgentProvider { AgentReply(calls = listOf(call((++step).toString()))) }, listOf(tool { calls++; ToolOutput("ok") }), "", "user", limits = AgentLimits(maxSteps = 2))
-        assertEquals(AgentFinish.STEP_LIMIT, result.finish); assertEquals(2, calls)
+        assertEquals(AgentFinish.STEP_LIMIT, result.finish); assertEquals(2, calls); assertEquals(3, step)
+    }
+
+    @Test fun `step exhaustion asks once without tools and retains tool evidence`() = runBlocking {
+        val requests = mutableListOf<AgentRequest>()
+        var executions = 0
+        val result = AgentModule(true).run(AgentProvider { request ->
+            requests += request
+            if (requests.size == 1) AgentReply("working", listOf(call())) else AgentReply("Partial answer")
+        }, listOf(tool { executions++; ToolOutput("denied", ToolOutcome.DECLINED) }), "instructions", "question", limits = AgentLimits(maxSteps = 1))
+        assertEquals(AgentFinish.COMPLETE, result.finish)
+        assertEquals(2, requests.size); assertTrue(requests.last().tools.isEmpty())
+        assertFalse(requests.first().finalSynthesis); assertTrue(requests.last().finalSynthesis)
+        assertEquals(ToolOutcome.DECLINED, requests.last().turns.last().exchanges.single().results.single().outcome)
+        assertEquals("Partial answer", result.turn.exchanges.last().reply.text)
+        assertEquals(1, executions)
+    }
+
+    @Test fun `stop cancels final answer request`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val module = AgentModule(true)
+        var requests = 0
+        val run = async { module.run(AgentProvider {
+            if (++requests == 1) AgentReply(calls = listOf(call())) else { entered.complete(Unit); awaitCancellation() }
+        }, listOf(tool { ToolOutput("result") }), "", "question", limits = AgentLimits(maxSteps = 1)) }
+        withTimeout(2000) { entered.await() }
+        module.stop()
+        try { run.await(); fail("expected cancellation") } catch (_: CancellationException) { }
+        assertEquals(2, requests)
+    }
+
+    @Test fun `failed final answer does not manufacture intermediate text as final`() = runBlocking {
+        var calls = 0
+        val result = AgentModule(true).run(AgentProvider {
+            if (++calls == 1) AgentReply("working", listOf(call())) else throw java.io.IOException()
+        }, listOf(tool { ToolOutput("partial") }), "", "question", limits = AgentLimits(maxSteps = 1))
+        assertEquals(AgentFinish.PROVIDER_FAILED, result.finish)
+        assertEquals(1, result.turn.exchanges.size)
+        assertTrue(result.turn.exchanges.single().reply.calls.isNotEmpty())
     }
 
     @Test fun `model and tool timeouts do not retry a call`() = runBlocking {

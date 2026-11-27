@@ -90,6 +90,9 @@ internal class AssistantSummary(
         return out
     }
 
+    /** Apply the already saved summary without a provider call; the kernel fits this view to its local window. */
+    fun existingView(raw: AgentRequest): AgentRequest = view(read(), raw)
+
     suspend fun prepare(raw: AgentRequest): AgentRequest = shorten(raw, force = false)
 
     /**

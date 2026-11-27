@@ -152,6 +152,11 @@ stay in order. Tool calls and their results form one indivisible exchange.
 Duplicate call IDs within a run, incomplete exchanges, excessive replies and
 empty final responses are rejected.
 
+If the last allowed step returns tool calls, the run may make one final request
+with the collected results and no tools. It uses the same active deadline,
+context window and cancellation checks. A tool call returned by this request
+ends the run at the step limit without executing it.
+
 Disabled and busy admission return without a provider/tool call. A run finishes
 with complete, context-full, step-limit, model-timeout, provider-failed or
 invalid-reply status; cancellation propagates to its caller. Tool outcomes are
@@ -173,7 +178,7 @@ tunnel limits are read at use. The kernel's own parameters stay validated (`Agen
 | Assistant | One call, s (30; 10-300; 5) = tool timeout (the owner's confirmation wait is not part of it) |
 | Assistant | Model answer, s (60; 10-600; 10) = model request timeout (it does not include the confirmation wait either); the provider gets it as the call's own timeout and has no fixed transport timeout shorter than it |
 | Assistant | Whole reply, s (120; 30-1800; 30) = the Send's active-time deadline; never less than one call plus one model answer (the larger is used) |
-| Assistant | Steps per reply (12; 1-50; 1) and Calls per step (4; 1-10; 1) |
+| Assistant | Steps with tools per reply (12; 1-50; 1) and Calls per step (4; 1-10; 1) |
 | Assistant | Skills, at most (50; 1-200; 1), Skill size, characters (4,000; 500-20,000; 500), Skills list per request, characters (2,000; 500-8,000; 500) |
 | Assistant | Tool output, characters (8,000; 2,000-32,000; 1,000) = the tool-result cap (`ssh_command`, the terminal reads and the `profile_information` pages keep that less 200) |
 | Assistant | The history, reply and summary shares of the model's window are not on this screen: they are the «Окно модели» group of the provider form ([Provider settings](#provider-settings-and-credentials)); the reply length cap is derived from the reply share (below) |
