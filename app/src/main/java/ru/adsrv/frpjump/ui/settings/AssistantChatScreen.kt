@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
-import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.assistant.*
 import ru.adsrv.frpjump.settings.ConfirmationMode
 import ru.adsrv.frpjump.ui.AppTheme
@@ -218,18 +217,13 @@ internal fun AssistantChatContent(
                         // Events of waits are muted lines of their own; a turn they started has no message of the owner's.
                         ChatEventLines(turn.events)
                         if (!turn.eventOnly) ChatUserMessage(turn.user)
-                        // The calls happened before the answer, so their block comes first.
-                        ChatToolReceipts(turn.receipts, turn.information)
                         // The role is not drawn (Р61); the marker keeps it for TalkBack.
                         Box {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (turn.unanswered) Text(stringResource(R.string.chat_unanswered), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_unanswered"))
                                 else if (turn.interrupted) Text(stringResource(R.string.chat_interrupted), color = AppTheme.colors.muted)
                                 SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
-                                if (turn.toolFailures.isNotEmpty()) ChatToolFailures(turn.toolFailures)
-                                else if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)
                                 ChatSources(turn.sources)
-                                ChatToolDeclines(turn.receipts)
                                 // Only under the latest reply; see requestedTools for when it shows.
                                 if (onTurnOn != null && index == state.turns.lastIndex) requestedTools(state, enabled, tools).forEach { id ->
                                     val title = stringResource(id.title())
@@ -245,20 +239,9 @@ internal fun AssistantChatContent(
                     Column(verticalArrangement = Arrangement.spacedBy(PART_GAP)) {
                         ChatEventLines(state.pendingEvents)
                         if (!state.pendingEventOnly) ChatUserMessage(text)
-                        val progress = state.toolProgress
                         val waiting = state.confirmation != null
-                        ChatToolReceipts(state.receipts, state.information, running = true, animate = !state.stopping && !waiting)
-                        // A running call shows as its own line with the progress mark; the status line then says nothing more.
-                        val callShown = progress is ChatToolProgress.Tool && !state.stopping && !waiting && state.receipts.any { it.result == null }
-                        if (!callShown) ChatRunStatus(if (state.stopping) R.string.chat_stopping else if (waiting) R.string.confirm_waiting else when (progress) {
-                            is ChatToolProgress.Tool -> progress.id.progress()
-                            ChatToolProgress.SUMMARY -> R.string.chat_summary_progress
-                            ChatToolProgress.FAILED -> if (state.toolFailures.isEmpty()) R.string.tool_failed else R.string.chat_waiting
-                            null -> R.string.chat_waiting
-                        }, spinning = !waiting)
-                        ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
+                        ChatRunStatus(if (state.stopping) R.string.chat_stopping else if (waiting) R.string.confirm_waiting else R.string.chat_waiting, spinning = !waiting)
                         ChatSources(state.currentSources)
-                        ChatToolDeclines(state.receipts)
                     }
                 } }
                 // The waits that run, and the line that says event replies stopped at the owner's limit.
@@ -268,13 +251,8 @@ internal fun AssistantChatContent(
                         ChatWaitLines(state.waits, onCancel = conversation::cancelWait)
                     }
                 }
-                if (state.pendingText == null && (state.currentSources.isNotEmpty() || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.receipts.isNotEmpty())) item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ChatToolReceipts(state.receipts, state.information, openFacts = state.problem != null)
-                        ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
-                        ChatSources(state.currentSources)
-                        ChatToolDeclines(state.receipts)
-                    }
+                if (state.pendingText == null && state.currentSources.isNotEmpty()) item {
+                    ChatSources(state.currentSources)
                 }
             } } }
             // The question sits under the history, outside the list. It and Stop are measured first and the history takes what is left
@@ -374,25 +352,6 @@ private fun BoxScope.RoleMarker(who: String) {
     Box(Modifier.size(1.dp).align(Alignment.TopStart).semantics { contentDescription = who; heading() })
 }
 
-@Composable
-private fun ChatToolFailures(failures: List<ChatToolFailure>, modifier: Modifier = Modifier) {
-    if (failures.isEmpty()) return
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        failures.forEach { failure ->
-            val tool = stringResource(toolTitle(failure.result.name))
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(when (failure.result.outcome) {
-                    ToolOutcome.TIMEOUT -> R.string.tool_failure_timeout
-                    ToolOutcome.UNKNOWN_TOOL -> R.string.tool_failure_unavailable
-                    else -> R.string.tool_failure_failed
-                }, tool), color = AppTheme.colors.error)
-                failure.query?.let { SelectionContainer { Text(stringResource(R.string.tool_failure_query, it)) } }
-                SelectionContainer { Text(failure.result.text, modifier = Modifier.testTag("chat_tool_failure_detail")) }
-            }
-        }
-    }
-}
-
 /**
  * "Turn on" and "No thanks" under the reply that asked for a tool that is off (Р56): the same disclosure warning as under that tool's
  * switch in Tools, and, when the attempt read the internet, a mark that foreign text may have suggested the request. The model's own
@@ -415,23 +374,6 @@ private fun ChatToolRequest(id: AssistantToolId, readWeb: Boolean, failed: Boole
     }
 }
 
-/** The title of a call's tool in the chat: a catalog tool's, the service tool's "Request to turn on a tool", else the generic one. */
-private fun toolTitle(name: String): Int = AssistantToolId.fromWire(name)?.receiptTitle()
-    ?: if (name == ru.adsrv.frpjump.assistant.AssistantRequestTool.WIRE) R.string.tool_request_title else R.string.tool_failure_unknown
-
-/** A declined call is not a failure: a quiet line per call, visible without opening the receipts. */
-@Composable
-private fun ChatToolDeclines(receipts: List<ChatToolReceipt>) {
-    val declined = receipts.filter { it.result?.outcome == ToolOutcome.DECLINED }
-    if (declined.isEmpty()) return
-    Column(Modifier.testTag("chat_tool_declined"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        declined.forEach { receipt ->
-            Text(stringResource(if (receipt.result.isNoAnswer()) R.string.tool_failure_no_answer else R.string.tool_failure_declined,
-                stringResource(toolTitle(receipt.call.name))), color = AppTheme.colors.muted)
-        }
-    }
-}
-
 @Composable
 private fun ChatSources(sources: List<ChatSource>) {
     if (sources.isNotEmpty()) Column(Modifier.testTag("chat_sources"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -439,10 +381,6 @@ private fun ChatSources(sources: List<ChatSource>) {
         sources.forEach { source -> SelectionContainer { Text("${source.title}\n${source.url}") } }
     }
 }
-
-/** A declined result whose text is the fixed "no answer" one: the five minutes ran out, the owner did not decline. */
-internal fun ru.adsrv.frpjump.agent.ToolResult?.isNoAnswer(): Boolean =
-    this != null && outcome == ToolOutcome.DECLINED && text == ru.adsrv.frpjump.settings.ConfirmationTexts.NO_ANSWER
 
 /** Scrolls so that the bottom of the last item is at the bottom of the list (scrollToItem alone aligns that item's top). */
 private suspend fun LazyListState.scrollToBottom() {
