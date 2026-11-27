@@ -117,6 +117,29 @@ enum class ExtraKey(
     val repeats: Boolean = false,
     val control: Int? = null,
 ) {
+    F1("F1", KeyEvent.KEYCODE_F1),
+    F2("F2", KeyEvent.KEYCODE_F2),
+    F3("F3", KeyEvent.KEYCODE_F3),
+    F4("F4", KeyEvent.KEYCODE_F4),
+    F5("F5", KeyEvent.KEYCODE_F5),
+    F6("F6", KeyEvent.KEYCODE_F6),
+    F7("F7", KeyEvent.KEYCODE_F7),
+    F8("F8", KeyEvent.KEYCODE_F8),
+    F9("F9", KeyEvent.KEYCODE_F9),
+    F10("F10", KeyEvent.KEYCODE_F10),
+    F11("F11", KeyEvent.KEYCODE_F11),
+    F12("F12", KeyEvent.KEYCODE_F12),
+    NUM_0("0", null),
+    NUM_1("1", null),
+    NUM_2("2", null),
+    NUM_3("3", null),
+    NUM_4("4", null),
+    NUM_5("5", null),
+    NUM_6("6", null),
+    NUM_7("7", null),
+    NUM_8("8", null),
+    NUM_9("9", null),
+    DOT(".", null),
     ESC("Esc", KeyEvent.KEYCODE_ESCAPE),
     TAB("Tab", KeyEvent.KEYCODE_TAB),
     UP("↑", KeyEvent.KEYCODE_DPAD_UP, R.string.terminal_key_up, repeats = true),
@@ -125,12 +148,14 @@ enum class ExtraKey(
     RIGHT("→", KeyEvent.KEYCODE_DPAD_RIGHT, R.string.terminal_key_right, repeats = true),
     // The emulator sends DEL (0x7f) for KEYCODE_DEL (Ctrl: BS 0x08, Alt: ESC prefix)
     // and CR for KEYCODE_ENTER (Alt: ESC CR), as a hardware keyboard would.
+    DEL("Del", KeyEvent.KEYCODE_FORWARD_DEL, R.string.terminal_key_delete),
     BACKSPACE("⌫", KeyEvent.KEYCODE_DEL, R.string.terminal_key_backspace, repeats = true),
     ENTER("⏎", KeyEvent.KEYCODE_ENTER, R.string.terminal_key_enter),
     CTRL_C("^C", null, R.string.terminal_key_ctrl_c, control = 0x03),
     CTRL_D("^D", null, R.string.terminal_key_ctrl_d, control = 0x04),
     CTRL_Z("^Z", null, R.string.terminal_key_ctrl_z, control = 0x1a),
     CTRL_R("^R", null, R.string.terminal_key_ctrl_r, control = 0x12),
+    CTRL_V("^V", null, R.string.terminal_key_ctrl_v, control = 0x16),
     HOME("Home", KeyEvent.KEYCODE_MOVE_HOME),
     END("End", KeyEvent.KEYCODE_MOVE_END),
     PAGE_UP("PgUp", KeyEvent.KEYCODE_PAGE_UP),
@@ -147,34 +172,43 @@ private val ROW_KEYS = listOf(
     ExtraKey.BACKSPACE, ExtraKey.ENTER,
 )
 
-/** A place in the extra rows: a key to send, or the Ctrl / Alt / Shift toggle. */
+/** A place in the extra rows: a key to send or a local switch. */
 private sealed interface Slot {
     data class Send(val key: ExtraKey) : Slot
     data object Ctrl : Slot
     data object Alt : Slot
     data object Shift : Slot
+    data object Fn : Slot
+    data object Numbers : Slot
 }
 
-/** The extra rows' first group: Esc, Tab, the modifiers and the ready combos. */
-private val COMBO_SLOTS: List<Slot> =
-    listOf(Slot.Send(ExtraKey.ESC), Slot.Send(ExtraKey.TAB), Slot.Ctrl, Slot.Alt, Slot.Shift) +
-        listOf(ExtraKey.CTRL_D, ExtraKey.CTRL_Z, ExtraKey.CTRL_R).map(Slot::Send)
+private fun slots(vararg keys: ExtraKey): List<Slot> = keys.map(Slot::Send)
 
-/** The first group's keys in order, for tests: the toggles are named "Ctrl", "Alt" and "Shift". */
+private val COMBO_SLOTS: List<Slot> = listOf(Slot.Send(ExtraKey.ESC), Slot.Ctrl, Slot.Alt, Slot.Shift) +
+    slots(ExtraKey.CTRL_D, ExtraKey.CTRL_R, ExtraKey.PAGE_UP, ExtraKey.PAGE_DOWN)
+private val NAV_SLOTS: List<Slot> = slots(ExtraKey.HOME, ExtraKey.END, ExtraKey.PIPE, ExtraKey.TILDE,
+    ExtraKey.SLASH, ExtraKey.DASH, ExtraKey.TAB) + Slot.Fn
+private val FN_COMBO_SLOTS: List<Slot> = listOf(Slot.Send(ExtraKey.ESC), Slot.Ctrl, Slot.Alt, Slot.Shift) +
+    slots(ExtraKey.CTRL_D, ExtraKey.CTRL_Z, ExtraKey.CTRL_R, ExtraKey.CTRL_V)
+private val FUNCTION_MIDDLE = slots(ExtraKey.F1, ExtraKey.F2, ExtraKey.F3, ExtraKey.F4,
+    ExtraKey.F5, ExtraKey.F6, ExtraKey.F7, ExtraKey.F8)
+private val FUNCTION_BOTTOM = slots(ExtraKey.F9, ExtraKey.F10, ExtraKey.F11, ExtraKey.F12,
+    ExtraKey.TAB, ExtraKey.DEL) + listOf(Slot.Numbers, Slot.Fn)
+private val NUMBER_MIDDLE = slots(ExtraKey.NUM_1, ExtraKey.NUM_2, ExtraKey.NUM_3, ExtraKey.NUM_4,
+    ExtraKey.NUM_5, ExtraKey.NUM_6, ExtraKey.NUM_7, ExtraKey.NUM_8)
+private val NUMBER_BOTTOM = slots(ExtraKey.NUM_9, ExtraKey.NUM_0, ExtraKey.DASH, ExtraKey.DOT,
+    ExtraKey.SLASH, ExtraKey.TAB) + listOf(Slot.Numbers, Slot.Fn)
+
 internal fun comboSlotNames(): List<String> = COMBO_SLOTS.map {
     when (it) {
         is Slot.Send -> it.key.name
         Slot.Ctrl -> "Ctrl"
         Slot.Alt -> "Alt"
         Slot.Shift -> "Shift"
+        Slot.Fn -> "Fn"
+        Slot.Numbers -> "123"
     }
 }
-
-/** The extra rows' second group: navigation keys and symbols. */
-private val NAV_SLOTS: List<Slot> = listOf(
-    ExtraKey.HOME, ExtraKey.END, ExtraKey.PAGE_UP, ExtraKey.PAGE_DOWN,
-    ExtraKey.PIPE, ExtraKey.TILDE, ExtraKey.SLASH, ExtraKey.DASH,
-).map(Slot::Send)
 
 /** The narrowest an extra key gets before its group wraps onto another line. */
 private val EXTRA_KEY_MIN = 36.dp
@@ -253,6 +287,8 @@ fun ExtraKeys(
     val colors = AppTheme.colors
     val keyboard = WindowInsets.isImeVisible
     var expanded by remember { mutableStateOf(false) }
+    var fn by remember { mutableStateOf(false) }
+    var numbers by remember { mutableStateOf(false) }
     LaunchedEffect(textMode) { if (textMode) expanded = false }
     if (textMode) {
         Box(Modifier.fillMaxWidth().background(colors.termBar).padding(horizontal = 8.dp, vertical = 4.dp)) { textEditor() }
@@ -278,7 +314,7 @@ fun ExtraKeys(
                 exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut(),
             ) {
                 // Reserve the last visual cell for the independent disclosure.
-                ExtraRows(modifiers, onKey, Modifier.padding(end = cell + ROW_GAP, bottom = ROW_GAP).testTag("terminal_extra_rows"))
+                ExtraRows(modifiers, onKey, fn, { fn = it }, numbers, { numbers = it }, Modifier.padding(end = cell + ROW_GAP, bottom = ROW_GAP).testTag("terminal_extra_rows"))
             }
             Box(Modifier.fillMaxWidth()) {
                 Row(Modifier.testTag("terminal_main_keys"), horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
@@ -340,15 +376,14 @@ fun ExtraKeys(
  * each group on its own, wrapped into even lines when narrow.
  */
 @Composable
-private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, modifier: Modifier) {
+private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, fn: Boolean, onFn: (Boolean) -> Unit,
+    numbers: Boolean, onNumbers: (Boolean) -> Unit, modifier: Modifier) {
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val minWidth = EXTRA_KEY_MIN * LocalDensity.current.fontScale.coerceAtLeast(1f)
         val fit = ((maxWidth + ROW_GAP) / (minWidth + ROW_GAP)).toInt()
-        // Divisors of the eight-column extra area keep every wrapped edge on
-        // the same tracks instead of independently stretching arbitrary rows.
-        val perLine = listOf(16, 8, 4, 2, 1).first { it <= fit.coerceAtLeast(1) }
-        val all = COMBO_SLOTS + NAV_SLOTS
-        val groups = if (all.size <= perLine) listOf(all) else listOf(COMBO_SLOTS, NAV_SLOTS)
+        val perLine = listOf(8, 4, 2, 1).first { it <= fit.coerceAtLeast(1) }
+        val groups = if (!fn) listOf(COMBO_SLOTS, NAV_SLOTS) else listOf(FN_COMBO_SLOTS,
+            if (numbers) NUMBER_MIDDLE else FUNCTION_MIDDLE, if (numbers) NUMBER_BOTTOM else FUNCTION_BOTTOM)
         Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
             groups.forEach { group ->
                 var from = 0
@@ -360,6 +395,8 @@ private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, modifier:
                                 Slot.Ctrl -> Toggle("Ctrl", modifiers.ctrl, small = true) { modifiers.ctrl = it }
                                 Slot.Alt -> Toggle("Alt", modifiers.alt, small = true) { modifiers.alt = it }
                                 Slot.Shift -> Toggle("Shift", modifiers.shift, small = true) { modifiers.shift = it }
+                                Slot.Fn -> Toggle("Fn", fn, Modifier.testTag("terminal_fn"), small = true) { onFn(it); if (!it) onNumbers(false) }
+                                Slot.Numbers -> Toggle("123", numbers, Modifier.testTag("terminal_numbers"), small = true, onChange = onNumbers)
                             }
                         }
                     }

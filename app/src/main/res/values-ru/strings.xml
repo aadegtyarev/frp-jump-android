@@ -743,6 +743,8 @@
     <string name="terminal_key_ctrl_c">Ctrl+C — прервать</string>
     <string name="terminal_key_ctrl_d">Ctrl+D — конец ввода</string>
     <string name="terminal_key_ctrl_z">Ctrl+Z — приостановить</string>
+    <string name="terminal_key_delete">Удалить справа</string>
+    <string name="terminal_key_ctrl_v">Ctrl+V</string>
     <string name="terminal_key_ctrl_r">Ctrl+R — поиск в истории</string>
     <string name="terminal_paste">Вставить</string>
     <string name="terminal_clipboard_empty">буфер обмена пуст</string>

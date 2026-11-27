@@ -202,6 +202,34 @@ class TerminalTextComposerTest {
         }
     }
 
+    @Test fun functionKeysSwitchWithKeyboardHidden() {
+        start()
+        compose.onNodeWithTag("terminal_more_keys").performClick()
+        compose.onNodeWithTag("terminal_fn").performClick()
+        val keys = listOf(ExtraKey.F1, ExtraKey.F2, ExtraKey.F3, ExtraKey.F4, ExtraKey.F5, ExtraKey.F6,
+            ExtraKey.F7, ExtraKey.F8, ExtraKey.F9, ExtraKey.F10, ExtraKey.F11, ExtraKey.F12)
+        keys.forEach { key -> compose.onNodeWithTag("terminal_key_${key.name}").assertIsDisplayed() }
+        val fnBounds = compose.onNodeWithTag("terminal_fn").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("terminal_numbers").performClick()
+        val numbers = listOf(ExtraKey.NUM_1, ExtraKey.NUM_2, ExtraKey.NUM_3, ExtraKey.NUM_4, ExtraKey.NUM_5,
+            ExtraKey.NUM_6, ExtraKey.NUM_7, ExtraKey.NUM_8, ExtraKey.NUM_9, ExtraKey.NUM_0)
+        numbers.forEach { key -> compose.onNodeWithTag("terminal_key_${key.name}").assertIsDisplayed().performClick() }
+        compose.onNodeWithTag("terminal_key_F1").assertDoesNotExist()
+        assertEquals(fnBounds, compose.onNodeWithTag("terminal_fn").fetchSemanticsNode().boundsInRoot)
+        capture("panel-number-keys")
+        compose.onNodeWithTag("terminal_numbers").performClick()
+        keys.forEach { key -> compose.onNodeWithTag("terminal_key_${key.name}").performClick() }
+        capture("panel-function-keys")
+        compose.onNodeWithTag("terminal_key_HOME").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_fn").performClick()
+        compose.onNodeWithTag("terminal_key_F1").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_key_HOME").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(numbers + keys, terminalKeys)
+            assertEquals(emptyList<Boolean>(), keyboardRequests)
+        }
+    }
+
     @Test fun extraKeysShareColumnTracksAndDisclosureNeverOverlapsKeys() {
         start()
         checkSharedGrid("panel-shared-grid")
@@ -235,7 +263,7 @@ class TerminalTextComposerTest {
         val step = (keyboard.left - first.left) / 8
         val gap = step - first.width
         val halfStep = step / 2
-        val keys = listOf(ExtraKey.ESC, ExtraKey.TAB, ExtraKey.CTRL_D, ExtraKey.CTRL_Z,
+        val keys = listOf(ExtraKey.ESC, ExtraKey.TAB, ExtraKey.CTRL_D,
             ExtraKey.CTRL_R, ExtraKey.HOME, ExtraKey.END, ExtraKey.PAGE_UP,
             ExtraKey.PAGE_DOWN, ExtraKey.PIPE, ExtraKey.TILDE, ExtraKey.SLASH, ExtraKey.DASH)
         val target = bounds("terminal_more_keys")
@@ -248,9 +276,10 @@ class TerminalTextComposerTest {
             org.junit.Assert.assertFalse("Disclosure must not cover $key", target.overlaps(b))
         }
         val symbol = bounds("terminal_more_keys_symbol", unmerged = true)
-        val dash = bounds("terminal_key_DASH")
+        val fn = bounds("terminal_fn")
+        org.junit.Assert.assertFalse("Disclosure must not cover Fn", target.overlaps(fn))
         assertEquals(keyboard.center.x, symbol.center.x, 2f)
-        assertEquals(dash.center.y, symbol.center.y, 2f)
+        assertEquals(fn.center.y, symbol.center.y, 2f)
         org.junit.Assert.assertTrue("Disclosure must end above main keys", target.bottom <= keyboard.top + 1f)
         val padding = 8 * compose.activity.resources.displayMetrics.density
         org.junit.Assert.assertTrue("Complete target must stay inside viewport", target.right <= keyboard.right + padding + 1f)
