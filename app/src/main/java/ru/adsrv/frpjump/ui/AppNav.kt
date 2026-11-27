@@ -42,6 +42,10 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import ru.adsrv.frpjump.tunnel.SessionKind
+import ru.adsrv.frpjump.ssh.SshState
+import ru.adsrv.frpjump.sessions.sessionHidden
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
@@ -91,12 +95,13 @@ internal object Routes {
     const val STORAGE = "storage"
     const val REMOVED = "removed"
     const val WEB = "web/{profile}/{name}/{port}/{target}/{https}"
-    const val TERMINAL = "terminal/{id}"
+    const val TERMINAL = "terminal/{id}?ref={ref}"
     const val FILES = "files/{id}"
     const val MQTT = "mqtt/{id}"
     fun mqtt(id: Int) = "mqtt/$id"
     fun files(id: Int) = "files/$id"
     fun terminal(id: Int) = "terminal/$id"
+    fun terminalReference(id: Int, reference: String) = "terminal/$id?ref=${Uri.encode(reference)}"
     fun profile(id: String) = "profile/$id"
     fun web(profile: String, name: String, localPort: Int, target: Int, https: Boolean) =
         "web/$profile/${Uri.encode(name)}/$localPort/$target/$https"
@@ -326,6 +331,7 @@ fun AppNav() {
                 closeSessions = app.closeSessions,
                 profileColors = profilesState.index.profiles.associate { it.id to it.color },
                 initialId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
+                initialReference = entry.arguments?.getString("ref"),
                 onBack = { nav.popBackStack() },
                 onAskAssistant = if (assistant) ({ quote -> nav.askAssistant(app, quote) }) else null,
                 onOpenFiles = { s ->
@@ -428,7 +434,17 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
                 }
             }
             else nav.navigate(Routes.PROVIDER)
-        }, onOpenTerminal = { nav.navigate(Routes.terminal(it)) })
+        }, onOpenTerminal = { nav.navigate(Routes.terminal(it)) }, onTerminalReference = { ref ->
+            val session = app.ssh.allNow().firstOrNull {
+                it.assistantReference == ref && it.state.value == SshState.Open &&
+                    !sessionHidden(app.pendingUndo.hidden.value, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port))
+            }
+            if (session != null && app.ssh.show(session.id) === session) {
+                nav.navigate(Routes.terminalReference(session.id, ref))
+            } else {
+                app.notice(app.getString(R.string.terminal_not_open), NoticeKind.WARN)
+            }
+        })
     }
     composable(Routes.PROVIDER) { entry ->
         // Shares Settings' model while Settings is on the back stack; the chat can be opened from anywhere else, then it has its own.

@@ -10,7 +10,8 @@ interface AgentContinuation { val estimatedTokens: Long; val sizeChars: Int }
 data class AgentReply(val text: String = "", val calls: List<ToolCall> = emptyList(), val continuation: AgentContinuation? = null)
 /** [DECLINED]: the owner (or an authorization hook) refused the call; the tool was not executed. */
 enum class ToolOutcome { SUCCESS, FAILED, TIMEOUT, UNKNOWN_TOOL, DECLINED }
-data class ToolOutput(val text: String, val outcome: ToolOutcome = ToolOutcome.SUCCESS)
+data class ToolReference(val token: String, val evidence: String = "", val label: String = "")
+data class ToolOutput(val text: String, val outcome: ToolOutcome = ToolOutcome.SUCCESS, val references: List<ToolReference> = emptyList())
 data class ToolResult(
     val callId: String,
     val name: String,
@@ -18,6 +19,7 @@ data class ToolResult(
     val outcome: ToolOutcome,
     /** Explicit UTF-16 character count, not bytes or tokens. */
     val omittedChars: Int = 0,
+    val references: List<ToolReference> = emptyList(),
 )
 
 /** An indivisible protocol block: never keep a tool call without all of its matching results. */

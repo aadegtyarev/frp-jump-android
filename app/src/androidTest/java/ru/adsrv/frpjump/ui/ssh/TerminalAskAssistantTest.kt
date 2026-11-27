@@ -130,7 +130,7 @@ class TerminalAskAssistantTest {
     }
 
     /** The real terminal screen over one synthetic tab (id 1), with [onAsk] as its Ask hook. */
-    private fun terminalContent(onAsk: ((String?) -> Unit)?): @Composable () -> Unit {
+    private fun terminalContent(onAsk: ((String?) -> Unit)?, reference: String? = null, back: () -> Unit = {}): @Composable () -> Unit {
         val env = SshEnvironment(SshKeyStore(Memory(), unusedBox), SshPasswords(Memory(), unusedBox), { "synthetic" }, TmuxNames(Memory()))
         lateinit var registry: SshSessions
         compose.runOnUiThread {
@@ -143,8 +143,8 @@ class TerminalAskAssistantTest {
         val keyLogin = KeyLoginFlow(KeyInstaller(env, registry), scope)
         val snippets = SnippetStore(Memory(), Memory())
         return {
-            TerminalScreen(registry, all, snippets, app.pendingUndo, closer, emptyMap(), initialId = 1,
-                onBack = {}, onAskAssistant = onAsk, onOpenFiles = {}, rememberLogin = { _, _ -> }, keyLogin = keyLogin, keyLoginTarget = { null })
+            TerminalScreen(registry, all, snippets, app.pendingUndo, closer, emptyMap(), initialId = 1, initialReference = reference,
+                onBack = back, onAskAssistant = onAsk, onOpenFiles = {}, rememberLogin = { _, _ -> }, keyLogin = keyLogin, keyLoginTarget = { null })
         }
     }
 
@@ -159,12 +159,12 @@ class TerminalAskAssistantTest {
     private val draft get() = compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.EditableText].text
 
     /** The assistant is on, the chat file is empty (and kept), and the app's own navigation pieces wrap the real terminal screen. */
-    private fun startNav() {
+    private fun startNav(reference: String? = null) {
         originalSettings = app.settings.settings.value
         chatFile.save()
         runBlocking(Dispatchers.IO) { app.assistantHistory.clear() }
         compose.runOnUiThread { app.settings.update { it.copy(assistantEnabled = true) }; app.assistantQuote.value = null }
-        val terminal = terminalContent { quote -> nav.askAssistant(app, quote) }
+        val terminal = terminalContent({ quote -> nav.askAssistant(app, quote) }, reference) { nav.popBackStack() }
         compose.setContent {
             FrpJumpTheme {
                 nav = rememberNavController()
@@ -217,6 +217,18 @@ class TerminalAskAssistantTest {
         compose.waitForIdle()
         compose.onNodeWithTag("terminal_ask_assistant").assertIsDisplayed().performClick()
         compose.waitForIdle()
+    }
+
+    @Test fun staleReferenceReturnsToTheSameChatWithoutShowingAnotherTab() {
+        startNav(reference = "[terminal:stale]")
+        compose.runOnUiThread { nav.openAssistant() }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        val chat = compose.runOnUiThread { nav.getBackStackEntry(Routes.CHAT) }
+        compose.runOnUiThread { nav.navigate(Routes.terminalReference(1, "[terminal:stale]")) }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        assertSame(chat, compose.runOnUiThread { nav.getBackStackEntry(Routes.CHAT) })
+        assertEquals(1, chatEntries())
+        assertNull(compose.runOnUiThread { findTerminalView(compose.activity.window.decorView) })
     }
 
     @Test fun aSelectionInTheTabReachesTheChatDraftAsTheQuoteBlock() {

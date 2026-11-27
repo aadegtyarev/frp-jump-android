@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.assistant
 import kotlinx.coroutines.CancellationException
 import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.agent.ToolOutput
+import ru.adsrv.frpjump.agent.ToolReference
 import ru.adsrv.frpjump.assistant.chat.TypingCard
 import ru.adsrv.frpjump.assistant.chat.receiptText
 import ru.adsrv.frpjump.assistant.tools.AppTool
@@ -32,7 +33,17 @@ internal class AssistantTerminalTabsTool(private val tabs: AssistantTerminalTabs
     override suspend fun run(args: Unit): ToolOutput {
         val list = tabs.list()
         val programs = if (list.any { it.tmux }) tabs.programs() else emptyMap()
-        return ToolOutput(tabsText(list, programs, sshResultBudget(limits.toolOutputChars)))
+        val text = tabsText(list, programs, sshResultBudget(limits.toolOutputChars))
+        val references = list.mapNotNull { tab ->
+            val token = tab.reference ?: return@mapNotNull null
+            val row = text.lineSequence().firstOrNull { it.endsWith(" | $token") } ?: return@mapNotNull null
+            val label = buildString {
+                append("${tab.id} · ${name(tab.user)}@${name(tab.device)}")
+                tab.name?.let { append(" · ${name(it, TAB_NAME_MAX)}") }
+            }
+            ToolReference(token, row, label)
+        }
+        return ToolOutput(text, references = references)
     }
 
     override fun failure(error: Exception) = ToolOutput("Could not list terminal tabs.", ToolOutcome.FAILED)
@@ -201,6 +212,7 @@ internal fun tabsText(list: List<TerminalTab>, programs: Map<Int, String>, budge
             // The assistant's own sessions say so, and whether the owner has them as a tab.
             if (tab.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT) append(" | opened by: you | shown: ${if (tab.shown) "yes" else "no"}")
             programs[tab.id]?.let { append(" | program: ${name(it)}") }
+            tab.reference?.let { append(" | $it") }
         }
     }
     if (lines.sumOf { it.length + 1 } <= budget) return lines.joinToString("\n")

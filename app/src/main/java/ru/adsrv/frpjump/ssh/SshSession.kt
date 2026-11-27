@@ -132,6 +132,8 @@ class SshSession(
     var sessionGone = false
         private set
 
+    val assistantReference: String = "[terminal:${java.util.UUID.randomUUID()}]"
+
     private val _shown = MutableStateFlow(openedBy == SessionOpener.OWNER)
 
     /** Whether the owner has it as a tab: always for the owner's own sessions, for the assistant's after the owner opened it. */
