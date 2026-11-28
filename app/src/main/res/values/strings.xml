@@ -1616,5 +1616,7 @@
     <string name="tunnels_picker_done">Done</string>
     <string name="tunnels_picker_clear">Clear</string>
     <string name="tunnels_add_button">Add tunnel</string>
+    <string name="chat_open_tunnel">Open tunnel %1$s</string>
+    <string name="chat_tunnel_unavailable">This tunnel is no longer available.</string>
     <string name="chat_open_terminal">Open terminal %1$s</string>
 </resources>

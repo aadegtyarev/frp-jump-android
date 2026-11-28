@@ -26,7 +26,7 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test: one hash per asset.
-        assertEquals(20, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(21, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(3, AssistantPrompts.SUMMARY_VERSION)
         val pinned = mapOf(
         "assistant/skill.md" to "63799dcffeba98d471d22d4bc08f3aa45a6e4cea72445df7a32ee29074040954",
@@ -34,7 +34,7 @@ class AssistantPromptsTest {
         "assistant/tools/skills.md" to "03cf883318f91b760c5be8cb946b54ba1f823286730017d3f124eeef3a1ab585",
         "assistant/summary.md" to "b1d30cb5d6ed25e55fe6c1f81e989a91972747723e7b39647b3c21333bfdadeb",
         "assistant/tools/inspect_image.md" to "50831383f2b4610ae976ecda4fb7e69f83f3dcbe9edce084794cabb6d3405f46",
-        "assistant/tools/profile_information.md" to "f92d2fb34411dd7f4906b0057c3ebb7d507aa29db652494755aa53ccdb932e57",
+        "assistant/tools/profile_information.md" to "d87a87abc62a3b28a6cad96421619b6c05b30c7ac93bcdcd9aac71128acadf8d",
         "assistant/tools/read_page.md" to "8058bc888631e661bb46156b9effc77a15f2ce04750398815c0e25569d9831f8",
         "assistant/tools/search.md" to "532f4d35bded5deeff747134ce034c91208cbb8700e8df4b56f29b314c84d821",
         "assistant/tools/ssh_command.md" to "b9e62065b9e16ec17f339f1099cf62b489a01c0cbfda775bc6045696acb77c65",

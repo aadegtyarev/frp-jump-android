@@ -173,6 +173,7 @@ class AssistantChatScreenTest {
     private val waitSources = SyntheticWaits()
     private fun tabWait(kind: ru.adsrv.frpjump.assistant.WaitKind) = ru.adsrv.frpjump.assistant.WaitSpec(kind, 10, tabId = 3)
     private var openedTerminalReference: String? = null
+    private var openedTunnel: ru.adsrv.frpjump.agent.TunnelReference? = null
 
     private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?,
         private val screen: String, override val reference: String? = null) : TabHandle {
@@ -282,6 +283,14 @@ class AssistantChatScreenTest {
                             val c = record["connection"]!!.jsonObject
                             "${record["profile"]!!.jsonObject["name"]!!.jsonPrimitive.content} · ${c["device"]!!.jsonPrimitive.content} · ${c["name"]!!.jsonPrimitive.content} · ${c["kind"]!!.jsonPrimitive.content}:${c["port"]!!.jsonPrimitive.int} · ${c["user"]!!.jsonPrimitive.content}"
                         })
+                    }
+                "tunnel-reference" -> if (request.turns.last().exchanges.isEmpty())
+                    AgentReply(calls = listOf(ToolCall("reference-$calls", "profile_information", buildJsonObject { put("query", "work-root") })))
+                    else {
+                        val result = request.turns.last().exchanges.single().results.single()
+                        val token = Json.parseToJsonElement(result.text).jsonObject.getValue("results").jsonArray.single()
+                            .jsonObject.getValue("reference").jsonPrimitive.content
+                        AgentReply("I found the tunnel.\n\n$token")
                     }
                 "two-profile-calls" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(0, 13).mapIndexed { i, offset ->
                     ToolCall("two-$i", "profile_information", buildJsonObject { put("query", "board150"); put("offset", offset) }) })
@@ -469,7 +478,8 @@ class AssistantChatScreenTest {
                     val vm = viewModel { vm() }
                     SideEffect { owner = vm.conversation; chatBinding = vm.tools; ownerSupport = vm.confirmations }
                     AssistantChatScreen(vm, onBack = { nav.popBackStack() },
-                        onSetup = { nav.navigate("setup") }, onTerminalReference = { openedTerminalReference = it })
+                        onSetup = { nav.navigate("setup") }, onTerminalReference = { openedTerminalReference = it },
+                        onTunnelReference = { openedTunnel = it })
                 }
                 composable("setup") { Text("Synthetic provider setup") }
             }
@@ -701,6 +711,21 @@ class AssistantChatScreenTest {
         shot("answer-link")
         compose.onNodeWithText(openTab).performClick()
         compose.runOnIdle { assertEquals("[terminal:synthetic-report]", openedTerminalReference) }
+    }
+
+    @Test fun answerOffersTheIssuedTunnelAsAnAction() {
+        informationFixture = ProfileInformationFixture(); information = informationFixture!!.information
+        mode = "tunnel-reference"; settings.update { it.copy(assistantProfileInformation = true) }
+        install()
+        input().performTextInput("Open the tunnel for board1500")
+        sendAndAwait()
+        val description = localizedFormat(ru.adsrv.frpjump.R.string.chat_open_tunnel, "Work · board1500 · Service root")
+        button("chat_history").performScrollToNode(hasText(description))
+        compose.onNodeWithText(description).assertIsDisplayed().assertHasClickAction()
+        compose.onAllNodesWithText("[tunnel:", substring = true).assertCountEquals(0)
+        shot("tunnel-answer-link")
+        compose.onNodeWithText(description).performClick()
+        compose.runOnIdle { assertEquals("work-root", openedTunnel?.connectionId) }
     }
 
     /** Renaming still changes only the intended label. */

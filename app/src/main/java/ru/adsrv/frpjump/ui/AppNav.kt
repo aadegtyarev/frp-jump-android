@@ -47,6 +47,7 @@ import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.sessions.sessionHidden
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.agent.TunnelReference
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.ConnectionRow
@@ -59,6 +60,7 @@ import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.ui.connections.ConnectionsScreen
 import ru.adsrv.frpjump.ui.connections.ConnectionsViewModel
 import ru.adsrv.frpjump.ui.connections.SessionsScreen
+import ru.adsrv.frpjump.ui.connections.ReferencedTunnelScreen
 import ru.adsrv.frpjump.ui.devices.DevicesScreen
 import ru.adsrv.frpjump.ui.devices.DevicesViewModel
 import ru.adsrv.frpjump.ui.enroll.EnrollScreen
@@ -96,6 +98,10 @@ internal object Routes {
     const val REMOVED = "removed"
     const val WEB = "web/{profile}/{name}/{port}/{target}/{https}"
     const val TERMINAL = "terminal/{id}?ref={ref}"
+    const val ASSISTANT_TUNNEL = "assistant-tunnel/{profile}/{connection}/{device}/{port}/{kind}/{https}"
+    fun assistantTunnel(ref: TunnelReference): String =
+        "assistant-tunnel/" + listOf(ref.profileId, ref.connectionId, ref.device, ref.port.toString(), ref.kind, ref.https.toString())
+            .joinToString("/") { Uri.encode(it) }
     const val FILES = "files/{id}"
     const val MQTT = "mqtt/{id}"
     fun mqtt(id: Int) = "mqtt/$id"
@@ -444,7 +450,34 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
             } else {
                 app.notice(app.getString(R.string.terminal_not_open), NoticeKind.WARN)
             }
-        })
+        }, onTunnelReference = { nav.navigate(Routes.assistantTunnel(it)) })
+    }
+    composable(Routes.ASSISTANT_TUNNEL) { entry ->
+        val args = requireNotNull(entry.arguments)
+        val target = TunnelReference(
+            args.getString("profile").orEmpty(),
+            args.getString("connection").orEmpty(),
+            args.getString("device").orEmpty(),
+            args.getString("port")?.toIntOrNull() ?: 0,
+            args.getString("kind").orEmpty(),
+            args.getString("https").toBoolean(),
+        )
+        val open: (String) -> Unit = { route ->
+            nav.navigate(route) { popUpTo(entry.destination.id) { inclusive = true } }
+        }
+        ReferencedTunnelScreen(
+            vm = viewModel { ConnectionsViewModel(app) },
+            target = target,
+            onBack = { nav.popBackStack() },
+            onUnavailable = {
+                nav.popBackStack()
+                app.notice(app.getString(R.string.chat_tunnel_unavailable), NoticeKind.WARN)
+            },
+            onOpenWeb = { open(webRoute(it)) },
+            onOpenTerminal = { open(Routes.terminal(it)) },
+            onOpenFiles = { open(Routes.files(it)) },
+            onOpenMqtt = { open(Routes.mqtt(it)) },
+        )
     }
     composable(Routes.PROVIDER) { entry ->
         // Shares Settings' model while Settings is on the back stack; the chat can be opened from anywhere else, then it has its own.

@@ -12,16 +12,21 @@ import ru.adsrv.frpjump.assistant.tools.*
     @Transient val chars = id.length.toLong() + name.length + arguments.toString().length
     fun value() = ToolCall(id, name, arguments)
 }
-@Serializable internal data class SavedReference(val token: String, val label: String)
+@Serializable internal data class SavedTunnelReference(val profileId: String, val connectionId: String, val device: String, val port: Int, val kind: String, val https: Boolean) {
+    fun value() = TunnelReference(profileId, connectionId, device, port, kind, https)
+    companion object { fun of(t: TunnelReference) = SavedTunnelReference(t.profileId, t.connectionId, t.device, t.port, t.kind, t.https) }
+}
+@Serializable internal data class SavedReference(val token: String, val label: String,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val tunnel: SavedTunnelReference? = null)
 @Serializable internal data class SavedResult(val callId: String, val name: String, val text: String, val outcome: String, val omittedChars: Int = 0,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val references: List<SavedReference> = emptyList(),
     @Transient val original: ToolResult? = null,
     /** Why this call ran without a question (memory only: never written, so a conversation restored from the saved history shows none). */
     @Transient val noQuestion: ru.adsrv.frpjump.settings.NoQuestion? = null) {
-    @Transient val chars = callId.length.toLong() + name.length + text.length + references.sumOf { it.token.length + it.label.length }
+    @Transient val chars = callId.length.toLong() + name.length + text.length + references.sumOf { it.token.length + it.label.length + (it.tunnel?.let { t -> t.profileId.length + t.connectionId.length + t.device.length + t.kind.length + 8 } ?: 0) }
     /** An outcome name this version does not know (written by a newer one) reads as a failure: not success, not declined. */
-    fun value() = original ?: ToolResult(callId, name, text, ToolOutcome.entries.firstOrNull { it.name == outcome } ?: ToolOutcome.FAILED, omittedChars, references.map { ToolReference(it.token, label = it.label) })
-    companion object { fun of(value: ToolResult) = SavedResult(value.callId, value.name, value.text, value.outcome.name, value.omittedChars, value.references.map { SavedReference(it.token, it.label) }, value) }
+    fun value() = original ?: ToolResult(callId, name, text, ToolOutcome.entries.firstOrNull { it.name == outcome } ?: ToolOutcome.FAILED, omittedChars, references.map { ToolReference(it.token, label = it.label, tunnel = it.tunnel?.value()) })
+    companion object { fun of(value: ToolResult) = SavedResult(value.callId, value.name, value.text, value.outcome.name, value.omittedChars, value.references.map { SavedReference(it.token, it.label, it.tunnel?.let(SavedTunnelReference::of)) }, value) }
 }
 @Serializable internal data class SavedReply(val text: String = "", val calls: List<SavedCall> = emptyList(), val continuation: String? = null,
     @Transient val localContinuation: AgentContinuation? = null) {

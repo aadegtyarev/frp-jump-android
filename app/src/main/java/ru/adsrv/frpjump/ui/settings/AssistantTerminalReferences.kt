@@ -12,8 +12,14 @@ internal data class ReferenceAnswer(val text: String, val references: List<ToolR
 /** Only an issued token occupying a top-level paragraph becomes an action. */
 internal fun referenceAnswer(answer: String, receipts: List<ChatToolReceipt>): ReferenceAnswer {
     val issued = receipts.flatMap { receipt ->
-        receipt.result?.takeIf { it.outcome == ToolOutcome.SUCCESS && it.name in setOf("terminal_tabs", "terminal_open") }
-            ?.references.orEmpty()
+        receipt.result?.takeIf { it.outcome == ToolOutcome.SUCCESS && it.name == receipt.call.name }
+            ?.references.orEmpty().filter { reference ->
+                when (receipt.call.name) {
+                    "terminal_tabs", "terminal_open" -> reference.tunnel == null
+                    "profile_information" -> reference.tunnel != null
+                    else -> false
+                }
+            }
     }.associateBy { it.token }
     if (issued.isEmpty()) return ReferenceAnswer(answer, emptyList())
 

@@ -65,7 +65,7 @@ Stdout and stderr share a budget of about 7,800 UTF-16 characters (stderr keeps 
 
 Refreshes the device lists once and reads the app-known devices and saved connections of every profile. Reads only; no cache, inventory
 owner or connection control. The caller chooses how the refresh is admitted. A failed refresh or read is a failure with an unknown outcome:
-no successful refresh is implied.
+no successful refresh is implied. The assistant adapter can add opaque app navigation references to saved connections in its result page. Opening a reference locally checks current saved state and uses existing UI actions. It does not call a tunnel operation on the model’s behalf.
 
 ### `tunnel_up`
 

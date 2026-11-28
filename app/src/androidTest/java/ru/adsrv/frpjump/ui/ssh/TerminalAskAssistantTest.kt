@@ -234,6 +234,21 @@ class TerminalAskAssistantTest {
         assertNull(compose.runOnUiThread { findTerminalView(compose.activity.window.decorView) })
     }
 
+    @Test fun staleTunnelReferenceReturnsToTheSameChat() {
+        startNav()
+        compose.runOnUiThread { nav.openAssistant() }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        val chat = compose.runOnUiThread { nav.getBackStackEntry(Routes.CHAT) }
+        compose.runOnUiThread {
+            val reference = ru.adsrv.frpjump.agent.TunnelReference("missing-profile", "gone", "example", 443, "WEB", true)
+            nav.navigate(Routes.assistantTunnel(reference))
+            assertEquals(Routes.ASSISTANT_TUNNEL, nav.currentDestination?.route)
+        }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        assertSame(chat, compose.runOnUiThread { nav.getBackStackEntry(Routes.CHAT) })
+        assertEquals(1, chatEntries())
+    }
+
     @Test fun aSelectionInTheTabReachesTheChatDraftAsTheQuoteBlock() {
         startNav()
         compose.runOnUiThread { nav.navigate(Routes.terminal(1)) }

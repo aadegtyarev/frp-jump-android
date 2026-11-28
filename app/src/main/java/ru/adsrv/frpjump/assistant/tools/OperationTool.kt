@@ -29,6 +29,7 @@ internal abstract class OperationTool<I : Any, O>(
 
     /** The text of a finished operation, for [input]. */
     protected abstract fun render(input: I, output: O): String
+    protected open fun renderOutput(input: I, output: O): ToolOutput = ToolOutput(render(input, output), outcome(output))
     /** How the model is told the operation finished; a command that ran and failed is FAILED although it is [OpResult.Done]. */
     protected open fun outcome(output: O): ToolOutcome = ToolOutcome.SUCCESS
     protected abstract fun modelText(refusal: OpRefusal): String
@@ -44,7 +45,7 @@ internal abstract class OperationTool<I : Any, O>(
     }
 
     final override suspend fun run(args: I): ToolOutput = when (val result = operation(args)) {
-        is OpResult.Done -> ToolOutput(render(args, result.value), outcome(result.value))
+        is OpResult.Done -> renderOutput(args, result.value)
         is OpResult.Refused -> ToolOutput(modelText(result.reason), ToolOutcome.FAILED)
         is OpResult.Failed -> ToolOutput(modelText(result.reason), ToolOutcome.FAILED)
     }

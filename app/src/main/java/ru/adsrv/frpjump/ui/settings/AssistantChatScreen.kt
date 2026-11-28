@@ -53,7 +53,11 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 
 @Composable
-fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit, onOpenTerminal: (Int) -> Unit = {}, onTerminalReference: (String) -> Unit = {}) {
+fun AssistantChatScreen(
+    vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit, onOpenTerminal: (Int) -> Unit = {},
+    onTerminalReference: (String) -> Unit = {},
+    onTunnelReference: (ru.adsrv.frpjump.agent.TunnelReference) -> Unit = {},
+) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val provider by vm.provider.collectAsStateWithLifecycle()
     val toolsState by vm.tools.state.collectAsStateWithLifecycle()
@@ -69,7 +73,7 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
         AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
             confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF,
             tools = toolsState.committed, onTurnOn = vm::turnOnRequested, toolsFailed = toolsState.failed,
-            onTerminalReference = onTerminalReference, asks = vm.ownerAsks.collectAsStateWithLifecycle().value, onOpenAsk = { vm.openAsk(it, onOpenTerminal) }, onDismissAsk = vm::dismissAsk)
+            onTerminalReference = onTerminalReference, onTunnelReference = onTunnelReference, asks = vm.ownerAsks.collectAsStateWithLifecycle().value, onOpenAsk = { vm.openAsk(it, onOpenTerminal) }, onDismissAsk = vm::dismissAsk)
     }
 }
 
@@ -90,6 +94,7 @@ internal fun AssistantChatContent(
     asks: List<ru.adsrv.frpjump.assistant.OwnerAsk> = emptyList(), onOpenAsk: ((ru.adsrv.frpjump.assistant.OwnerAsk) -> Unit)? = null,
     onDismissAsk: ((ru.adsrv.frpjump.assistant.OwnerAsk) -> Unit)? = null,
     onTerminalReference: (String) -> Unit = {},
+    onTunnelReference: (ru.adsrv.frpjump.agent.TunnelReference) -> Unit = {},
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
@@ -226,8 +231,11 @@ internal fun AssistantChatContent(
                                 val answer = remember(turn.answer, turn.receipts) { referenceAnswer(turn.answer, turn.receipts) }
                                 SelectionContainer { AssistantAnswerMarkdown(answer.text) }
                                 answer.references.forEach { reference ->
-                                    TextButton(onClick = { onTerminalReference(reference.token) }) {
-                                        Text(stringResource(R.string.chat_open_terminal, reference.label))
+                                    val tunnel = reference.tunnel
+                                    TextButton(onClick = {
+                                        if (tunnel == null) onTerminalReference(reference.token) else onTunnelReference(tunnel)
+                                    }) {
+                                        Text(stringResource(if (tunnel == null) R.string.chat_open_terminal else R.string.chat_open_tunnel, reference.label))
                                     }
                                 }
                                 ChatSources(turn.sources)

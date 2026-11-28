@@ -458,6 +458,9 @@ the app theme. The library owns Markdown parsing, including malformed or nested
 input; the one display-only adjustment is a blank line before a table header that
 directly follows a text line (never inside fenced code). HTML, links and images
 are shown as inert text and have no execution, opening or loading behavior. An app-issued terminal token in its own top-level paragraph becomes a labeled button only when that same turn’s successful `terminal_tabs` or `terminal_open` result emitted the complete associated row. It identifies one live session incarnation, not a reusable numeric tab id; detached, hidden for Undo, closed or replaced sessions report unavailable. Opening a live assistant session exposes that exact session locally, without attaching or running a tool. Back returns to the same chat. The opaque reference and its label follow the answer’s existing encrypted retention; older turns do not infer references from text.
+
+A successful `profile_information` page can issue a reference for each saved SSH, Web, MQTT or TCP connection it includes. Put the reference in its own top-level paragraph to offer an “Open tunnel” action labeled with the profile, device and connection. The app checks the saved target again on tap. Ready SSH, Web and MQTT use their ordinary open actions. A stopped or pending tunnel, or a TCP port, opens the exact connection card. A missing or changed target shows a notice in the same chat. Back returns to that chat. The action grants no tool permission and does not start a tunnel. The reference follows the same encrypted retention as a terminal reference.
+
 If parsing fails, the original answer remains selectable. User text is literal.
 Formatting changes neither the stored turns nor provider requests or
 continuation, and never truncates an answer. Display is not a source-Markdown

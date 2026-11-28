@@ -1,6 +1,9 @@
 package ru.adsrv.frpjump.assistant
 
 import kotlinx.serialization.json.*
+import ru.adsrv.frpjump.agent.ToolOutput
+import ru.adsrv.frpjump.agent.ToolReference
+import ru.adsrv.frpjump.agent.TunnelReference
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.errors.ErrorKind
@@ -16,7 +19,14 @@ import ru.adsrv.frpjump.profiles.ProfileInformationState
  * limit less the same overhead the other output budgets keep ([sshResultBudget]), so the kernel never cuts a page in the middle of a record.
  */
 internal fun profileInformationText(state: ProfileInformationState, query: ProfileInformationQuery = ProfileInformationQuery(),
-    budget: Int = sshResultBudget(AssistantLimits.DEFAULT_TOOL_OUTPUT_CHARS)): String {
+    budget: Int = sshResultBudget(AssistantLimits.DEFAULT_TOOL_OUTPUT_CHARS)): String =
+    profileInformationPage(state, query, budget, issueReferences = false).text
+
+internal fun profileInformationOutput(state: ProfileInformationState, query: ProfileInformationQuery, budget: Int): ToolOutput =
+    profileInformationPage(state, query, budget, issueReferences = true)
+
+private fun profileInformationPage(state: ProfileInformationState, query: ProfileInformationQuery,
+    budget: Int, issueReferences: Boolean): ToolOutput {
     val profiles = state.profiles.filter { query.profileId == null || it.id == query.profileId }
     val coverage = buildJsonObject {
         put("loaded", state.loaded)
@@ -40,18 +50,23 @@ internal fun profileInformationText(state: ProfileInformationState, query: Profi
         put("results", JsonArray(records))
     }.toString()
     val selected = ArrayList<JsonObject>()
+    val references = ArrayList<ToolReference>()
     var total = 0
     var full = false
-    for (render in profileRecords(profiles, query.query)) {
+    for (recordSource in profileRecords(profiles, query.query)) {
+        val render = recordSource.render
+        val row = recordSource.row
         val position = total++
         if (position < query.offset || full) continue
-        var record = render(256)
+        val token = if (issueReferences && row?.saved == true) "[tunnel:${java.util.UUID.randomUUID()}]" else null
+        fun withToken(record: JsonObject) = if (token == null) record else JsonObject(record + ("reference" to JsonPrimitive(token)))
+        var record = withToken(render(256))
         fun fits() = page(selected + record, Int.MAX_VALUE, Int.MAX_VALUE).length <= budget
         if (!fits()) {
             if (selected.isNotEmpty()) { full = true; continue }
             // Only pathological display fields are shortened; saved action identifiers stay exact.
             for (limit in listOf(128, 64, 32, 0)) {
-                record = render(limit)
+                record = withToken(render(limit))
                 if (fits()) break
             }
             if (!fits()) record = buildJsonObject {
@@ -60,30 +75,39 @@ internal fun profileInformationText(state: ProfileInformationState, query: Profi
             }
         }
         selected += record
+        if (token != null && row != null && record["reference"] != null) {
+            val c = row.connection
+            references += ToolReference(token, label = listOf(record.getValue("profile").jsonObject.getValue("name").jsonPrimitive.content,
+                record.getValue("connection").jsonObject.getValue("device").jsonPrimitive.content,
+                record.getValue("connection").jsonObject["name"]?.jsonPrimitive?.contentOrNull ?: "${c.kind} ${c.port}").joinToString(" · "),
+                tunnel = TunnelReference(row.profile, c.id, c.device, c.port, c.kind.name, c.https))
+        }
     }
     val next = (query.offset.toLong() + selected.size).takeIf { selected.isNotEmpty() && it < total }?.toInt()
-    return page(selected, total, next)
+    val text = page(selected, total, next)
+    return ToolOutput(text, references = references.map { it.copy(evidence = text) })
 }
 
 /** Matching precedes paging and examines the complete available source, never a clipped string. */
-private fun profileRecords(profiles: List<ProfileInformationPart>, query: String): Sequence<(Int) -> JsonObject> = sequence {
+private data class ProfileRecord(val row: ConnectionRow? = null, val render: (Int) -> JsonObject)
+private fun profileRecords(profiles: List<ProfileInformationPart>, query: String): Sequence<ProfileRecord> = sequence {
     for (p in profiles) {
         val all = query.isEmpty() || searchMatches(p.name, query) || p.id == query
-        if (all) yield { limit -> profileRecord(p, null, null, limit) }
+        if (all) yield(ProfileRecord { limit -> profileRecord(p, null, null, limit) })
         if (!p.available) continue
         for (device in p.devices?.devices.orEmpty()) {
             if (all || searchMatches(device.name, query) || searchMatches(device.label, query))
-                yield { limit -> profileRecord(p, device, null, limit) }
+                yield(ProfileRecord { limit -> profileRecord(p, device, null, limit) })
         }
         for (row in p.rows) {
             val device = p.devices?.devices?.firstOrNull { it.name == row.connection.device }
             if (all || searchMatches(row.connection.device, query) || searchMatches(device?.label, query) ||
                 searchMatches(row.connection.customName, query) || row.connection.id == query)
-                yield { limit -> profileRecord(p, device, row, limit) }
+                yield(ProfileRecord(row) { limit -> profileRecord(p, device, row, limit) })
         }
         val tunnels = p.tunnels
         for (key in tunnels?.let { it.pending.keys + it.errors.keys }.orEmpty()) {
-            if (all || searchMatches(key, query)) yield { limit -> profileRecord(p, null, null, limit, key) }
+            if (all || searchMatches(key, query)) yield(ProfileRecord { limit -> profileRecord(p, null, null, limit, key) })
         }
     }
 }

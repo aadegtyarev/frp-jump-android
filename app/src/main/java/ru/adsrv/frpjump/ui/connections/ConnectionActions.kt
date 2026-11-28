@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.agent.TunnelReference
+import ru.adsrv.frpjump.connections.connectionRows
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionSaveResult
@@ -423,6 +425,17 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         return app.sshTargets.directLogin(row.profile, c.device, c.port, c.sshUser)
     }
 
+    internal fun referencedRow(target: TunnelReference): ConnectionRow? {
+        val current = runtime(target.profileId) ?: return null
+        val hidden = app.pendingUndo.hidden.value
+        val tunnels = current.tunnels.state.value.withoutDark(PendingUndo.darkTunnels(hidden, target.profileId))
+        return connectionRows(
+            target.profileId, current.connections.connections.value, tunnels,
+            target.device, PendingUndo.connectionIds(hidden, target.profileId),
+        )
+            .firstOrNull(target::matches)
+    }
+
     /** Resolve a delayed picker action from the current tunnel owner, never its old local port. */
     fun currentTerminalRow(row: ConnectionRow): ConnectionRow? {
         val c = row.connection
@@ -572,4 +585,9 @@ internal fun assistantMarks(
     (session.keys + remembered.keys).associateWith { target ->
         val record = remembered[target]
         AssistantMark(session[target], record?.at, record?.tools.orEmpty())
+    }
+
+internal fun TunnelReference.matches(row: ConnectionRow): Boolean =
+    row.saved && row.profile == profileId && row.connection.let {
+        it.id == connectionId && it.device == device && it.port == port && it.kind.name == kind && it.https == https
     }
