@@ -452,6 +452,8 @@ The optional, default-off Temporary files switch enables `temp_file_create`, `te
 
 `mqtt_read` is an independent default-off read tool. With the owner's switch on, it reads current values already in the connected MQTT explorer for the exact saved MQTT connection identified by `profile_id` and `connection_id`. The optional MQTT topic filter selects observed values and never subscribes. Its Tools and enable-request hint warns that private MQTT messages go to the configured provider. A missing, hidden, changed or disconnected target is refused; an empty cache is a successful empty result. The result is bounded to 20 current topic values and the owner's output budget, reports omitted values, dropped-message counts, retained/cleared and before-session marks, and omits non-UTF-8 payloads and payloads over 512 bytes with their byte count. Observed data is incomplete and does not establish broker state. Reading starts no tunnel or explorer and does not publish or change subscriptions.
 
+The optional `http_upload` is available when both HTTP POST and Temporary files are enabled. It sends the exact immutable bytes of one existing file, selected by its exact ID, in one `application/octet-stream` POST through the same saved Web target and transport. The common confirmation shows the target, path, file name and size; no file bytes are read before authorization. Upload has its own session and connection grants, separate from literal POST. The owner, both switches and their off epoch, file generation, exact target and applicable grant are checked at dispatch. Only the HTTP status is returned, so a response echo cannot expose the file to the provider. The same uncertain-outcome rules as POST apply.
+
 The optional `http_post` sends one owner-requested literal UTF-8 body (up to 8,192 bytes, `text/plain` or `application/json`) to an exact root-relative path on a ready saved Web tunnel, using the same endpoint, trust and bounded response as GET. The common confirmation shows POST, the exact target, path and query, content type and complete body. Its session and connection grants cover POST only and include the Web certificate pin. The target, pin, run, switch and applicable permission are rechecked immediately before the single dispatch; an error after dispatch is an unknown outcome and is never retried automatically.
 
 `mqtt_publish` publishes one explicitly requested literal UTF-8 message through the owner's already connected explorer for the exact saved MQTT connection. The common confirmation shows the full topic and payload, QoS and retained flag; an empty retained payload is called out as clearing the broker's retained value. For session and For this connection cover MQTT publication only, not SSH or terminal input. A session grant is bound to the accepted MQTT client; a stored connection grant is not used or removed while the active broker principal differs from the configured one. The exact target, tunnel, client and run ownership are rechecked in the MQTT scheduler immediately before dispatch. A changed, hidden, disconnected or cancelled target receives nothing. Accepted, unconfirmed, refused and unknown results are distinct and never retried automatically.
@@ -709,7 +711,7 @@ Settings → Assistant → Tools has one independent persisted switch per
 available tool of the [tool table](#tool-table) and, above them, the app-wide
 confirmation switch ("Ask before changing commands", on by default). Today the
 tool switches are Web search (`web_search`), Read page (`read_page`), Inspect
-image (`inspect_image`), Profile information (`profile_information`), Read Web tunnel (`http_get`), HTTP POST (`http_post`), Temporary files (`temp_file_create`, `temp_file_list`, `temp_file_read`), Read MQTT messages (`mqtt_read`), MQTT publication (`mqtt_publish`), Terminal
+image (`inspect_image`), Profile information (`profile_information`), Read Web tunnel (`http_get`), HTTP POST (`http_post`, `http_upload` when Temporary files is on), Temporary files (`temp_file_create`, `temp_file_list`, `temp_file_read`), Read MQTT messages (`mqtt_read`), MQTT publication (`mqtt_publish`), Terminal
 tabs (`terminal_tabs`, one switch for `terminal_tabs`, `terminal_read` and `terminal_rename`), Typing
 into tabs (`terminal_input`) and SSH command (`ssh_command`). They default off on new installs/upgrades; malformed new
 values default independently without resetting unrelated preferences. Saving
@@ -855,7 +857,7 @@ commands") is off, a For session grant covers that call's tool on that call's co
 The order at a call: the switch is off, a session grant covers it, a remembered permission covers it, else ask.
 The effect is the tool's catalog effect; for a tool built on an operation the
 operation's effect, action class and target are used, and tests pin its effect and class equal to the
-catalog's. Every catalog tool and operation has an action class (`PUBLIC_READ`, `CONNECTION_READ`, `CONNECTION_CHANGE`, `MQTT_PUBLISH`, `HTTP_POST`, `APP_READ`,
+catalog's. Every catalog tool and operation has an action class (`PUBLIC_READ`, `CONNECTION_READ`, `CONNECTION_CHANGE`, `MQTT_PUBLISH`, `HTTP_POST`, `HTTP_UPLOAD`, `APP_READ`,
 `APP_CHANGE`) and cannot be built without one; the class never decides by itself whether a call asks (that is the effect, the tool's
 `confirms` flag, the switch and a grant), and a tool with no question stays one whatever its class. The card's tool line reads
 "class · tool" ("Changes in connections · SSH command" / «Изменения в подключениях · Команда SSH»; "Changes in the app" /
@@ -932,7 +934,7 @@ only, never in the history, receipts, logs or backups.
 
 **For this connection** is the one remembered answer: a persistent record of (class, saved connection, fingerprint, tools) that later calls of
 exactly those tools on that connection skip the question under, until it ends. It is offered under exactly the condition that offers For session,
-so `ssh_command` and `terminal_input` (the grantable tools of `CONNECTION_CHANGE`) and `mqtt_publish` (the sole tool of `MQTT_PUBLISH`) and `http_post` (the sole tool of `HTTP_POST`) can get it; never a tool, a command, a tab, a tunnel or a
+so `ssh_command` and `terminal_input` (the grantable tools of `CONNECTION_CHANGE`) and `mqtt_publish` (the sole tool of `MQTT_PUBLISH`) and `http_post` and `http_upload` (each in its own HTTP class) can get it; never a tool, a command, a tab, a tunnel or a
 device alone. MQTT grants never cover SSH, and a session grant is bound to the accepted MQTT client. The record's tools are the grantable tools the card said it covers (its hint names them) that were in effect and not switched off
 since the stamp when the owner answered; a tool that joins the class later is not covered (it asks; the record stays). Like a session grant it is
 bound before the question (the fingerprint, the tunnel's open period, the assistant's off count and the tools' switch-off counts), so an edit, a
@@ -1084,11 +1086,11 @@ are described in each tool's subsection.
 ## Tool table
 
 Action classes (catalog `actionClass`; the class never decides by itself whether a call asks): `PUBLIC_READ` (`web_search`, `read_page`,
-`inspect_image`), `CONNECTION_READ` (`profile_information`, `http_get`, `mqtt_read`, `terminal_tabs`, `terminal_read`), `MQTT_PUBLISH` (`mqtt_publish`), `HTTP_POST` (`http_post`), `CONNECTION_CHANGE` (`ssh_command`, `terminal_input`,
+`inspect_image`), `CONNECTION_READ` (`profile_information`, `http_get`, `mqtt_read`, `terminal_tabs`, `terminal_read`), `MQTT_PUBLISH` (`mqtt_publish`), `HTTP_POST` (`http_post`), `HTTP_UPLOAD` (`http_upload`), `CONNECTION_CHANGE` (`ssh_command`, `terminal_input`,
 `terminal_open`, `terminal_close`), `APP_READ` (`read_skill`, `skills_list`, `temp_file_list`, `temp_file_read`), `APP_CHANGE` (`skill_save`, `skill_delete`, `temp_file_create`, `start_tunnel`,
-`stop_tunnel`, `terminal_rename`, `terminal_show`, `wait_for`). Tools that ask: `http_post`, `mqtt_publish`, `ssh_command`, `terminal_input`, `terminal_close`, `skill_save`,
+`stop_tunnel`, `terminal_rename`, `terminal_show`, `wait_for`). Tools that ask: `http_post`, `http_upload`, `mqtt_publish`, `ssh_command`, `terminal_input`, `terminal_close`, `skill_save`,
 `skill_delete`, `stop_tunnel` (when the tunnel is on); `confirms = false` tools (`terminal_open`, `start_tunnel`, `terminal_rename`, `terminal_show`,
-`wait_for`) never ask whatever their class. Grantable (a For session or For this connection grant may cover them): `ssh_command`, `terminal_input`, `mqtt_publish` and `http_post` (each in its own class, never shared with SSH).
+`wait_for`) never ask whatever their class. Grantable (a For session or For this connection grant may cover them): `ssh_command`, `terminal_input`, `mqtt_publish`, `http_post` and `http_upload` (each in its own class, never shared with SSH).
 `request_tool` is a service tool with no class.
 
 | Tool | Effect | Operation | Arguments | Limits | Confirmation | Disclosure | Status |
@@ -1098,6 +1100,7 @@ Action classes (catalog `actionClass`; the class never decides by itself whether
 | `inspect_image` | `READ_REMOTE` | none: public transport and a same-model image request | `url`, at most 2,048 characters; `question`, at most 1,000 characters | 2 per Send; JPEG/PNG up to 1 MiB and 4 megapixels; 512 output tokens and 4,000 response characters; shared public budget | never | the selected public image goes to the configured model; token charges include image analysis | optional, default off |
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
 | `http_get` | `READ_REMOTE` | saved Web tunnel | exact `profile_id`, `connection_id`, root-relative path and optional query; `save_as` when Temporary files is on | bounded response or complete file up to 2 MiB, one GET, no redirect or retry | never | private response text goes to the selected provider | optional, default off |
+| `http_upload` | `CHANGE_REMOTE` | saved Web tunnel | exact `profile_id`, `connection_id`, path and temporary `file_id` | original file bytes up to 2 MiB; one binary POST | common confirmation; upload-only scopes | file name and size shown; only HTTP status goes to provider | HTTP POST and Temporary files switches |
 | `http_post` | `CHANGE_REMOTE` | saved Web tunnel | exact `profile_id`, `connection_id`, root-relative `path`, `content_type`, literal `body` | 8,192 UTF-8 bytes, one POST, no redirects or retries | common confirmation; POST-only scopes | full target and request shown; private response goes to provider | optional, default off |
 | `mqtt_read` | `READ_REMOTE` | `mqtt_read` | exact `profile_id`, `connection_id`, optional MQTT `filter` | at most 20 observed current values; output budget less 200 characters | never | private MQTT messages go to the configured provider | optional, default off |
 | `mqtt_publish` | `CHANGE_REMOTE` | `mqtt_publish` | exact `profile_id`, `connection_id`, topic, UTF-8 text payload, QoS 0–2, retain boolean | topic at most 4,096 and payload at most 8,192 UTF-16 units; one send, no retry | common confirmation with MQTT-only remembered scope | topic, full payload, QoS and retain shown; publishing may change a device | optional, default off |

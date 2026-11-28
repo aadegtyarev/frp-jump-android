@@ -16,6 +16,7 @@ class AssistantToolTextsTest {
             AssistantToolId.TEMP_FILE_CREATE to Triple(R.string.tool_temp_files, R.string.tool_temp_files_hint, R.string.tool_temp_file_create_progress),
             AssistantToolId.TEMP_FILE_LIST to Triple(R.string.tool_temp_files, R.string.tool_temp_files_hint, R.string.tool_temp_file_list_progress),
             AssistantToolId.TEMP_FILE_READ to Triple(R.string.tool_temp_files, R.string.tool_temp_files_hint, R.string.tool_temp_file_read_progress),
+            AssistantToolId.HTTP_UPLOAD to Triple(R.string.tool_http_upload, R.string.tool_http_post_hint, R.string.tool_http_upload_progress),
             AssistantToolId.HTTP_POST to Triple(R.string.tool_http_post, R.string.tool_http_post_hint, R.string.tool_http_post_progress),
             AssistantToolId.HTTP_GET to Triple(R.string.tool_http_get, R.string.tool_http_get_hint, R.string.tool_http_get_progress),
             AssistantToolId.MQTT_PUBLISH to Triple(R.string.tool_mqtt_publish, R.string.tool_mqtt_publish_hint, R.string.tool_mqtt_publish_progress),

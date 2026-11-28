@@ -193,6 +193,7 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
     val offer: Boolean = true, val mqttRead: Boolean = false, val mqttPublish: Boolean = false, val httpGet: Boolean = false, val httpPost: Boolean = false, val tempFiles: Boolean = false) {
     /** Whether the tool is in effect: its switch, and for `terminal_input` also the terminal tabs switch. Everything that asks "is this tool on" asks here. */
     operator fun get(id: AssistantToolId): Boolean = when (id) {
+        AssistantToolId.HTTP_UPLOAD -> httpPost && tempFiles
         AssistantToolId.TERMINAL_INPUT -> terminalInput && terminalTabs
         AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE -> sessions && terminalInput && terminalTabs
         // Reading the owner's own skills needs no switch (whether any is relevant decides whether the tool is offered).
@@ -206,7 +207,7 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.INSPECT_IMAGE -> inspectImage
         AssistantToolId.PROFILE_INFORMATION -> profileInformation
         AssistantToolId.TEMP_FILE_CREATE, AssistantToolId.TEMP_FILE_LIST, AssistantToolId.TEMP_FILE_READ -> tempFiles
-        AssistantToolId.HTTP_POST -> httpPost
+        AssistantToolId.HTTP_POST, AssistantToolId.HTTP_UPLOAD -> httpPost
         AssistantToolId.HTTP_GET -> httpGet
         AssistantToolId.MQTT_READ -> mqttRead
         AssistantToolId.MQTT_PUBLISH -> mqttPublish
@@ -230,7 +231,7 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.INSPECT_IMAGE -> copy(inspectImage = enabled)
         AssistantToolId.PROFILE_INFORMATION -> copy(profileInformation = enabled)
         AssistantToolId.TEMP_FILE_CREATE, AssistantToolId.TEMP_FILE_LIST, AssistantToolId.TEMP_FILE_READ -> copy(tempFiles = enabled)
-        AssistantToolId.HTTP_POST -> copy(httpPost = enabled)
+        AssistantToolId.HTTP_POST, AssistantToolId.HTTP_UPLOAD -> copy(httpPost = enabled)
         AssistantToolId.HTTP_GET -> copy(httpGet = enabled)
         AssistantToolId.MQTT_READ -> copy(mqttRead = enabled)
         AssistantToolId.MQTT_PUBLISH -> copy(mqttPublish = enabled)

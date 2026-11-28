@@ -17,7 +17,7 @@ import ru.adsrv.frpjump.ui.TerminalGlyph
 /** The only mapping from an assistant tool to its texts; exhaustive, so a new tool cannot be forgotten. */
 /** The name of an action class on a confirmation card; null for a class that no asking tool has (reads). */
 internal fun ru.adsrv.frpjump.ops.ActionClass.cardName(): Int? = when (this) {
-    ru.adsrv.frpjump.ops.ActionClass.HTTP_POST -> R.string.action_class_http_post
+    ru.adsrv.frpjump.ops.ActionClass.HTTP_POST, ru.adsrv.frpjump.ops.ActionClass.HTTP_UPLOAD -> R.string.action_class_http_post
     ru.adsrv.frpjump.ops.ActionClass.MQTT_PUBLISH -> R.string.action_class_mqtt_publish
     ru.adsrv.frpjump.ops.ActionClass.CONNECTION_CHANGE -> R.string.action_class_connection_change
     ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE -> R.string.action_class_app_change
@@ -32,6 +32,7 @@ internal fun AssistantToolId.title(): Int = when (this) {
     AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish
     AssistantToolId.TEMP_FILE_CREATE, AssistantToolId.TEMP_FILE_LIST, AssistantToolId.TEMP_FILE_READ -> R.string.tool_temp_files
     AssistantToolId.HTTP_POST -> R.string.tool_http_post
+    AssistantToolId.HTTP_UPLOAD -> R.string.tool_http_upload
     AssistantToolId.HTTP_GET -> R.string.tool_http_get
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> R.string.tool_tunnels
@@ -50,7 +51,7 @@ internal fun AssistantToolId.glyph(): ImageVector = when (this) {
     AssistantToolId.INSPECT_IMAGE -> ImageGlyph
     AssistantToolId.MQTT_PUBLISH -> LinkGlyph
     AssistantToolId.TEMP_FILE_CREATE, AssistantToolId.TEMP_FILE_LIST, AssistantToolId.TEMP_FILE_READ -> FileGlyph
-    AssistantToolId.HTTP_POST -> LinkGlyph
+    AssistantToolId.HTTP_POST, AssistantToolId.HTTP_UPLOAD -> LinkGlyph
     AssistantToolId.HTTP_GET -> LinkGlyph
     AssistantToolId.MQTT_READ -> LinkGlyph
     AssistantToolId.PROFILE_INFORMATION -> DeviceGlyph
@@ -70,7 +71,7 @@ internal fun AssistantToolId.hint(): Int = when (this) {
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image_hint
     AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish_hint
     AssistantToolId.TEMP_FILE_CREATE, AssistantToolId.TEMP_FILE_LIST, AssistantToolId.TEMP_FILE_READ -> R.string.tool_temp_files_hint
-    AssistantToolId.HTTP_POST -> R.string.tool_http_post_hint
+    AssistantToolId.HTTP_POST, AssistantToolId.HTTP_UPLOAD -> R.string.tool_http_post_hint
     AssistantToolId.HTTP_GET -> R.string.tool_http_get_hint
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read_hint
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information_hint
@@ -92,6 +93,7 @@ internal fun AssistantToolId.progress(): Int = when (this) {
     AssistantToolId.TEMP_FILE_LIST -> R.string.tool_temp_file_list_progress
     AssistantToolId.TEMP_FILE_READ -> R.string.tool_temp_file_read_progress
     AssistantToolId.HTTP_POST -> R.string.tool_http_post_progress
+    AssistantToolId.HTTP_UPLOAD -> R.string.tool_http_upload_progress
     AssistantToolId.HTTP_GET -> R.string.tool_http_get_progress
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read_progress
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information_progress

@@ -32,7 +32,7 @@ class MqttPublishCard(val topic: String, val qos: Int, val retain: Boolean, val 
 }
 
 /** Exact endpoint and request fields shown with the literal body. */
-class HttpPostCard(val profile: String, val name: String, val device: String, val port: Int, val https: Boolean, val path: String, val contentType: String) {
+class HttpPostCard(val profile: String, val name: String, val device: String, val port: Int, val https: Boolean, val path: String, val contentType: String, val fileName: String? = null, val fileBytes: Int = 0) {
     override fun toString() = "HttpPostCard()"
 }
 

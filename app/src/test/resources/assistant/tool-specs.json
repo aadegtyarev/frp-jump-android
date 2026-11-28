@@ -74,6 +74,21 @@
     }
   },
   {
+    "name": "http_upload",
+    "description": "Send one existing temporary file as binary HTTP POST through an already running saved Web tunnel. Use exact file_id and profile_id and connection_id from profile_information. May change the device; no retry. Returns only the HTTP status.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": { "type": "string", "maxLength": 256 },
+        "connection_id": { "type": "string", "maxLength": 256 },
+        "path": { "type": "string", "maxLength": 2048 },
+        "file_id": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["profile_id", "connection_id", "path", "file_id"]
+    }
+  },
+  {
     "name": "mqtt_read",
     "description": "Read current values already observed by the owner's connected MQTT explorer for a saved MQTT connection. Use profile_id and connection_id from profile_information. Optional filter is an MQTT topic filter; no subscription is made. Results are incomplete cached observations, not broker state. Private messages go to the configured model.",
     "parameters": {

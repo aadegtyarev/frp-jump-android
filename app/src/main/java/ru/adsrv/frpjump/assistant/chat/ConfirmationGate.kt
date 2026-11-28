@@ -80,7 +80,7 @@ internal suspend fun authorizeCall(
                     else withContext(NonCancellable + io) { try { connection.record(key, tool.id, connectionStamp, request.sessionTools) } catch (_: Exception) { RecordResult.SAVE_FAILED } }
                 when (result) {
                     // One line speaks for the wider permission: the connection's session entry goes.
-                    RecordResult.RECORDED -> support.grants.forgetConnection(key.target.profileId, key.target.connectionId)
+                    RecordResult.RECORDED -> support.grants.forget(key)
                     RecordResult.SAVE_FAILED, RecordResult.NOT_RECORDED -> onNotSaved()
                 }
             }

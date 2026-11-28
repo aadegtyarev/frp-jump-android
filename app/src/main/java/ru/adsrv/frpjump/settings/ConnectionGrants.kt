@@ -165,7 +165,9 @@ class ConnectionGrants(private val settings: SettingsStore, private val world: G
     fun currentRecords(): Map<GrantTarget, RememberedGrant> = remembered(shown(settings.assistantConfirmations.overrides))
 
     private fun remembered(records: List<ConfirmationOverride>) =
-        records.mapNotNull { r -> r.target?.let { it to RememberedGrant(r.at, r.tools.mapNotNullTo(HashSet()) { AssistantToolId.fromWire(it) }) } }.toMap()
+        records.filter { it.target != null }.groupBy { checkNotNull(it.target) }.mapValues { (_, group) ->
+            RememberedGrant(group.maxOf { it.at }, group.flatMap { it.tools }.mapNotNullTo(HashSet()) { AssistantToolId.fromWire(it) })
+        }
 
     /**
      * Deletes the records that are revoked, Mismatch or Gone now, as soon as a change is seen (also with no conversation alive): off Main, never in a call.

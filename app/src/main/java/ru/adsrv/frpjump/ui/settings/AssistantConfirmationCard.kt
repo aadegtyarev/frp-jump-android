@@ -61,7 +61,8 @@ import ru.adsrv.frpjump.ui.connections.kindWord
  * The one hint under the remember answers: what For session and For this connection cover. It names the grantable tools in the grant (both, typing
  * only, or commands); with none known, the card's own kind decides. It is the same grant the card said it covers when it was raised.
  */
-internal fun rememberHintRes(sessionTools: Set<AssistantToolId>, typing: Boolean, mqtt: Boolean = false, http: Boolean = false): Int = when {
+internal fun rememberHintRes(sessionTools: Set<AssistantToolId>, typing: Boolean, mqtt: Boolean = false, http: Boolean = false, upload: Boolean = false): Int = when {
+    upload || AssistantToolId.HTTP_UPLOAD in sessionTools -> R.string.confirm_http_upload_remember_hint
     http || AssistantToolId.HTTP_POST in sessionTools -> R.string.confirm_http_remember_hint
     mqtt -> R.string.confirm_mqtt_remember_hint
     AssistantToolId.MQTT_PUBLISH in sessionTools -> R.string.confirm_mqtt_remember_hint
@@ -118,7 +119,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val always = stringResource(R.string.confirm_always)
     val decline = stringResource(R.string.confirm_decline)
     // What For session covers: the grantable tools of the class that were in effect when the card was raised (both: commands and typing).
-    val rememberHint = stringResource(rememberHintRes(confirmation.sessionTools, typing != null, mqtt != null, http != null))
+    val rememberHint = stringResource(rememberHintRes(confirmation.sessionTools, typing != null, mqtt != null, http != null, http?.fileName != null))
     val escapeStyle = SpanStyle(background = AppTheme.colors.accentContainer, color = AppTheme.colors.onAccentContainer, fontWeight = FontWeight.Bold)
     val shownCommand = remember(confirmation.id, escapeStyle) {
         val spans = if (typing != null) displayTypedSpans(confirmation.command, forRender = true) else displayCommandSpans(confirmation.command, forRender = true)
@@ -153,7 +154,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         Column(Modifier.onSizeChanged { headerPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // A command names the connection it runs in ("Run in <name>?"): the name bidi-isolated, tied to "in" by a no-break space; a card without a known
             // connection keeps "Run this command?". The other cards keep their titles.
-            val title = if (http != null) stringResource(R.string.confirm_http_title) else if (mqtt != null) stringResource(R.string.confirm_mqtt_title) else if (skill != null) stringResource(skillTitle(skill)) else if (close != null) stringResource(R.string.confirm_close_title)
+            val title = if (http?.fileName != null) stringResource(R.string.confirm_http_upload_title) else if (http != null) stringResource(R.string.confirm_http_title) else if (mqtt != null) stringResource(R.string.confirm_mqtt_title) else if (skill != null) stringResource(skillTitle(skill)) else if (close != null) stringResource(R.string.confirm_close_title)
                 else if (stop != null) stringResource(R.string.confirm_stop_title) else if (typing != null) stringResource(R.string.confirm_input_title)
                 else if (info != null) stringResource(R.string.confirm_title_in, ru.adsrv.frpjump.ssh.isolateName(info.connection.label { kindWord(context, it) }))
                 else stringResource(R.string.confirm_title)
@@ -177,9 +178,11 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
                     modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
             }
             if (http != null) {
+                http.fileName?.let { FieldLine(stringResource(R.string.confirm_http_upload_file), skillText(it, escapeStyle), "chat_confirm_http_file")
+                    FieldLine(stringResource(R.string.confirm_http_upload_size), stringResource(R.string.confirm_http_upload_bytes, http.fileBytes), "chat_confirm_http_size") }
                 FieldLine(stringResource(R.string.confirm_http_endpoint), "${if (http.https) "https" else "http"}://${http.device}:${http.port}", "chat_confirm_http_endpoint")
                 FieldLine(stringResource(R.string.confirm_http_path), skillText(http.path, escapeStyle), "chat_confirm_http_path")
-                FieldLine(stringResource(R.string.confirm_http_type), http.contentType, "chat_confirm_http_type")
+                if (http.fileName == null) FieldLine(stringResource(R.string.confirm_http_type), http.contentType, "chat_confirm_http_type")
             }
             if (mqtt != null) {
                 FieldLine(stringResource(R.string.confirm_mqtt_topic), skillText(mqtt.topic, escapeStyle), "chat_confirm_mqtt_topic")
@@ -218,7 +221,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         }
     }
     // Keys-only typing has no text: no empty box.
-    val showCommand = stop == null && close == null && (skill == null || skill.kind != ru.adsrv.frpjump.assistant.SkillCard.Kind.DELETE) && (typing == null || confirmation.command.isNotEmpty())
+    val showCommand = http?.fileName == null && stop == null && close == null && (skill == null || skill.kind != ru.adsrv.frpjump.assistant.SkillCard.Kind.DELETE) && (typing == null || confirmation.command.isNotEmpty())
     // A stop says how many tabs close, only when some do.
     @Composable fun Warning() {
         if (http != null) {

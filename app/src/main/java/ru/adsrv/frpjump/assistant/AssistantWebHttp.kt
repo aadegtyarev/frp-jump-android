@@ -59,15 +59,29 @@ class AssistantWebHttp internal constructor(private val resolve: (SavedTunnelIds
         catch (cancel: CancellationException) { throw cancel }
         catch (_: Exception) { if (dispatched.get()) uncertain() else unavailable() }
     }
-    private class Post(val contentType: String, val bytes: ByteArray, val authority: () -> Boolean, val dispatched: AtomicBoolean)
+    internal suspend fun upload(ids: SavedTunnelIds, path: String, file: TempInfo, budget: Int, target: WebHttpTarget): ToolOutput {
+        val context = currentCoroutineContext()
+        val authority = context[ChangeDispatchAuthority]?.prepare(AssistantToolId.HTTP_UPLOAD, GrantTarget(ids.profileId, ids.connectionId)) ?: return uploadUnavailable()
+        val access = context[TemporaryAccess] ?: return uploadUnavailable()
+        val job = context[Job]
+        val dispatched = AtomicBoolean(false)
+        val check = { (access.apply(TempAction.UploadInfo(file.id), job) as? TempResult.Info)?.file == file }
+        val load = { (access.apply(TempAction.UploadBytes(file) { resolve(ids) == target }, job) as? TempResult.Bytes)?.bytes }
+        return try { exchange(ids, path, budget, target, Post("application/octet-stream", null, authority, dispatched, file.bytes, check, load), null) }
+        catch (cancel: CancellationException) { throw cancel }
+        catch (_: Exception) { if (dispatched.get()) uncertain() else uploadUnavailable() }
+    }
+    private class Post(val contentType: String, @Volatile var bytes: ByteArray?, val authority: () -> Boolean, val dispatched: AtomicBoolean,
+        val size: Int = bytes?.size ?: 0, val check: () -> Boolean = { true }, val load: (() -> ByteArray?)? = null)
     private sealed interface Response {
         class Downloaded(val bytes: ByteArray) : Response
         class Output(val value: ToolOutput) : Response
     }
     private suspend fun exchange(ids: SavedTunnelIds, path: String, budget: Int, target: WebHttpTarget, post: Post?, download: String?): ToolOutput {
+        fun cannotSend() = if (post?.load != null) uploadUnavailable() else unavailable()
         val url = localHttpUrl(target.https, target.localPort, path)
         val context = currentCoroutineContext()
-        val admission = context[SideEffectAdmission] ?: return unavailable()
+        val admission = context[SideEffectAdmission] ?: return cannotSend()
         val job = context[Job]
         val tempAccess = context[TemporaryAccess]
         fun downloadAllowed() = download == null || tempAccess?.apply?.invoke(TempAction.Download(null) { resolve(ids) == target }, job) == TempResult.Checked
@@ -75,8 +89,14 @@ class AssistantWebHttp internal constructor(private val resolve: (SavedTunnelIds
         val builder = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
             .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false).callTimeout(30, TimeUnit.SECONDS)
             .addNetworkInterceptor { chain ->
-                if (job?.isActive != true || !admission.check(category) || job.isActive.not() || post?.authority?.invoke() == false || resolve(ids) != target || !downloadAllowed() ||
-                    (post != null && !post.dispatched.compareAndSet(false, true))) throw java.io.IOException("Unavailable")
+                if (job?.isActive != true || !admission.check(category) || job.isActive.not() || post?.authority?.invoke() == false || resolve(ids) != target || !downloadAllowed() || post?.check?.invoke() == false) throw java.io.IOException("Unavailable")
+                if (post != null) {
+                    if (post.load != null) {
+                        post.bytes = post.load.invoke() ?: throw java.io.IOException("Unavailable")
+                        if (!post.authority() || resolve(ids) != target || !post.check() || job.isActive.not()) throw java.io.IOException("Unavailable")
+                    }
+                    if (!post.dispatched.compareAndSet(false, true)) throw java.io.IOException("Unavailable")
+                }
                 val response = chain.proceed(chain.request())
                 // OkHttp otherwise retries a 503 with Retry-After: 0, even with retryOnConnectionFailure disabled.
                 if (response.code == 503) response.newBuilder().removeHeader("Retry-After").build() else response
@@ -96,13 +116,13 @@ class AssistantWebHttp internal constructor(private val resolve: (SavedTunnelIds
             }
         }
         currentCoroutineContext().ensureActive()
-        if (!admission.check(category) || post?.authority?.invoke() == false || resolve(ids) != target || !downloadAllowed()) return unavailable()
+        if (!admission.check(category) || post?.authority?.invoke() == false || resolve(ids) != target || !downloadAllowed() || post?.check?.invoke() == false) return cannotSend()
         val request = Request.Builder().url(url).header("Accept-Encoding", "identity")
         if (post == null) request.get() else request.post(object : RequestBody() {
             override fun contentType() = post.contentType.toMediaType()
-            override fun contentLength() = post.bytes.size.toLong()
+            override fun contentLength() = post.size.toLong()
             override fun isOneShot() = true
-            override fun writeTo(sink: BufferedSink) { sink.write(post.bytes) }
+            override fun writeTo(sink: BufferedSink) { sink.write(checkNotNull(post.bytes)) }
         })
         val call = builder.build().newCall(request.build())
         val result = blockingCancellable(call::cancel) {
@@ -129,6 +149,7 @@ class AssistantWebHttp internal constructor(private val resolve: (SavedTunnelIds
                         return@use Response.Output(ToolOutput("The response is incomplete or too large; nothing was saved.", ToolOutcome.FAILED))
                     return@use Response.Downloaded(bytes.readByteArray())
                 }
+                if (post?.load != null) return@use Response.Output(ToolOutput(buildJsonObject { put("status", response.code) }.toString(), if (response.isSuccessful) ToolOutcome.SUCCESS else ToolOutcome.FAILED))
                 val cap = budget.coerceIn(128, 65536)
                 val media = response.body?.contentType()
                 val textType = media == null || media.type == "text" || media.subtype.let { it == "json" || it.endsWith("+json") || it == "xml" || it.endsWith("+xml") || it == "javascript" }
@@ -162,7 +183,7 @@ class AssistantWebHttp internal constructor(private val resolve: (SavedTunnelIds
         }
         currentCoroutineContext().ensureActive()
         if (!admission.check(if (post == null) "http-get-result" else "http-post-result") || resolve(ids) != target)
-            return if (post?.dispatched?.get() == true) uncertain() else unavailable()
+            return if (post?.dispatched?.get() == true) uncertain() else cannotSend()
         if (result is Response.Output) return result.value
         val bytes = (result as Response.Downloaded).bytes
         val action = TempAction.Create(UUID.randomUUID().toString(), checkNotNull(download), bytes)
@@ -172,6 +193,7 @@ class AssistantWebHttp internal constructor(private val resolve: (SavedTunnelIds
             else -> unavailable()
         }
     }
+    private fun uploadUnavailable() = ToolOutput("The temporary file, permission or saved Web tunnel is unavailable or changed. Nothing was sent.", ToolOutcome.FAILED)
     private fun uncertain() = ToolOutput("The POST may have reached the device. The outcome is unknown; do not retry automatically.", ToolOutcome.FAILED)
     private fun unavailable() = ToolOutput("The saved Web tunnel is unavailable or changed.", ToolOutcome.FAILED)
 }

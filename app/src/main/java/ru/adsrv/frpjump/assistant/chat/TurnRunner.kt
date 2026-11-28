@@ -88,6 +88,10 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
                     !authority.tools[AssistantToolId.TEMP_FILE_CREATE] ||
                     (authority.toolOffs[AssistantToolId.TEMP_FILE_CREATE] ?: 0L) != a.temporaryOffCount ||
                     workspace.stampLocked() != a.temporaryGeneration ||
+                    ((action is TempAction.UploadInfo || action is TempAction.UploadBytes) &&
+                        (!a.tools[AssistantToolId.HTTP_UPLOAD] || !authority.tools[AssistantToolId.HTTP_UPLOAD] ||
+                            (authority.toolOffs[AssistantToolId.HTTP_UPLOAD] ?: 0L) != a.httpUploadOffCount ||
+                            (action is TempAction.UploadBytes && !action.valid()))) ||
                     (action is TempAction.Download && (!authority.tools[AssistantToolId.HTTP_GET] ||
                         (authority.toolOffs[AssistantToolId.HTTP_GET] ?: 0L) != a.httpGetOffCount || !action.valid()))) null else workspace.applyLocked(action)
             }
@@ -96,7 +100,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             val past = a.past.map { it to it.model(active) }
             val limits = env.limits(a.settings, a.limits)
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
-                env.waits, a.limits, env.sessions, env.skills, env.mqttRead, env.mqttPublish, env.webHttp, env.temporary)
+                env.waits, a.limits, env.sessions, env.skills, env.mqttRead, env.mqttPublish, env.webHttp, env.temporary, { id -> (tempAccess.apply(TempAction.UploadInfo(id), owner.job) as? TempResult.Info)?.file })
             // The skills the model may use are fixed for the Send, like the tool list: the system text is the same in every request of it.
             val skillsSection = env.skills?.section(a.tools, a.limits.skillsListChars) ?: SkillsSection(emptyList())
             val summary = summary(active, prompts.summary)
@@ -112,7 +116,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
 
     /** The kernel's `authorize` hook: see [authorizeCall]. Pauses the Send's active-time clock while the owner is asked. */
     private suspend fun authorize(tools: Map<String, AgentTool>, call: ToolCall): ToolOutput? {
-        val guardedTool = AssistantToolId.fromWire(call.name)?.takeIf { it == AssistantToolId.MQTT_PUBLISH || it == AssistantToolId.HTTP_POST }
+        val guardedTool = AssistantToolId.fromWire(call.name)?.takeIf { it == AssistantToolId.MQTT_PUBLISH || it == AssistantToolId.HTTP_POST || it == AssistantToolId.HTTP_UPLOAD }
         changeOffCount = guardedTool?.let { env.confirm?.grants?.toolOffCount(it) }
         val output = authorizeCall(env.confirm, tools, call, wait = { request, info -> deadline.paused { ask(request, info) } },
             onNotSaved = { own.guarded(owner, "notice") { mutable.value = mutable.value.copy(confirmationNotSaved = true) } }, io = env.io,

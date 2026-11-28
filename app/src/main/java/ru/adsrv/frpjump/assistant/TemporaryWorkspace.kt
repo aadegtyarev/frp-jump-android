@@ -27,6 +27,8 @@ class TemporaryWorkspace internal constructor(private val availability: () -> As
 
     /** Takes ownership of the fresh byte array; readers receive only bounded copies. */
     internal fun applyLocked(action: TempAction): TempResult = when (action) {
+        is TempAction.UploadInfo -> files.singleOrNull { it.id == action.id }?.let { TempResult.Info(TempInfo(it.id, it.name, it.bytes.size)) } ?: TempResult.Missing
+        is TempAction.UploadBytes -> files.singleOrNull { it.id == action.info.id && it.name == action.info.name && it.bytes.size == action.info.bytes }?.let { TempResult.Bytes(it.bytes) } ?: TempResult.Missing
         is TempAction.Download -> if (action.file == null) TempResult.Checked else applyLocked(action.file)
         is TempAction.Create -> when {
             !validTemporaryName(action.name) || action.bytes.size > MAX_FILE_BYTES || files.size >= MAX_FILES || total.toLong() + action.bytes.size > MAX_TOTAL_BYTES -> TempResult.Full
@@ -51,12 +53,16 @@ class TemporaryWorkspace internal constructor(private val availability: () -> As
 }
 internal data class TempInfo(val id: String, val name: String, val bytes: Int)
 internal sealed interface TempAction {
+    class UploadInfo(val id: String) : TempAction
+    class UploadBytes(val info: TempInfo, val valid: () -> Boolean) : TempAction
     class Download(val file: Create?, val valid: () -> Boolean) : TempAction
     class Create(val id: String, val name: String, val bytes: ByteArray) : TempAction
     data object List : TempAction
     class Read(val id: String) : TempAction
 }
 internal sealed interface TempResult {
+    class Info(val file: TempInfo) : TempResult
+    class Bytes(val bytes: ByteArray) : TempResult
     class Created(val file: TempInfo) : TempResult
     class Listed(val files: List<TempInfo>) : TempResult
     class Preview(val name: String, val size: Int, val bytes: ByteArray) : TempResult

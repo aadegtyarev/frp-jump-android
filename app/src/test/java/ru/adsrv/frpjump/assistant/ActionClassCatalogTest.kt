@@ -16,6 +16,7 @@ class ActionClassCatalogTest {
         Row(AssistantToolId.INSPECT_IMAGE, PUBLIC_READ, READ_REMOTE, true, false),
         Row(AssistantToolId.PROFILE_INFORMATION, CONNECTION_READ, READ_REMOTE, true, false),
         Row(AssistantToolId.HTTP_POST, HTTP_POST, CHANGE_REMOTE, true, true),
+        Row(AssistantToolId.HTTP_UPLOAD, HTTP_UPLOAD, CHANGE_REMOTE, true, true),
         Row(AssistantToolId.HTTP_GET, CONNECTION_READ, READ_REMOTE, true, false),
         Row(AssistantToolId.MQTT_READ, CONNECTION_READ, READ_REMOTE, true, false),
         Row(AssistantToolId.MQTT_PUBLISH, MQTT_PUBLISH, CHANGE_REMOTE, true, true),
@@ -39,8 +40,8 @@ class ActionClassCatalogTest {
         Row(AssistantToolId.WAIT_FOR, APP_CHANGE, CHANGE_LOCAL, false, false),
     )
 
-    @Test fun `every tool has the class effect confirms and grantable of its row, and the table lists all 26`() {
-        assertEquals(26, AssistantToolId.entries.size); assertEquals(26, table.size)
+    @Test fun `every tool has the class effect confirms and grantable of its row, and the table lists all 27`() {
+        assertEquals(27, AssistantToolId.entries.size); assertEquals(27, table.size)
         assertEquals("every catalog entry is in the table", AssistantToolId.entries.toSet(), table.map { it.tool }.toSet())
         for (row in table) {
             assertEquals("${row.tool} class", row.actionClass, row.tool.actionClass)
@@ -49,14 +50,14 @@ class ActionClassCatalogTest {
             assertEquals("${row.tool} grantable", row.grantable, row.tool.grantable)
         }
         val counts = AssistantToolId.entries.groupingBy { it.actionClass }.eachCount()
-        assertEquals(mapOf(PUBLIC_READ to 3, CONNECTION_READ to 5, CONNECTION_CHANGE to 4, MQTT_PUBLISH to 1, HTTP_POST to 1, APP_READ to 4, APP_CHANGE to 8), counts)
+        assertEquals(mapOf(PUBLIC_READ to 3, CONNECTION_READ to 5, CONNECTION_CHANGE to 4, MQTT_PUBLISH to 1, HTTP_POST to 1, HTTP_UPLOAD to 1, APP_READ to 4, APP_CHANGE to 8), counts)
     }
 
-    @Test fun `a tool asks exactly when its effect changes and it confirms - eight tools - and four are grantable`() {
+    @Test fun `a tool asks exactly when its effect changes and it confirms - nine tools - and five are grantable`() {
         val asking = AssistantToolId.entries.filter { it.effect.changes && it.confirms }
         assertEquals(setOf(AssistantToolId.SSH_COMMAND, AssistantToolId.TERMINAL_INPUT, AssistantToolId.TERMINAL_CLOSE, AssistantToolId.SKILL_SAVE,
-            AssistantToolId.SKILL_DELETE, AssistantToolId.STOP_TUNNEL, AssistantToolId.MQTT_PUBLISH, AssistantToolId.HTTP_POST), asking.toSet())
-        assertEquals(setOf(AssistantToolId.SSH_COMMAND, AssistantToolId.TERMINAL_INPUT, AssistantToolId.MQTT_PUBLISH, AssistantToolId.HTTP_POST), AssistantToolId.entries.filter { it.grantable }.toSet())
+            AssistantToolId.SKILL_DELETE, AssistantToolId.STOP_TUNNEL, AssistantToolId.MQTT_PUBLISH, AssistantToolId.HTTP_POST, AssistantToolId.HTTP_UPLOAD), asking.toSet())
+        assertEquals(setOf(AssistantToolId.SSH_COMMAND, AssistantToolId.TERMINAL_INPUT, AssistantToolId.MQTT_PUBLISH, AssistantToolId.HTTP_POST, AssistantToolId.HTTP_UPLOAD), AssistantToolId.entries.filter { it.grantable }.toSet())
         // A read class holds exactly the tools whose effect reads; a changing class holds exactly the changing ones.
         val readClasses = setOf(PUBLIC_READ, CONNECTION_READ, APP_READ)
         for (t in AssistantToolId.entries) assertEquals("${t.name}: a read class iff it reads", !t.effect.changes, t.actionClass in readClasses)
@@ -66,8 +67,8 @@ class ActionClassCatalogTest {
     }
 
     @Test fun `only a class that can hold grants has a grantable tool and no tool that asks lacks a name on the card`() {
-        assertEquals(listOf(CONNECTION_CHANGE, MQTT_PUBLISH, HTTP_POST), ActionClass.entries.filter { it.grantable })
+        assertEquals(listOf(CONNECTION_CHANGE, MQTT_PUBLISH, HTTP_POST, HTTP_UPLOAD), ActionClass.entries.filter { it.grantable })
         for (t in AssistantToolId.entries.filter { it.grantable }) assertTrue(t.actionClass.grantable)
-        for (t in AssistantToolId.entries.filter { it.effect.changes && it.confirms }) assertTrue("${t.name} is a changing class", t.actionClass == CONNECTION_CHANGE || t.actionClass == MQTT_PUBLISH || t.actionClass == HTTP_POST || t.actionClass == APP_CHANGE)
+        for (t in AssistantToolId.entries.filter { it.effect.changes && it.confirms }) assertTrue("${t.name} is a changing class", t.actionClass == CONNECTION_CHANGE || t.actionClass == MQTT_PUBLISH || t.actionClass == HTTP_POST || t.actionClass == HTTP_UPLOAD || t.actionClass == APP_CHANGE)
     }
 }

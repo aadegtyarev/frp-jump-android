@@ -20,7 +20,7 @@ internal class Admission(val owner: Pending, val saved: AssistantProviderSnapsho
     val limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits(),
     /** What the model reads as this turn's text: [text], and after it, one line each, the events that came with the owner's message and the notes. */
     val modelText: String = text,
-    val temporaryGeneration: Long? = null, val temporaryOffCount: Long = 0, val httpGetOffCount: Long = 0)
+    val temporaryGeneration: Long? = null, val temporaryOffCount: Long = 0, val httpGetOffCount: Long = 0, val httpUploadOffCount: Long = 0)
 
 /** What a Send carries besides its text: [events] of waits, [notes] for the model only; with [eventOnly] the events are the turn. */
 internal class Delivery(val events: List<WaitEvent>, val notes: List<String> = emptyList(), val eventOnly: Boolean = false)
@@ -126,7 +126,7 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         return Admission(owner, saved, settings, text, past, enabledTools, retained, AssistantOwnerInstructions.effective(captured.ownerInstructions),
             c.document.declinedTools.toSet(), fixed != null || delivery?.eventOnly == true, captured.limits,
             withApp(text, attachmentText(attachments) + (if (delivery?.eventOnly == true) emptyList() else delivery?.events?.map { it.message() }.orEmpty()) + delivery?.notes.orEmpty()),
-            temporary?.stampLocked(), captured.toolOffs[AssistantToolId.TEMP_FILE_CREATE] ?: 0L, captured.toolOffs[AssistantToolId.HTTP_GET] ?: 0L)
+            temporary?.stampLocked(), captured.toolOffs[AssistantToolId.TEMP_FILE_CREATE] ?: 0L, captured.toolOffs[AssistantToolId.HTTP_GET] ?: 0L, captured.toolOffs[AssistantToolId.HTTP_UPLOAD] ?: 0L)
     }
 }
 

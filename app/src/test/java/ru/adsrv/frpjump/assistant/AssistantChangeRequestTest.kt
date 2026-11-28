@@ -25,7 +25,7 @@ class AssistantChangeRequestTest {
             clientFactory = { throw AssertionError("must not construct a client") })
         val all = AssistantToolFactory.create(AssistantTools(true, true, true, true, true, terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true, mqttRead = true, mqttPublish = true, httpGet = true, httpPost = true, tempFiles = true), AssistantChatRuntime(), AgentProvider { AgentReply("x") },
             synthetic.information, AssistantSshCommands(SshTargets(synthetic.state, synthetic.hidden, env)), { }, terminalTabs = AssistantTerminalTabs({ emptyList() }, { emptySet() }, { null }, { _, _, _ -> null }), tunnels = TunnelFixture().also { it.host.add(profile = "p", id = "c", isOn = true) }.tunnels, waits = WaitFixture().waits,
-            sessions = SessionRig().also { it.existing(1) }.sessions, skills = SkillFixtures.registry(owner = listOf(SkillFixtures.owner())), mqttRead = noMqttReader(), mqttPublish = mqttPublisherFixture(), webHttp = AssistantWebHttp { WebHttpTarget(12345, false, null, 1, 1, "Profile", "Web", "device", 80) }, temporary = TemporaryWorkspace({ ru.adsrv.frpjump.settings.AssistantAvailability(true) }, { AssistantProviderSnapshot() }))
+            sessions = SessionRig().also { it.existing(1) }.sessions, skills = SkillFixtures.registry(owner = listOf(SkillFixtures.owner())), mqttRead = noMqttReader(), mqttPublish = mqttPublisherFixture(), webHttp = AssistantWebHttp { WebHttpTarget(12345, false, null, 1, 1, "Profile", "Web", "device", 80) }, temporary = TemporaryWorkspace({ ru.adsrv.frpjump.settings.AssistantAvailability(true) }, { AssistantProviderSnapshot() }), uploadInfo = { TempInfo(it, "file.bin", 4) })
         return all.associate { tool -> AssistantToolId.fromWire(tool.spec.name)!! to (tool as AppTool<*>) }
     }
 
@@ -41,6 +41,7 @@ class AssistantChangeRequestTest {
             AssistantToolId.PROFILE_INFORMATION to obj(),
             AssistantToolId.MQTT_PUBLISH to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "topic" to JsonPrimitive("device/x"), "payload" to JsonPrimitive("value"), "qos" to JsonPrimitive(1), "retain" to JsonPrimitive(false)),
             AssistantToolId.HTTP_POST to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "path" to JsonPrimitive("/"), "content_type" to JsonPrimitive("text/plain"), "body" to JsonPrimitive("x")),
+            AssistantToolId.HTTP_UPLOAD to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "path" to JsonPrimitive("/"), "file_id" to JsonPrimitive("file")),
             AssistantToolId.HTTP_GET to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "path" to JsonPrimitive("/")),
             AssistantToolId.MQTT_READ to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c")),
             AssistantToolId.START_TUNNEL to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c")),
@@ -70,7 +71,7 @@ class AssistantChangeRequestTest {
                 assertTrue("$id changes but is not a Change: $check", check is ChangeCheck.Change)
                 assertEquals(id, (check as ChangeCheck.Change).request.tool)
                 // A command's target is a saved connection; typing has one only when the tab matches a saved connection (none among no tabs).
-                if (id == AssistantToolId.SSH_COMMAND || id == AssistantToolId.STOP_TUNNEL || id == AssistantToolId.MQTT_PUBLISH || id == AssistantToolId.HTTP_POST) assertNotNull("$id must describe its target", check.request.target)
+                if (id == AssistantToolId.SSH_COMMAND || id == AssistantToolId.STOP_TUNNEL || id == AssistantToolId.MQTT_PUBLISH || id == AssistantToolId.HTTP_POST || id == AssistantToolId.HTTP_UPLOAD) assertNotNull("$id must describe its target", check.request.target)
                 else assertNull("$id has no tab here", check.request.target)
             } else assertSame("$id", ChangeCheck.ReadOnly, check)
         }

@@ -47,6 +47,19 @@ class SessionGrantsTest {
         assertFalse(grants.record(key(b), TYPE, grants.stamp(b)!!, setOf(SSH)))
     }
 
+    @Test fun `HTTP post and upload session grants are independent`() {
+        val post = AssistantToolId.HTTP_POST; val upload = AssistantToolId.HTTP_UPLOAD
+        val postKey = GrantKey(post.actionClass, a); val uploadKey = GrantKey(upload.actionClass, a)
+        assertTrue(grants.record(postKey, post, grants.stamp(a)!!, grants.coverableBy(post)))
+        assertFalse(grants.covers(upload, uploadKey))
+        assertTrue(grants.record(uploadKey, upload, grants.stamp(a)!!, grants.coverableBy(upload)))
+        grants.forget(uploadKey)
+        assertTrue(grants.covers(post, postKey)); assertFalse(grants.covers(upload, uploadKey))
+        assertTrue(grants.record(uploadKey, upload, grants.stamp(a)!!, grants.coverableBy(upload)))
+        grants.forget(postKey)
+        assertFalse(grants.covers(post, postKey)); assertTrue(grants.covers(upload, uploadKey))
+    }
+
     @Test fun `a tool switched off and on again, even before any sweep, is not covered and not recorded`() {
         give(a)
         world.switchOff(SSH); world.off.clear()

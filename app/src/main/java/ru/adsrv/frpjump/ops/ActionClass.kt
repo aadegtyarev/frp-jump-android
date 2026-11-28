@@ -20,6 +20,7 @@ enum class ActionClass(val wire: String, val grantable: Boolean) {
     MQTT_PUBLISH("mqtt_publish", true),
     /** Sends POST through a saved Web tunnel only. */
     HTTP_POST("http_post", true),
+    HTTP_UPLOAD("http_upload", true),
     /** Reads the app's own state (skills). */
     APP_READ("app_read", false),
     /** Changes the app's own state (skills, tunnels, tab names, waits). */

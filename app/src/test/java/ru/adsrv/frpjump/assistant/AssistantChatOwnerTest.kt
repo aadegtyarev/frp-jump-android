@@ -775,4 +775,42 @@ class AssistantChatOwnerTest {
         }
     }
 
+    @Test fun `upload card prevents send after switch target provider or workspace changes`() {
+        for (reason in listOf("post", "temp", "target", "deny", "provider", "clear")) {
+            java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 1000
+                val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+                val seen = worker.submit<Boolean> { try { server.accept().close(); true } catch (_: java.net.SocketTimeoutException) { false } }
+                val period = java.util.concurrent.atomic.AtomicInteger(1)
+                val http = AssistantWebHttp { WebHttpTarget(server.localPort, false, null, "identity", period.get(), "Profile", "Panel", "device", 8080) }
+                val h = Harness(webHttp = http, script = { request ->
+                    val exchanges = request.turns.last().exchanges
+                    when (exchanges.size) {
+                        0 -> AgentReply(calls = listOf(ToolCall("create", "temp_file_create", buildJsonObject { put("name", "note.txt"); put("text", "private") })))
+                        1 -> {
+                            val id = Json.parseToJsonElement(exchanges[0].results.single().text).jsonObject.getValue("file").jsonObject.getValue("id").jsonPrimitive.content
+                            AgentReply(calls = listOf(ToolCall("upload", "http_upload", buildJsonObject { put("profile_id", "p"); put("connection_id", "c"); put("path", "/file"); put("file_id", id) })))
+                        }
+                        else -> AgentReply("done")
+                    }
+                })
+                h.settings.update { it.copy(assistantHttpPost = true, assistantTempFiles = true) }
+                val chat = h.owner.attach(); h.send(chat)
+                val card = chat.card()
+                assertEquals("note.txt", card.http!!.fileName); assertEquals(7, card.http!!.fileBytes)
+                when (reason) {
+                    "post" -> { h.settings.update { it.copy(assistantHttpPost = false) }; h.settings.update { it.copy(assistantHttpPost = true) } }
+                    "temp" -> { h.settings.update { it.copy(assistantTempFiles = false) }; h.settings.update { it.copy(assistantTempFiles = true) } }
+                    "target" -> period.incrementAndGet()
+                    "provider" -> h.store.save(AssistantProviderDraft(AssistantProviderSettings(model = "other"), h.store.currentSnapshot.revision, "synthetic"))
+                    "clear" -> runBlocking { chat.deleteHistory() }
+                }
+                if (reason != "provider" && reason != "clear") chat.answer(card.id, if (reason == "deny") ConfirmationDecision.DENY else ConfirmationDecision.ONCE)
+                eventually("upload ended") { chat.state.value.takeIf { !it.busy } }
+                if (reason != "provider" && reason != "clear") assertEquals(if (reason == "deny") ToolOutcome.DECLINED else ToolOutcome.FAILED, h.results().last().outcome)
+                assertFalse(reason, seen.get(3, java.util.concurrent.TimeUnit.SECONDS)); worker.shutdownNow()
+            }
+        }
+    }
+
 }

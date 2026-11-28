@@ -47,6 +47,24 @@ class ConnectionGrantsTest {
         assertEquals(1_763_020_800_000L, r.records.single().at); assertEquals(listOf("ssh_command", "terminal_input"), r.records.single().tools)
     }
 
+    @Test fun `HTTP post and upload grants stay isolated and both appear on the same target`() = runBlocking {
+        for (order in listOf(listOf(AssistantToolId.HTTP_POST, AssistantToolId.HTTP_UPLOAD), listOf(AssistantToolId.HTTP_UPLOAD, AssistantToolId.HTTP_POST))) {
+            val r = Rig(); r.settings.update { it.copy(assistantHttpPost = true, assistantTempFiles = true) }
+            var now = 10L
+            val grants = ConnectionGrants(r.settings, r.fake, now = { now++ })
+            for ((i, tool) in order.withIndex()) {
+                val key = GrantKey(tool.actionClass, target)
+                assertEquals(RecordResult.RECORDED, grants.record(key, tool, grants.stamp(target)!!, setOf(tool)))
+                val other = order[1 - i]
+                if (i == 0) assertFalse(grants.covers(other, GrantKey(other.actionClass, target)))
+                assertTrue(grants.covers(tool, key))
+            }
+            assertEquals(setOf(AssistantToolId.HTTP_POST, AssistantToolId.HTTP_UPLOAD), grants.currentRecords().getValue(target).tools)
+            assertEquals(11L, grants.currentRecords().getValue(target).at)
+            assertEquals(2, SettingsStore(r.storage).assistantConfirmations.overrides.size)
+        }
+    }
+
     @Test fun `a tool that is not grantable is never covered and never recorded whatever a record says`() {
         val r = Rig(); assertEquals(RecordResult.RECORDED, r.give())
         for (tool in AssistantToolId.entries.filter { !it.grantable }) {

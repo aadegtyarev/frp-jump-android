@@ -1662,7 +1662,7 @@
     <plurals name="chat_context_count"><item quantity="one">%d item</item><item quantity="other">%d items</item></plurals>
     <string name="action_class_http_post">HTTP POST</string>
     <string name="tool_http_post">HTTP POST</string>
-    <string name="tool_http_post_hint">Sends a POST through an open Web tunnel; may change the device. The response is sent to the selected provider.</string>
+    <string name="tool_http_post_hint">POST through a Web tunnel may change the device. Temporary files can be uploaded. The provider receives text POST responses or the upload status.</string>
     <string name="tool_http_post_progress">Sending HTTP POST…</string>
     <string name="confirm_http_title">Send HTTP POST?</string>
     <string name="confirm_http_endpoint">Endpoint</string>
@@ -1683,4 +1683,15 @@
     <string name="tool_temp_file_create_receipt">Create temporary file</string>
     <string name="tool_temp_file_list_receipt">List temporary files</string>
     <string name="tool_temp_file_read_receipt">Read temporary file</string>
+    <string name="tool_http_upload">Upload file</string>
+    <string name="tool_http_upload_progress">Uploading file…</string>
+    <string name="confirm_http_upload_title">Send file?</string>
+    <string name="confirm_http_upload_file">File</string>
+    <string name="confirm_http_upload_size">Size</string>
+    <string name="confirm_http_upload_bytes">%1$d B</string>
+    <string name="confirm_http_upload_remember_hint">For session: file uploads while this tunnel stays open. For this connection: until it is edited or its certificate changes. Undo: the mark on the tunnel card.</string>
+    <string name="connection_assistant_sheet_session_upload">For session: file uploads.</string>
+    <string name="connection_assistant_sheet_connection_upload">For this connection: file uploads (since %1$s).</string>
+    <string name="connection_assistant_sheet_session_http_both">For session: HTTP POST and file uploads.</string>
+    <string name="connection_assistant_sheet_connection_http_both">For this connection: HTTP POST and file uploads (latest permission: %1$s).</string>
 </resources>
