@@ -139,10 +139,7 @@ stay in order. Tool calls and their results form one indivisible exchange.
 Duplicate call IDs within a run, incomplete exchanges, excessive replies and
 empty final responses are rejected.
 
-If the last allowed step returns tool calls, the run may make one final request
-with the collected results and no tools. It uses the same active deadline,
-context window and cancellation checks. A final application instruction asks for an ordinary answer based on the available results and for unknown facts to be stated; it counts toward the context budget. A tool call returned by this request
-ends the run at the step limit without executing it. Unquoted DSML call frames in OpenAI-compatible assistant content are invalid responses; quoted examples, structured calls and tool results keep their normal behavior.
+After the configured tool-step limit, two reserve rounds may execute tools, followed by one last answer opportunity. Every main chat request keeps the same admitted tool definitions. On every tool-enabled conversation request, app-authored guidance reports the total executable rounds remaining, including reserve and current round, and the configured calls per round (0 executable rounds at the last request). It explains that dependencies on tool results require separate rounds and counts toward the context budget; it is not saved in the chat. The last request keeps the same deadline, context window and cancellation checks, without provider-backed compaction or overflow retry. Tool calls returned at the hard cap end the run at the step limit without execution or an incomplete exchange. Unquoted DSML call frames in OpenAI-compatible assistant content are invalid responses; quoted examples, structured calls and tool results keep their normal behavior.
 
 Disabled and busy admission return without a provider/tool call. A run finishes
 with complete, context-full, step-limit, model-timeout, provider-failed or

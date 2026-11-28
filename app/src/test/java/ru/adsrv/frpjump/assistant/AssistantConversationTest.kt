@@ -358,9 +358,11 @@ class AssistantConversationTest {
             val file = Memory(); val box = Box(); val store = AssistantProviderStore(file, box)
             store.save(AssistantProviderDraft(AssistantProviderSettings("http://127.0.0.1:${server.localPort}/v1", "synthetic", "high", 4096, 512, true), null, "synthetic-key"))
             val writes = file.writes
+            val history = AssistantChatHistory(Memory(), Box(), scope, Dispatchers.Unconfined)
             val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { store.state.value }, {
                 store.provider(AssistantProviderDraft(it.settings!!, it.revision))
-            }, store::requireRevision, AgentModule(true), prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
+            }, store::requireRevision, AgentModule(true), io = Dispatchers.Unconfined, historyStore = history,
+                prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             assertEquals(0, box.opens); assertTrue(seen.isEmpty())
             repeat(2) { chat.edit("message-$it"); chat.send(); withTimeout(3000) { chat.state.first { !it.busy } } }
             assertEquals(1, box.opens); assertEquals(writes, file.writes)
@@ -371,10 +373,21 @@ class AssistantConversationTest {
             assertEquals(204, second["max_completion_tokens"]!!.jsonPrimitive.int)
             assertEquals("high", second["reasoning_effort"]!!.jsonPrimitive.content)
             assertEquals(listOf("request_tool"), second["tools"]!!.jsonArray.map { it.jsonObject["function"]!!.jsonObject["name"]!!.jsonPrimitive.content }); assertFalse(second.toString().contains("synthetic-key"))
-            assertEquals(2, first["messages"]!!.jsonArray.size)
+            assertEquals(first["tools"], second["tools"])
+            val firstMessages = first["messages"]!!.jsonArray
+            assertEquals(listOf("system", "user", "user"), firstMessages.map { it.jsonObject["role"]!!.jsonPrimitive.content })
+            assertEquals("message-0", firstMessages[1].jsonObject["content"]!!.jsonPrimitive.content)
             val messages = second["messages"]!!.jsonArray
-            assertEquals(listOf("system", "user", "assistant", "user"), messages.map { it.jsonObject["role"]!!.jsonPrimitive.content })
+            assertEquals(listOf("system", "user", "assistant", "user", "user"), messages.map { it.jsonObject["role"]!!.jsonPrimitive.content })
+            assertEquals("message-0", messages[1].jsonObject["content"]!!.jsonPrimitive.content)
             assertEquals("synthetic-opaque", messages[2].jsonObject["reasoning_content"]!!.jsonPrimitive.content)
+            assertEquals("message-1", messages[3].jsonObject["content"]!!.jsonPrimitive.content)
+            val budget = AgentToolBudget(AgentLimits().maxSteps + 2, AgentLimits().maxCallsPerStep)
+            val expected = AgentRequest("", listOf(ToolSpec("request_tool", "", JsonObject(emptyMap()))), emptyList(), 1, toolBudget = budget).toolBudgetInstruction()
+            assertEquals(expected, firstMessages.last().jsonObject["content"]!!.jsonPrimitive.content)
+            assertEquals(expected, messages.last().jsonObject["content"]!!.jsonPrimitive.content)
+            assertEquals(listOf("message-0", "message-1"), history.load()!!.records.map { it.user })
+            assertEquals(listOf("message-0", "message-1"), chat.state.value.turns.map { it.user })
             assertFalse(chat.state.value.toString().contains("synthetic-opaque"))
             chat.close()
         } finally { scope.cancel(); server.close(); thread.join(1000) }

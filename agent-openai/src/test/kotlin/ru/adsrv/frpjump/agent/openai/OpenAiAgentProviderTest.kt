@@ -183,10 +183,14 @@ class OpenAiAgentProviderTest {
                 assertTrue(exchange.results.all { it.outcome == ToolOutcome.SUCCESS && it.text == "synthetic result" })
                 assertEquals("done", result.turn.exchanges.last().reply.text)
                 assertEquals(2, e.seen.size)
-                e.seen.poll(2, TimeUnit.SECONDS)
-                val messages = Json.parseToJsonElement(e.seen.poll(2, TimeUnit.SECONDS)!!.body).jsonObject["messages"]!!.jsonArray
-                assertEquals(listOf("system", "user", "assistant") + List(count) { "tool" }, messages.map { it.jsonObject["role"]!!.jsonPrimitive.content })
-                assertEquals(exchange.reply.calls.map { it.id }, messages.drop(3).map { it.jsonObject["tool_call_id"]!!.jsonPrimitive.content })
+                val first = Json.parseToJsonElement(e.seen.poll(2, TimeUnit.SECONDS)!!.body).jsonObject
+                val second = Json.parseToJsonElement(e.seen.poll(2, TimeUnit.SECONDS)!!.body).jsonObject
+                assertEquals(first["tools"], second["tools"])
+                val messages = second["messages"]!!.jsonArray
+                assertEquals(listOf("system", "user", "assistant") + List(count) { "tool" } + "user", messages.map { it.jsonObject["role"]!!.jsonPrimitive.content })
+                assertEquals(exchange.reply.calls.map { it.id }, messages.drop(3).dropLast(1).map { it.jsonObject["tool_call_id"]!!.jsonPrimitive.content })
+                assertTrue(first["messages"]!!.jsonArray.last().jsonObject["content"]!!.jsonPrimitive.content.contains("14 executable rounds"))
+                assertTrue(messages.last().jsonObject["content"]!!.jsonPrimitive.content.contains("13 executable rounds"))
             }
         }
     }
