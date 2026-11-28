@@ -359,7 +359,6 @@ class FrpJumpApp : Application() {
     val assistantChatResumed = MutableStateFlow(false)
 
     /** A terminal selection quoted for the chat draft (Terminal › ⋮ › Ask the assistant); the chat takes it when it opens. */
-    val assistantQuote = MutableStateFlow<String?>(null)
 
     val session = AppSession()
 

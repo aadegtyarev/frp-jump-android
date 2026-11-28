@@ -23,7 +23,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -290,6 +289,10 @@ fun AppNav() {
                         nav.openDeviceTunnels(profile, name)
                     },
                     onSettings = { nav.openSettings() },
+                    onAskAssistant = if (assistantEnabledNow(app)) ({ profile, device ->
+                        val name = ru.adsrv.frpjump.ui.connections.profileLabel(profile, profiles.associate { it.id to it.name })
+                        nav.askAttachment(app, ru.adsrv.frpjump.assistant.chat.ChatAttachment("device", "${device.name}${device.label?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()} · $name".take(256), profileId = profile, device = device.name))
+                    }) else null,
                 )
             }
             if (sheet) ProfileListSheet(profilesVm, nav, app, onDismiss = { sheet = false })
@@ -305,7 +308,7 @@ fun AppNav() {
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                     onOpenFiles = { nav.navigate(Routes.files(it)) },
                     onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
-                    onAskAssistant = if (assistantEnabledNow(app)) ({ draft -> nav.askAssistant(app, draft) }) else null,
+                    onAskAssistant = if (assistantEnabledNow(app)) ({ item -> nav.askAttachment(app, item) }) else null,
                 )
             }
         }
@@ -323,6 +326,7 @@ fun AppNav() {
                     assistant = app.assistantSessions,
                     profileNames = profilesState.index.profiles.associate { it.id to it.name },
                     onOpenDeviceTunnels = { profile, device -> nav.openDeviceTunnels(profile, device) },
+                    onAskAssistant = if (assistantEnabledNow(app)) ({ items -> nav.askAttachments(app, items) }) else null,
                 )
             }
         }
@@ -339,7 +343,12 @@ fun AppNav() {
                 initialId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                 initialReference = entry.arguments?.getString("ref"),
                 onBack = { nav.popBackStack() },
-                onAskAssistant = if (assistant) ({ quote -> nav.askAssistant(app, quote) }) else null,
+                onAskAssistant = if (assistant) ({ session, quote ->
+                    val name = ru.adsrv.frpjump.ui.connections.profileLabel(session.profile, profilesState.index.profiles.associate { it.id to it.name })
+                    val selectedContext = listOf(ru.adsrv.frpjump.assistant.chat.ChatAttachment("ssh_session", "${ru.adsrv.frpjump.ui.connections.sessionDisplayTitle(session.tabName.value, session.number, app.getString(R.string.terminal))} · $name · ${session.user}@${session.device}:${session.port}".take(256),
+                        profileId = session.profile, device = session.device, port = session.port, user = session.user, sessionId = session.id, reference = session.assistantReference)) + listOfNotNull(quote?.let { ru.adsrv.frpjump.assistant.chat.ChatAttachment("terminal_selection", app.getString(R.string.chat_selected_text), quote = it) })
+                    nav.askAttachments(app, selectedContext)
+                }) else null,
                 onOpenFiles = { s ->
                     // The file session kept on this tunnel for this login, else a new one.
                     val id = app.files.kept(TunnelRef(s.profile, s.device, s.port), s.user)
@@ -429,7 +438,6 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
                 if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY && activity?.isChangingConfigurations != true) vm.screenGone()
             }.also(entry.lifecycle::addObserver)
         }
-        ApplyAssistantQuote(app.assistantQuote, vm)
         ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
             // Off: the assistant's own settings screen (the master switch is there), over Settings.
             if (!app.settings.assistantAvailability.enabled) {
@@ -501,33 +509,6 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
 }
 
 /**
- * A terminal selection or a tunnel's opening words wait in [quotes] only until this chat takes them (at once); from then on they are the
- * chat's, in memory, and go after the draft as soon as the draft can take them, so the owner sees them before sending anything. They never
- * outlive the chat: a Back drops them with the model.
- *
- * "Can take" is what typing needs: not while the saved chat loads or a Send runs (the composer is off then and Send cannot be pressed).
- * A Clear that waits for its Undo does not hold them back: the composer is free and Send works in that window, so a quote kept out of the
- * draft would be missing from the very next message; the conversation merges what is quoted then into the restored or the new draft
- * (see [ru.adsrv.frpjump.assistant.AssistantConversation.reloadHistory] and deleteHistory). A refusal that is not final (the state moved
- * between the check and the call) keeps the quote and tries again at the next change; only a final one (the history cannot be read, the
- * result too long: the chat shows its own notice) drops it.
- */
-@Composable
-internal fun ApplyAssistantQuote(quotes: MutableStateFlow<String?>, vm: ru.adsrv.frpjump.ui.settings.AssistantChatViewModel) {
-    val waiting by quotes.collectAsStateWithLifecycle()
-    LaunchedEffect(waiting) { if (waiting != null) vm.hold(quotes.getAndUpdate { null }) }
-    val held by vm.heldQuote.collectAsStateWithLifecycle()
-    val chat by vm.conversation.state.collectAsStateWithLifecycle()
-    LaunchedEffect(held, chat.loading, chat.busy, chat.sending, chat.historyProblem) {
-        val text = held ?: return@LaunchedEffect
-        if (chat.loading || chat.busy || chat.sending) return@LaunchedEffect
-        if (vm.conversation.appendToDraft(text)) { vm.heldQuote.value = null; return@LaunchedEffect }
-        val now = vm.conversation.state.value
-        if (now.problem == ru.adsrv.frpjump.assistant.chat.ChatProblem.TOO_LONG || now.historyProblem == ru.adsrv.frpjump.assistant.ChatHistoryProblem.READ) vm.heldQuote.value = null
-    }
-}
-
-/**
  * Opens the chat over the current screen, so Back returns to it. There is only ever one chat entry (one conversation on one history file
  * and one run slot): when the chat is already on the back stack, the screens above it are popped to reach it and its conversation goes on
  * untouched. (A Send does not depend on this: it outlives the screen, see [ru.adsrv.frpjump.assistant.AssistantChatOwner].)
@@ -537,13 +518,17 @@ internal fun NavHostController.openAssistant() {
     if (open) popBackStack(Routes.CHAT, inclusive = false) else navigate(Routes.CHAT) { launchSingleTop = true }
 }
 
-/** A terminal selection (or none) for the chat draft, then the chat: the existing one when it is open (see [openAssistant]). */
-internal fun NavHostController.askAssistant(app: FrpJumpApp, quote: String?) = askAssistant(app.assistantQuote, quote)
-
-internal fun NavHostController.askAssistant(quotes: MutableStateFlow<String?>, quote: String?) {
-    quotes.value = quote
+internal fun NavHostController.askAttachments(app: FrpJumpApp, items: List<ru.adsrv.frpjump.assistant.chat.ChatAttachment>): Boolean {
+    if (!app.assistantChatOwner.attachAll(items)) {
+        app.notice(app.getString(if (app.settings.assistantAvailability.enabled) R.string.chat_attachment_limit else R.string.chat_disabled), NoticeKind.WARN)
+        return false
+    }
     openAssistant()
+    return true
 }
+
+internal fun NavHostController.askAttachment(app: FrpJumpApp, item: ru.adsrv.frpjump.assistant.chat.ChatAttachment): Boolean =
+    askAttachments(app, listOf(item))
 
 /** Whether Settings > LLM assistant is on, followed live. */
 @Composable

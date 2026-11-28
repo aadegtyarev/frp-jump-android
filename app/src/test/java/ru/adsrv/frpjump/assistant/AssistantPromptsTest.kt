@@ -26,10 +26,10 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test: one hash per asset.
-        assertEquals(24, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(25, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(3, AssistantPrompts.SUMMARY_VERSION)
         val pinned = mapOf(
-        "assistant/skill.md" to "63799dcffeba98d471d22d4bc08f3aa45a6e4cea72445df7a32ee29074040954",
+        "assistant/skill.md" to "9bfde087148973cae9b4fc037d56387f1633fd268efee7a25054ec9ee0163831",
         "assistant/skills/skill-authoring.md" to "0dc9c271051c1ecdab74f24fbe9b12ea645785fc9cc5ad304fa360ab446dd4d0",
         "assistant/tools/skills.md" to "03cf883318f91b760c5be8cb946b54ba1f823286730017d3f124eeef3a1ab585",
         "assistant/summary.md" to "b1d30cb5d6ed25e55fe6c1f81e989a91972747723e7b39647b3c21333bfdadeb",

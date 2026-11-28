@@ -86,7 +86,7 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
     fun completed(owner: Pending) = synchronized(gate) {
         if (c.pending === owner) {
             c.interrupt(); c.persist(); c.pending = null; runtime.release(owner); c.clearConfirmation()
-            if (!c.closed) c.mutable.value = c.mutable.value.copy(busy = false, stopping = false, pendingText = null)
+            if (!c.closed) c.mutable.value = c.mutable.value.copy(busy = false, stopping = false, pendingText = null, pendingAttachments = emptyList())
         }
     }
 
@@ -94,7 +94,7 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
      * Caller holds the gate. Returns null when nothing starts (and has recorded the visible reason, if any). [fixed] is the app's own
      * message sent as the owner's new Send (the "Turn on" button): it replaces the draft as the text, and the draft is neither used nor cleared.
      */
-    fun admit(fixed: String? = null, delivery: Delivery? = null): Admission? {
+    fun admit(fixed: String? = null, delivery: Delivery? = null, attachments: List<ChatAttachment> = emptyList()): Admission? {
         refreshLocked()
         if (c.closed || c.pending != null || runtime.occupied() || c.mutable.value.loading || c.clearing || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return null
         val saved = snapshot(); val settings = saved.settings
@@ -115,15 +115,15 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         val past = c.document.records.drop(c.document.contextStart)
         val owner = Pending(saved.revision, availability().disableVersion); val captured = availability(); val enabledTools = captured.tools; val retained = c.provider
         check(runtime.acquire(owner)); c.pending = owner
-        c.document = c.document.withTurn(text, c.archive, delivery?.events?.map(SavedEvent::of).orEmpty(), delivery?.eventOnly == true, delivery?.notes.orEmpty()); c.persist()
+        c.document = c.document.withTurn(text, c.archive, delivery?.events?.map(SavedEvent::of).orEmpty(), delivery?.eventOnly == true, delivery?.notes.orEmpty(), attachments); c.persist()
         c.mutable.value = c.mutable.value.copy(busy = true, stopping = false, pendingText = text, problem = null, toolProgress = null,
             // Events of a wait are never drawn as the owner's message: the running turn shows them as event lines at once.
-            pendingEvents = delivery?.events.orEmpty(), pendingEventOnly = delivery?.eventOnly == true,
+            pendingEvents = delivery?.events.orEmpty(), pendingEventOnly = delivery?.eventOnly == true, pendingAttachments = attachments,
             currentSources = emptyList(), toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList(),
             confirmationNotSaved = false)
         return Admission(owner, saved, settings, text, past, enabledTools, retained, AssistantOwnerInstructions.effective(captured.ownerInstructions),
             c.document.declinedTools.toSet(), fixed != null || delivery?.eventOnly == true, captured.limits,
-            withApp(text, (if (delivery?.eventOnly == true) emptyList() else delivery?.events?.map { it.message() }.orEmpty()) + delivery?.notes.orEmpty()))
+            withApp(text, attachmentText(attachments) + (if (delivery?.eventOnly == true) emptyList() else delivery?.events?.map { it.message() }.orEmpty()) + delivery?.notes.orEmpty()))
     }
 }
 

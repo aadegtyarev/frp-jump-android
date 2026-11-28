@@ -30,6 +30,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.swipeLeft
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -90,6 +91,7 @@ class DevicesRedesignTest {
         compose.activity.createConfigurationContext(config)
     }
 
+    private var asked: Pair<String, String>? = null
     private fun host() = compose.setContent {
         CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides localized.resources.configuration, LocalActivityResultRegistryOwner provides compose.activity) {
         FrpJumpTheme(mode = ThemeMode.DARK) {
@@ -97,7 +99,7 @@ class DevicesRedesignTest {
                 DevicesContent(state, listOf(profile), {}, { p, d -> opened = p to d }, {}, {}, { _, _, _, done -> done(null) }, { p, d, done ->
                     if (p == state.profile) state = state.copy(favorites = if (d in state.favorites) state.favorites - d else state.favorites + d)
                     done(null)
-                })
+                }, onAskAssistant = { profile, device -> asked = profile to device.name })
             }
         }
         }
@@ -152,6 +154,13 @@ class DevicesRedesignTest {
         compose.onNodeWithTag("devices_show_all").performClick()
         compose.onNodeWithTag("device_archive").assertIsDisplayed()
         shot("devices-recovered")
+    }
+
+    @Test fun swipeAskKeepsExactDeviceIdentity() {
+        host()
+        compose.onNodeWithTag("device_beelink").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("device_ask_action").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals("work" to "beelink", asked); assertEquals(null, opened) }
     }
 
     @Test fun loadingAndStaleState() {

@@ -159,10 +159,10 @@ fun TerminalScreen(
     initialReference: String? = null,
     onBack: () -> Unit,
     /**
-     * Terminal > menu > "Ask the assistant": gets the text selected in the shown tab as a quote block for the chat draft, or null
+     * Terminal > menu > "Ask the assistant": gets the shown session and its selected text as a bounded quote, or null
      * without a selection. Null here: the assistant is off and the item is not offered.
      */
-    onAskAssistant: ((String?) -> Unit)? = null,
+    onAskAssistant: ((SshSession, String?) -> Unit)? = null,
     /** "Files" for the selected session's device, port and login. */
     onOpenFiles: (SshSession) -> Unit,
     /** Keeps the login typed in the dialog of a long press on "+" for that session's device and port. */
@@ -626,7 +626,7 @@ fun TerminalScreen(
                                     barMenu = false
                                     val quote = ChatQuote.block(menuSelection, context.getString(R.string.chat_quote_truncated))
                                     menuSelection = null
-                                    onAskAssistant(quote)
+                                    onAskAssistant(selected, quote)
                                 },
                             )
                             // Only while the visible screen has a link, so the menu does not grow for nothing.

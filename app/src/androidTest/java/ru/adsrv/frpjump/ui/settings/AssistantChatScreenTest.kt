@@ -410,28 +410,12 @@ class AssistantChatScreenTest {
 
     private fun selection() = compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.TextSelectionRange]
 
-    @Test fun aTerminalQuoteGoesAfterTheDraftAndTheCursorEndsAfterIt() {
+    @Test fun typingKeepsTheCursorAfterTheDraft() {
         install(); compose.waitUntil(WAIT_MS) { owner?.state?.value?.loading == false }
         input().performTextInput("why?")
-        val quote = ChatQuote.block("ls\ntotal 0", "[truncated]")!!
-        val expected = "why?\n\n$quote"
-        compose.runOnIdle { assertTrue(owner!!.appendToDraft(quote)) }
-        compose.waitUntil(WAIT_MS) { selection() == androidx.compose.ui.text.TextRange(expected.length) }
-        compose.runOnIdle { assertEquals(expected, owner!!.state.value.draft) }
-        compose.onNodeWithTag("chat_input").assertTextContains("total 0", substring = true)
-        // What the owner types next lands after the quote.
-        input().performTextInput("explain")
-        compose.waitUntil(WAIT_MS) { owner!!.state.value.draft == expected + "explain" }
-        compose.waitUntil(WAIT_MS) { selection() == androidx.compose.ui.text.TextRange(expected.length + "explain".length) }
-    }
-
-    @Test fun aQuoteIntoAnEmptyDraftPutsTheCursorAfterIt() {
-        install(); compose.waitUntil(WAIT_MS) { owner?.state?.value?.loading == false }
-        val quote = ChatQuote.block("uname -a", "[truncated]")!!
-        compose.runOnIdle { assertTrue(owner!!.appendToDraft(quote)) }
-        compose.waitUntil(WAIT_MS) { selection() == androidx.compose.ui.text.TextRange(quote.length) }
-        input().performTextInput("what is this")
-        compose.waitUntil(WAIT_MS) { owner!!.state.value.draft == quote + "what is this" }
+        compose.waitUntil(WAIT_MS) { selection() == androidx.compose.ui.text.TextRange(4) }
+        input().performTextInput(" explain")
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.draft == "why? explain" }
     }
 
     @Before fun display() {

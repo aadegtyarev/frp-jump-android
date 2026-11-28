@@ -23,8 +23,8 @@ import ru.adsrv.frpjump.assistant.chat.ChatQuote
 import ru.adsrv.frpjump.settings.AppSettings
 import ru.adsrv.frpjump.ui.ChatFileBackup
 import ru.adsrv.frpjump.ui.Routes
-import ru.adsrv.frpjump.ui.askAssistant
 import ru.adsrv.frpjump.ui.assistantRoutes
+import ru.adsrv.frpjump.ui.askAttachment
 import ru.adsrv.frpjump.ui.openAssistant
 import androidx.activity.ComponentActivity
 import androidx.core.view.ViewCompat
@@ -122,7 +122,7 @@ class TerminalAskAssistantTest {
             compose.waitForIdle()
         }
         compose.runOnIdle {
-            app.visible.value = false; sessions?.closeAll(); app.assistantQuote.value = null
+            app.visible.value = false; sessions?.closeAll(); app.assistantChatOwner.attachments.value.forEach(app.assistantChatOwner::removeAttachment)
             originalSettings?.let { old -> app.settings.update { old } }
         }
         root.cancel()
@@ -133,7 +133,7 @@ class TerminalAskAssistantTest {
     }
 
     /** The real terminal screen over one synthetic tab (id 1), with [onAsk] as its Ask hook. */
-    private fun terminalContent(onAsk: ((String?) -> Unit)?, reference: String? = null, back: () -> Unit = {}): @Composable () -> Unit {
+    private fun terminalContent(onAsk: ((ru.adsrv.frpjump.ssh.SshSession, String?) -> Unit)?, reference: String? = null, back: () -> Unit = {}): @Composable () -> Unit {
         val env = SshEnvironment(SshKeyStore(Memory(), unusedBox), SshPasswords(Memory(), unusedBox), { "synthetic" }, TmuxNames(Memory()))
         lateinit var registry: SshSessions
         compose.runOnUiThread {
@@ -152,7 +152,7 @@ class TerminalAskAssistantTest {
     }
 
     private fun start(assistantOn: Boolean) {
-        val terminal = terminalContent(if (assistantOn) ({ asked += it }) else null)
+        val terminal = terminalContent(if (assistantOn) ({ _, quote -> asked += quote }) else null)
         compose.setContent { FrpJumpTheme { terminal() } }
         compose.waitForIdle()
     }
@@ -166,8 +166,11 @@ class TerminalAskAssistantTest {
         originalSettings = app.settings.settings.value
         chatFile.save()
         runBlocking(Dispatchers.IO) { app.assistantHistory.clear() }
-        compose.runOnUiThread { app.settings.update { it.copy(assistantEnabled = true) }; app.assistantQuote.value = null }
-        val terminal = terminalContent({ quote -> nav.askAssistant(app, quote) }, reference) { nav.popBackStack() }
+        compose.runOnUiThread { app.settings.update { it.copy(assistantEnabled = true) }; app.assistantChatOwner.attachments.value.forEach(app.assistantChatOwner::removeAttachment) }
+        val terminal = terminalContent({ session, quote ->
+            app.assistantChatOwner.attach(ru.adsrv.frpjump.assistant.chat.ChatAttachment("ssh_session", "session", profileId = session.profile, device = session.device, port = session.port, user = session.user, sessionId = session.id, reference = session.assistantReference))
+            if (quote != null) nav.askAttachment(app, ru.adsrv.frpjump.assistant.chat.ChatAttachment("terminal_selection", app.getString(R.string.chat_selected_text), quote = quote)) else nav.openAssistant()
+        }, reference) { nav.popBackStack() }
         compose.setContent {
             FrpJumpTheme {
                 nav = rememberNavController()
@@ -257,8 +260,9 @@ class TerminalAskAssistantTest {
         askFromMenu()
         compose.waitUntil(10_000) { route == Routes.CHAT }
         val expected = ChatQuote.block("SYNTH_TOKEN_42", compose.activity.getString(R.string.chat_quote_truncated))!!
-        compose.waitUntil(10_000) { runCatching { draft == expected }.getOrDefault(false) }
-        assertNull(app.assistantQuote.value)
+        compose.waitUntil(10_000) { app.assistantChatOwner.attachments.value.any { it.quote == expected } }
+        assertEquals("", draft)
+        assertTrue(app.assistantChatOwner.attachments.value.isNotEmpty())
         assertEquals(1, chatEntries())
     }
 
@@ -279,8 +283,9 @@ class TerminalAskAssistantTest {
         assertEquals("exactly one chat entry", 1, chatEntries())
         assertSame("the chat that was already open", chat, compose.runOnUiThread { nav.getBackStackEntry(Routes.CHAT) })
         val expected = ChatQuote.block("SYNTH_TOKEN_43", compose.activity.getString(R.string.chat_quote_truncated))!!
-        compose.waitUntil(10_000) { runCatching { draft == expected }.getOrDefault(false) }
-        assertNull(app.assistantQuote.value)
+        compose.waitUntil(10_000) { app.assistantChatOwner.attachments.value.any { it.quote == expected } }
+        assertEquals("", draft)
+        assertTrue(app.assistantChatOwner.attachments.value.isNotEmpty())
         // Back leaves to where the chat was opened from, not to the terminal or Tunnels.
         compose.onNodeWithTag("chat_back").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { route == Routes.DEVICES }

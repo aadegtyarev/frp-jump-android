@@ -56,24 +56,11 @@ One chat screen, one conversation, reached three ways; the entry changes nothing
   TalkBack announces its state: "Working" / «Работает», or "Waiting for your answer" / «Ждёт ответа» while a card waits; the dot is gone
   when the attempt ends. The chat has no bottom bar; the dot is shown on the bottom bar of the section screens (Devices, Tunnels,
   Sessions) while an attempt runs, with or without the notification permission.
-- Terminal ⋮ → "Ask the assistant" / «Спросить помощника», offered only while the module is on. The text selected in the shown tab
-  with the app's own selection (a selection made inside tmux copy mode lives on the server; the app does not see it and does not
-  quote it) is read from the terminal view when ⋮ is used, never in the background, and goes into the chat draft as a fenced code
-  block; the cursor is after it, so the owner types the question below. The whole quote is at most 4,000 characters. A longer
-  selection keeps its END, the latest lines, which matter most in terminal output: the cut is on a line boundary (a single longer line
-  is cut by characters, never inside a surrogate pair) and the first line of the quote says "[start truncated]" / «[начало обрезано]»,
-  so the draft shows what is missing before Send. An existing draft is kept and the quote is appended after it; a result over the
-  message limit is not applied and the usual "too long" notice shows. The owner sees and may edit the draft; nothing is sent until
-  Send. Without a selection the chat just opens. The quote is the owner's own draft text, not an app instruction, and no
-  model-facing text changes.
+- Devices, saved Tunnels and Sessions offer “Ask the assistant” while the module is on; the left swipe reveals the action and accessibility exposes it directly. Selected Sessions may be attached together. Terminal ⋮ attaches the shown session and, when selected, its text as a separate removable item. The app reads the selection only when the menu opens. A selection is a fenced block of at most 4,000 characters, keeping the end and marking a truncated start; the cut starts at a line boundary where possible and never splits a surrogate pair.
 
-There is only ever one chat entry: opening it while it is already open (from the navigation, Settings or the terminal menu, also from
-screens that were opened over it) returns to that chat by closing the screens above it, so
-its conversation, its saved history and a running Send are never doubled or stopped. A waiting terminal quote or a tunnel's opening words (Tunnels ✦ "Ask the assistant") is taken by the chat at
-once and kept in memory only; it goes after the draft as soon as the saved draft has loaded and no Send runs, also while a Clear waits for its
-Undo (the composer is free and Send works then, so the owner must see it before sending; it is merged as "quoted during the clear" below),
-and it is dropped with the chat
-screen if the owner leaves first (an attempt that goes on does not keep it). If the history cannot be read the chat's own "could not restore history" notice shows and the quote is not added.
+These entries open the one shared chat without sending or changing its draft. A bounded slot above the composer shows up to eight context items, each removable; repeated selection of the same object refreshes it. A selection that cannot fit is refused as a whole. Context is held in memory across Back and remains while a Send is busy, the history is loading, Clear/Undo is pending, or admission fails. The next admitted manual Send consumes it once; event-only and fixed enable-tool sends do not. Explicit history Clear and disabling the assistant leave unsent context in memory, but no Send while disabled can use it. Sent context is kept with its turn under the existing encrypted history retention and appears with the user's message. The model gets typed identity and labels as data, never credentials or permission. App-issued same-turn references for exact live SSH incarnations and saved tunnels use the existing answer renderer and target revalidation; stale targets remain unavailable. Back returns to the same chat.
+
+There is only ever one chat entry: opening it while it is already open closes the screens above it and preserves the conversation and any running Send.
 
 Whichever entry opened the chat, the app lock, Stop, "For session" lasting for the tunnel's open period, "For this connection" being remembered, a disabled
 module and an unconfigured provider behave as described elsewhere in this contract, and the provider screen opened from the chat
@@ -457,7 +444,7 @@ scrolls horizontally instead of wrapping. Table, code and rule colours come from
 the app theme. The library owns Markdown parsing, including malformed or nested
 input; the one display-only adjustment is a blank line before a table header that
 directly follows a text line (never inside fenced code). HTML, links and images
-are shown as inert text and have no execution, opening or loading behavior. An app-issued terminal token in its own top-level paragraph becomes a labeled button only when that same turn’s successful `terminal_tabs` or `terminal_open` result emitted the complete associated row. It identifies one live session incarnation, not a reusable numeric tab id; detached, hidden for Undo, closed or replaced sessions report unavailable. Opening a live assistant session exposes that exact session locally, without attaching or running a tool. Back returns to the same chat. The opaque reference and its label follow the answer’s existing encrypted retention; older turns do not infer references from text.
+are shown as inert text and have no execution, opening or loading behavior. An app-issued terminal token in its own top-level paragraph becomes a labeled button only when that same turn’s successful `terminal_tabs` or `terminal_open` result emitted the complete associated row, or the same turn carried that exact app-selected session. It identifies one live session incarnation, not a reusable numeric tab id; detached, hidden for Undo, closed or replaced sessions report unavailable. Opening a live assistant session exposes that exact session locally, without attaching or running a tool. Back returns to the same chat. The opaque reference and its label follow the answer’s existing encrypted retention; older turns do not infer references from text.
 
 The optional `http_get` reads one path over an already ready saved Web tunnel. It pins the saved identity and tunnel open period, uses only its numeric loopback port and saved scheme, checks the owner before dispatch and response, and never follows redirects or retries. HTTPS uses platform validation or the exact certificate pinned by the owner in Web. The response is bounded and treated as untrusted data; no cookies, proxy, custom headers or model-supplied authority are used.
 
@@ -465,7 +452,7 @@ The optional `http_get` reads one path over an already ready saved Web tunnel. I
 
 `mqtt_publish` publishes one explicitly requested literal UTF-8 message through the owner's already connected explorer for the exact saved MQTT connection. The common confirmation shows the full topic and payload, QoS and retained flag; an empty retained payload is called out as clearing the broker's retained value. For session and For this connection cover MQTT publication only, not SSH or terminal input. A session grant is bound to the accepted MQTT client; a stored connection grant is not used or removed while the active broker principal differs from the configured one. The exact target, tunnel, client and run ownership are rechecked in the MQTT scheduler immediately before dispatch. A changed, hidden, disconnected or cancelled target receives nothing. Accepted, unconfirmed, refused and unknown results are distinct and never retried automatically.
 
-A successful `profile_information` page can issue a reference for each saved SSH, Web, MQTT or TCP connection it includes. Put the reference in its own top-level paragraph to offer an “Open tunnel” action labeled with the profile, device and connection. The app checks the saved target again on tap. Ready SSH, Web and MQTT use their ordinary open actions. A stopped or pending tunnel, or a TCP port, opens the exact connection card. A missing or changed target shows a notice in the same chat. Back returns to that chat. The action grants no tool permission and does not start a tunnel. The reference follows the same encrypted retention as a terminal reference.
+A same-turn selected saved tunnel or a successful `profile_information` page can issue a reference for each saved SSH, Web, MQTT or TCP connection it includes. Put the reference in its own top-level paragraph to offer an “Open tunnel” action labeled with the profile, device and connection. The app checks the saved target again on tap. Ready SSH, Web and MQTT use their ordinary open actions. A stopped or pending tunnel, or a TCP port, opens the exact connection card. A missing or changed target shows a notice in the same chat. Back returns to that chat. The action grants no tool permission and does not start a tunnel. The reference follows the same encrypted retention as a terminal reference.
 
 If parsing fails, the original answer remains selectable. User text is literal.
 Formatting changes neither the stored turns nor provider requests or
@@ -569,7 +556,7 @@ started Undo is no longer offered, so a record is neither lost nor repeated. If
 the commit fails, nothing is sent, the message stays in the draft, the known data
 is read back and the clear-failed text shows; Retry keeps the draft. On Undo (or a
 failed clear) the draft is the draft saved at Clear, then a line break, then the
-text typed or quoted during the clear; if one of them is empty, the other alone.
+text typed during the clear; if one of them is empty, the other alone.
 After a committed clear the draft is what was typed during it. Undo restores the
 same data without a provider call. A committed clear outlives the original route;
 clear failure retains known data and offers retry. Only one load is admitted at a

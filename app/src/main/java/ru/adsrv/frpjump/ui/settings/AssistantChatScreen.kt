@@ -30,6 +30,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,19 +64,37 @@ fun AssistantChatScreen(
     val provider by vm.provider.collectAsStateWithLifecycle()
     val toolsState by vm.tools.state.collectAsStateWithLifecycle()
     var toolsOpen by rememberSaveable { mutableStateOf(false) }
-    // A terminal quote (Ask the assistant) lands in the chat itself: the Tools sub-screen, if it was open, gives way to it.
-    // Only a quote taken since this screen last looked: coming back to the chat (or recreation) must not close Tools again.
-    val quotes by vm.quotesTaken.collectAsStateWithLifecycle()
-    var quotesSeen by rememberSaveable { mutableStateOf(quotes) }
-    LaunchedEffect(quotes) { if (quotes != quotesSeen) { quotesSeen = quotes; toolsOpen = false } }
+    val attachments by vm.attachments.collectAsStateWithLifecycle()
+    var seenAttachments by remember { mutableStateOf(attachments) }
+    LaunchedEffect(attachments) {
+        if (attachments.any { it !in seenAttachments }) toolsOpen = false
+        seenAttachments = attachments
+    }
     if (toolsOpen) {
         AssistantToolsRoute(vm.tools, onBack = { toolsOpen = false })
     } else CompositionLocalProvider(LocalChatTextScale provides ru.adsrv.frpjump.settings.ChatTextSize.factor(settings.assistantChatTextSize)) {
         AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
             confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF,
             tools = toolsState.committed, onTurnOn = vm::turnOnRequested, toolsFailed = toolsState.failed,
+            attachments = attachments, onRemoveAttachment = vm::removeAttachment,
             onTerminalReference = onTerminalReference, onTunnelReference = onTunnelReference, asks = vm.ownerAsks.collectAsStateWithLifecycle().value, onOpenAsk = { vm.openAsk(it, onOpenTerminal) }, onDismissAsk = vm::dismissAsk)
     }
+}
+
+@Composable
+private fun attachmentLabel(item: ChatAttachment): String {
+    val kind = stringResource(when (item.kind) {
+        "device" -> R.string.chat_context_device
+        "tunnel" -> R.string.chat_context_tunnel
+        "terminal_selection" -> R.string.chat_selected_text
+        else -> R.string.chat_context_session
+    })
+    return if (item.kind == "terminal_selection") kind else "$kind · ${item.label}"
+}
+
+@Composable
+private fun ChatAttachmentSummary(items: List<ChatAttachment>) {
+    items.forEach { Text(it.label, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_sent_attachment")) }
 }
 
 /** Synthetic component tests use this same production owner and UI, not an alternative chat model. */
@@ -95,6 +115,7 @@ internal fun AssistantChatContent(
     onDismissAsk: ((ru.adsrv.frpjump.assistant.OwnerAsk) -> Unit)? = null,
     onTerminalReference: (String) -> Unit = {},
     onTunnelReference: (ru.adsrv.frpjump.agent.TunnelReference) -> Unit = {},
+    attachments: List<ru.adsrv.frpjump.assistant.chat.ChatAttachment> = emptyList(), onRemoveAttachment: (ru.adsrv.frpjump.assistant.chat.ChatAttachment) -> Unit = {},
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
@@ -133,7 +154,7 @@ internal fun AssistantChatContent(
             }
         }
     }
-    // The field keeps its own cursor; a draft changed from outside (loaded, a quote added, cleared by Send) puts it at the end.
+    // The field keeps its own cursor; a draft changed from outside (loaded or cleared by Send) puts it at the end.
     var field by remember { mutableStateOf(TextFieldValue(state.draft, TextRange(state.draft.length))) }
     LaunchedEffect(state.draft) {
         val live = conversation.state.value.draft
@@ -222,14 +243,14 @@ internal fun AssistantChatContent(
                     Column(verticalArrangement = Arrangement.spacedBy(PART_GAP)) {
                         // Events of waits are muted lines of their own; a turn they started has no message of the owner's.
                         ChatEventLines(turn.events)
-                        if (!turn.eventOnly) ChatUserMessage(turn.user)
+                        if (!turn.eventOnly) { ChatUserMessage(turn.user); ChatAttachmentSummary(turn.attachments) }
                         // The role is not drawn (Р61); the marker keeps it for TalkBack.
                         Box {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (turn.unanswered) Text(stringResource(R.string.chat_unanswered), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_unanswered"))
                                 else if (turn.interrupted) Text(stringResource(R.string.chat_interrupted), color = AppTheme.colors.muted)
                                 ChatWorkSteps(remember(turn.receipts) { workSteps(turn.receipts) }, collapsed = true, identity = turn)
-                                val answer = remember(turn.answer, turn.receipts) { referenceAnswer(turn.answer, turn.receipts) }
+                                val answer = remember(turn.answer, turn.receipts, turn.attachments) { referenceAnswer(turn.answer, turn.receipts, turn.attachments) }
                                 SelectionContainer { AssistantAnswerMarkdown(answer.text) }
                                 answer.references.forEach { reference ->
                                     val tunnel = reference.tunnel
@@ -254,7 +275,7 @@ internal fun AssistantChatContent(
                 state.pendingText?.let { text -> item {
                     Column(verticalArrangement = Arrangement.spacedBy(PART_GAP)) {
                         ChatEventLines(state.pendingEvents)
-                        if (!state.pendingEventOnly) ChatUserMessage(text)
+                        if (!state.pendingEventOnly) { ChatUserMessage(text); ChatAttachmentSummary(state.pendingAttachments) }
                         ChatWorkSteps(remember(state.receipts) { workSteps(state.receipts) }, collapsed = false)
                         val waiting = state.confirmation != null
                         val progress = (state.toolProgress as? ChatToolProgress.Tool)?.id?.workProgress()
@@ -306,6 +327,33 @@ internal fun AssistantChatContent(
             }
             if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL, ChatProblem.SUMMARY)) {
                 TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }
+            }
+            var contextOpen by remember { mutableStateOf(false) }
+            LaunchedEffect(attachments.isEmpty()) { if (attachments.isEmpty()) contextOpen = false }
+            if (attachments.isEmpty()) Spacer(Modifier.fillMaxWidth().height(48.dp).testTag("chat_attachment_slot_empty"))
+            else {
+                Row(Modifier.fillMaxWidth().height(48.dp).background(AppTheme.colors.card, RoundedCornerShape(12.dp)).testTag("chat_attachments"), verticalAlignment = Alignment.CenterVertically) {
+                    val item = attachments.singleOrNull()
+                    val title = if (item == null) pluralStringResource(R.plurals.chat_context_count, attachments.size, attachments.size) else attachmentLabel(item)
+                    Text(title, modifier = Modifier.weight(1f).fillMaxHeight().clickable { contextOpen = true }.wrapContentHeight(Alignment.CenterVertically).padding(start = 12.dp).testTag("chat_attachment_details"),
+                        color = AppTheme.colors.accent, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                    if (item != null) IconButton(onClick = { onRemoveAttachment(item) }, modifier = Modifier.testTag("chat_attachment_remove_0")) {
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.chat_attachment_remove), tint = AppTheme.colors.accent)
+                    }
+                }
+            }
+            if (contextOpen && attachments.isNotEmpty()) ru.adsrv.frpjump.ui.AppSheet(title = stringResource(R.string.chat_context_title), onDismiss = { contextOpen = false }) {
+                attachments.forEachIndexed { index, attachment ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f)) {
+                            Text(attachmentLabel(attachment), style = MaterialTheme.typography.titleSmall)
+                            if (attachment.quote.isNotEmpty()) SelectionContainer { Text(attachment.quote, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("chat_attachment_quote_$index")) }
+                        }
+                        IconButton(onClick = { onRemoveAttachment(attachment) }, modifier = Modifier.testTag("chat_attachment_sheet_remove_$index")) {
+                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.chat_attachment_remove))
+                        }
+                    }
+                }
             }
             ChatComposer(if (sentShown) TextFieldValue("") else field, onValueChange = { value ->
                 if (sentShown) return@ChatComposer

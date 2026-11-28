@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui.connections
 
+import ru.adsrv.frpjump.FrpJumpApp
+
 import ru.adsrv.frpjump.ui.AppDropdownMenu
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import ru.adsrv.frpjump.ui.mqtt.PluginsSheet
@@ -404,7 +406,7 @@ fun rememberRowActions(
     onOpenFiles: (targetId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
     /** Opens the assistant chat with this text as the draft; null while the assistant is off. */
-    onAskAssistant: ((draft: String) -> Unit)? = null,
+    onAskAssistant: ((ru.adsrv.frpjump.assistant.chat.ChatAttachment) -> Unit)? = null,
 ): RowActions {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -500,14 +502,16 @@ fun rememberRowActions(
         },
         favorite = { row -> actions.setFavorite(row, !row.connection.favorite) },
         ask = onAskAssistant?.let { openChat ->
-            { row -> openChat(askDraft(context, row.connection)) }
+            { row ->
+                val c = row.connection
+                val profileName = profileLabel(row.profile, (context.applicationContext as FrpJumpApp).profiles.state.value.index.profiles.associate { it.id to it.name })
+                openChat(ru.adsrv.frpjump.assistant.chat.ChatAttachment("tunnel", "${connectionLabel(context, c)} · ${c.device} · $profileName".take(256),
+                    profileId = row.profile, device = c.device, port = c.port, connectionId = if (row.saved) c.id else "",
+                    reference = if (row.saved) "[tunnel:${java.util.UUID.randomUUID()}]" else "", tunnelKind = c.kind.name, https = c.https))
+            }
         },
     )
 }
-
-/** The chat draft of "Ask the assistant" on a connection: where the owner goes on typing. Not sent. */
-fun askDraft(context: Context, connection: Connection): String =
-    context.getString(R.string.ask_assistant_about_tunnel, connectionLabel(context, connection), connection.device) + " "
 
 /** [ConnectionActions.localPortContext] kept up to date while the sheet is open. */
 @Composable

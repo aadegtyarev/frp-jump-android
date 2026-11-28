@@ -85,6 +85,12 @@ import ru.adsrv.frpjump.sessions.sessionHidden
 import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.ui.SectionTitleRow
+import ru.adsrv.frpjump.ui.devices.SwipeReveal
+import ru.adsrv.frpjump.ui.devices.OpenRow
+import ru.adsrv.frpjump.ui.devices.touchesRow
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import ru.adsrv.frpjump.assistant.chat.ChatAttachment
 
 /**
  * The Sessions tab: the open terminal sessions, then the MQTT explorer
@@ -108,6 +114,7 @@ fun SessionsScreen(
     assistant: ru.adsrv.frpjump.assistant.AssistantSessions? = null,
     profileNames: Map<String, String> = emptyMap(),
     onOpenDeviceTunnels: (String, String) -> Unit = { _, _ -> },
+    onAskAssistant: ((List<ChatAttachment>) -> Boolean)? = null,
 ) {
     val allTerminals by terminals.sessions.collectAsStateWithLifecycle()
     val everyTerminal by terminals.all.collectAsStateWithLifecycle()
@@ -131,7 +138,7 @@ fun SessionsScreen(
             if (allTerminals.any { it.id == live?.id } || sessionHidden(gone, SessionKind.TERMINAL, id, TunnelRef(entry.key.profile, entry.key.device, entry.key.port))) null
             else {
                 val number = live?.number ?: ru.adsrv.frpjump.ssh.tmuxNumber(entry.key.session).toInt().coerceAtLeast(1)
-                AssistantRow(entry.id, sessionDisplayTitle(entry.name, number, terminalTitle), live, id, entry.key.profile, entry.key.device, entry.key.user, entry.key.port, problems[entry.key])
+                AssistantRow(entry.id, sessionDisplayTitle(entry.name, number, terminalTitle), live, id, entry.key.profile, entry.key.device, entry.key.user, entry.key.port, problems[entry.key], entry.key.session)
             }
         }
     }
@@ -139,6 +146,7 @@ fun SessionsScreen(
     val assistantLabel = stringResource(R.string.assistant_title)
     var query by rememberSaveable { mutableStateOf("") }
     var selected by remember { mutableStateOf(setOf<SessionRef>()) }
+    val openAsk = remember { OpenRow() }
     BackHandler(enabled = selected.isNotEmpty()) { selected = emptySet() }
     fun matches(vararg values: String): Boolean = query.isBlank() || values.any { searchMatches(it, query.trim()) }
     val terminalNames = list.associate { session -> session.id to session.tabName.collectAsStateWithLifecycle().value }
@@ -147,6 +155,14 @@ fun SessionsScreen(
     val shownAssistant = mine.filter { matches(it.title, sessionIdentity(it.user, it.device, it.port, profileLabel(it.profile, profileNames)), it.port.toString(), it.device, it.user, it.profile, profileNames[it.profile].orEmpty()) }
     val shownRefs = (shownTerminals.map { SessionRef(SessionKind.TERMINAL, it.id) } +
         shownMqtt.map { SessionRef(SessionKind.MQTT, it.id) } + shownAssistant.map { SessionRef(SessionKind.TERMINAL, it.sessionId) }).toSet()
+    fun terminalContext(session: SshSession) = ChatAttachment("ssh_session", "${sessionDisplayTitle(terminalNames[session.id], session.number, terminalTitle)} · ${profileLabel(session.profile, profileNames)} · ${session.user}@${session.device}:${session.port}".take(256),
+        profileId = session.profile, device = session.device, port = session.port, user = session.user, sessionId = session.id, reference = session.assistantReference)
+    fun mqttContext(session: MqttSession) = ChatAttachment("mqtt_session", "${profileLabel(session.profile, profileNames)} · MQTT ${session.device}:${session.port}".take(256),
+        profileId = session.profile, device = session.device, port = session.port, connectionId = session.connectionId, sessionId = session.id)
+    fun savedContext(row: AssistantRow) = ChatAttachment("saved_ssh_session", "${row.title} · ${row.user}@${row.device}:${row.port} · ${profileLabel(row.profile, profileNames)}".take(256),
+        profileId = row.profile, device = row.device, port = row.port, user = row.user, sessionId = row.id, sessionKey = row.sessionKey, reference = row.session?.assistantReference.orEmpty())
+    fun selectedContext(): List<ChatAttachment> = list.filter { SessionRef(SessionKind.TERMINAL, it.id) in selected }.map(::terminalContext) +
+        explorers.filter { SessionRef(SessionKind.MQTT, it.id) in selected }.map(::mqttContext) + mine.filter { SessionRef(SessionKind.TERMINAL, it.sessionId) in selected }.map(::savedContext)
     fun toggle(ref: SessionRef) { selected = if (ref in selected) selected - ref else selected + ref }
     LaunchedEffect(shownRefs) { selected = selected intersect shownRefs }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).statusBarsPadding()) {
@@ -176,6 +192,9 @@ fun SessionsScreen(
                 IconButton(onClick = { selected = emptySet() }) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.search_close), tint = colors.ink) }
                 Text(stringResource(R.string.tunnels_selected_count, (selected intersect shownRefs).size), modifier = Modifier.weight(1f), color = colors.ink)
                 IconButton(onClick = { selected = shownRefs }, modifier = Modifier.testTag("sessions_select_all")) { Icon(ru.adsrv.frpjump.ui.SelectAllGlyph, contentDescription = stringResource(R.string.tunnels_select_all), tint = colors.ink) }
+                if (onAskAssistant != null) IconButton(onClick = { if (onAskAssistant(selectedContext())) selected = emptySet() }, modifier = Modifier.testTag("sessions_ask_selected")) {
+                    Icon(ru.adsrv.frpjump.ui.AssistantGlyph, contentDescription = stringResource(R.string.terminal_ask_assistant), tint = colors.ink)
+                }
                 IconButton(onClick = { close.closeSelected(selected intersect shownRefs); selected = emptySet() }, modifier = Modifier.testTag("sessions_close_selected"), enabled = (selected intersect shownRefs).isNotEmpty()) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.sessions_close_selected, (selected intersect shownRefs).size), tint = colors.error) }
             }
         }
@@ -200,32 +219,47 @@ fun SessionsScreen(
         }
         items(shownTerminals, key = { "t${it.id}" }) { session ->
             val ref = SessionRef(SessionKind.TERMINAL, session.id)
+            SessionAskRow(openAsk, "terminal:${session.id}", onAskAssistant?.let { ask -> { ask(listOf(terminalContext(session))); Unit } }, selected.isNotEmpty()) {
             SelectableTunnelRow(listOfNotNull(sessionDisplayTitle(terminalNames[session.id], session.number, terminalTitle), sessionIdentity(session.user, session.device, session.port, profileLabel(session.profile, profileNames)), assistantLabel.takeIf { session.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT }).joinToString(", "), selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
                 TerminalLine(session, profileColors[session.profile], profileLabel(session.profile, profileNames), session.tabNameKey()?.let { problems[it] },
                     onRecover = { onOpenDeviceTunnels(session.profile, session.device) }, onClose = { close.terminal(session.id) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty()) { onOpenTerminal(session.id) }
             }
+            }
         }
         items(shownMqtt, key = { "m${it.id}" }) { session ->
             val ref = SessionRef(SessionKind.MQTT, session.id)
+            SessionAskRow(openAsk, "mqtt:${session.id}", onAskAssistant?.let { ask -> { ask(listOf(mqttContext(session))); Unit } }, selected.isNotEmpty()) {
             SelectableTunnelRow("${session.device}:${session.port}, ${profileLabel(session.profile, profileNames)}", selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
                 MqttLine(session, profileColors[session.profile], onClose = { close.mqtt(session.id) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty()) { onOpenMqtt(session.id) }
+            }
             }
         }
         // The assistant's remembered sessions share the list and retain their own exact identity.
         items(shownAssistant, key = { "a${it.id}" }) { row ->
                 val ref = SessionRef(SessionKind.TERMINAL, row.sessionId)
+                SessionAskRow(openAsk, "saved:${row.id}", onAskAssistant?.let { ask -> { ask(listOf(savedContext(row))); Unit } }, selected.isNotEmpty()) {
                 SelectableTunnelRow("${row.title}, ${sessionIdentity(row.user, row.device, row.port, profileLabel(row.profile, profileNames))}, $assistantLabel", selected.isNotEmpty(), ref in selected, { toggle(ref) }) {
                     AssistantLine(row, onOpen = { assistant?.let { a -> scope.launch { a.show(row.id)?.let { onOpenTerminal(it.id) } } } }, onClose = { close.terminal(row.sessionId) }, onLongClick = { toggle(ref) }, selecting = selected.isNotEmpty(), profileName = profileLabel(row.profile, profileNames), profileColor = profileColors[row.profile], onRecover = { onOpenDeviceTunnels(row.profile, row.device) })
+                }
                 }
         }
     }
     }
 }
 
+@Composable
+private fun SessionAskRow(openRow: OpenRow, key: String, onAsk: (() -> Unit)?, selecting: Boolean, content: @Composable () -> Unit) {
+    val open = openRow.name == key
+    val label = stringResource(R.string.terminal_ask_assistant)
+    SwipeReveal(open = open, enabled = onAsk != null && !selecting, onOpenChange = { openRow.reported(key, it) }, actionWidth = revealWidth(),
+        modifier = Modifier.touchesRow(openRow, key).then(if (onAsk == null || selecting) Modifier else Modifier.semantics { customActions = listOf(CustomAccessibilityAction(label) { onAsk(); true }) }),
+        action = { if (onAsk != null) RevealButton(label, glyph = { Icon(ru.adsrv.frpjump.ui.AssistantGlyph, contentDescription = null, tint = AppTheme.colors.onAccentContainer, modifier = Modifier.size(22.dp)) }, modifier = Modifier.testTag("session_ask_action")) { openRow.close(); onAsk() } }, content = content)
+}
+
 /** One remembered assistant session: [session] is null while it is remembered and not attached (detached). */
 internal class AssistantRow(val id: Int, val title: String, val session: SshSession?, /** The id the owner's Close and the Undo use: the live session's, else the record's. */ val sessionId: Int = id,
     val profile: String = session?.profile.orEmpty(), val device: String = session?.device.orEmpty(), val user: String = session?.user.orEmpty(), val port: Int = session?.port ?: 0,
-    val problem: ru.adsrv.frpjump.assistant.OwnerSessionProblem? = null)
+    val problem: ru.adsrv.frpjump.assistant.OwnerSessionProblem? = null, val sessionKey: String = "")
 
 internal fun terminalSessionLabel(session: SshSession, name: ru.adsrv.frpjump.ssh.TabName?): String {
     val automatic = ru.adsrv.frpjump.ui.ssh.tabLabel(session.user, session.device, session.port, session.number)

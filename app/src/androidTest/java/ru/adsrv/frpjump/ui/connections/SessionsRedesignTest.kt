@@ -77,6 +77,7 @@ class SessionsRedesignTest {
     })
     private lateinit var terminals: SshSessions
     private var opened: Int? = null
+    private var asked: List<ru.adsrv.frpjump.assistant.chat.ChatAttachment> = emptyList()
     private val args get() = InstrumentationRegistry.getArguments()
     private lateinit var originalConfiguration: Configuration
 
@@ -110,14 +111,14 @@ class SessionsRedesignTest {
         compose.activity.resources.updateConfiguration(originalConfiguration, compose.activity.resources.displayMetrics)
     }
 
-    private fun host() = compose.setContent {
+    private fun host(accept: Boolean = true) = compose.setContent {
         val locale = Locale.forLanguageTag(args.getString("chatLocale") ?: "en")
         val config = Configuration(compose.activity.resources.configuration).apply { setLocale(locale) }
         val localized = compose.activity.createConfigurationContext(config)
         CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides config, LocalActivityResultRegistryOwner provides compose.activity) {
             FrpJumpTheme(mode = ThemeMode.DARK) {
                 Box(Modifier.fillMaxSize().background(AppTheme.colors.ground)) {
-                    SessionsScreen(terminals, app.mqtt, pending.hidden, SessionCloser(pending, {}, {}), mapOf("work" to "crimson", "home" to "blue"), { opened = it }, {}, profileNames = mapOf("work" to "Работа", "home" to "Дом"))
+                    SessionsScreen(terminals, app.mqtt, pending.hidden, SessionCloser(pending, {}, {}), mapOf("work" to "crimson", "home" to "blue"), { opened = it }, {}, profileNames = mapOf("work" to "Работа", "home" to "Дом"), onAskAssistant = { asked = it; accept })
                     NoticeHost(notices)
                 }
             }
@@ -130,6 +131,29 @@ class SessionsRedesignTest {
         InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { image ->
             File(compose.activity.getExternalFilesDir(null), "$name-$suffix.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }; image.recycle()
         }
+    }
+
+    @Test fun swipeAskCapturesExactSessionWithoutOpeningIt() {
+        host()
+        val session = terminals.sessions.value.first()
+        compose.onNodeWithTag("sessions_terminal_${session.id}").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("session_ask_action").assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertEquals(null, opened)
+            assertEquals(1, asked.size)
+            assertEquals(session.id, asked.single().sessionId)
+            assertEquals(session.profile, asked.single().profileId)
+            assertEquals(session.assistantReference, asked.single().reference)
+            assertEquals(3, terminals.sessions.value.size)
+        }
+    }
+
+    @Test fun rejectedBulkAskKeepsSelectionForNarrowing() {
+        host(accept = false)
+        compose.onNodeWithTag("sessions_terminal_1").performTouchInput { longClick() }
+        compose.onNodeWithTag("sessions_ask_selected").performClick()
+        compose.onNodeWithTag("sessions_selection").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, asked.size); assertEquals(1, asked.single().sessionId) }
     }
 
     @Test fun searchHintAndInputAreCenteredWithIcon() {

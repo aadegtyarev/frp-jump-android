@@ -86,11 +86,4 @@ class ChatQuoteTest {
         assertEquals("````\nuse ``` here\n````\n", ChatQuote.block("use ``` here", note))
     }
 
-    @Test fun `a draft is kept and the quote goes after it`() {
-        val quote = "```\nx\n```\n"
-        assertEquals(quote, ChatQuote.appended("", quote))
-        assertEquals("why?\n\n$quote", ChatQuote.appended("why?", quote))
-        assertEquals("why?\n\n$quote", ChatQuote.appended("why?\n", quote))
-        assertEquals("why?\n\n$quote", ChatQuote.appended("why?\n\n", quote))
-    }
 }

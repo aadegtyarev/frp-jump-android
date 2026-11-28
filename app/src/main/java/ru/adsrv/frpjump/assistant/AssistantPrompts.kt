@@ -43,7 +43,7 @@ class AssistantPrompts(val core: String, val summary: String, private val notes:
     }
 
     companion object {
-        const val SYSTEM_VERSION = 24
+        const val SYSTEM_VERSION = 25
         const val SUMMARY_VERSION = 3
         const val SYSTEM_ASSET = "assistant/skill.md"
         const val SUMMARY_ASSET = "assistant/summary.md"

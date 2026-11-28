@@ -6,6 +6,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -79,6 +80,14 @@ class AssistantChatOwner(
     private val mqttPublish: AssistantMqttPublish? = null,
     private val httpGet: AssistantHttpGet? = null,
 ) {
+    private val pendingAttachments = MutableStateFlow<List<ru.adsrv.frpjump.assistant.chat.ChatAttachment>>(emptyList())
+    val attachments: StateFlow<List<ru.adsrv.frpjump.assistant.chat.ChatAttachment>> = pendingAttachments.asStateFlow()
+    fun attach(item: ru.adsrv.frpjump.assistant.chat.ChatAttachment): Boolean = attachAll(listOf(item))
+    fun attachAll(items: List<ru.adsrv.frpjump.assistant.chat.ChatAttachment>): Boolean = synchronized(settingsStore.assistantChat.gate) {
+        val next = (pendingAttachments.value + items).associateBy { it.identity() }.values.toList()
+        if (!settingsStore.assistantAvailability.enabled || items.any { !it.valid() } || next.size > 8) false else { pendingAttachments.value = next; true }
+    }
+    fun removeAttachment(item: ru.adsrv.frpjump.assistant.chat.ChatAttachment) { synchronized(settingsStore.assistantChat.gate) { pendingAttachments.value = pendingAttachments.value - item } }
     private class Live(val conversation: AssistantConversation, val scope: CoroutineScope, val confirmations: ConfirmationSupport)
     private val lock = Any()
     private var live: Live? = null
@@ -163,7 +172,7 @@ class AssistantChatOwner(
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
-            profileInformation = profileInformation, mqttRead = mqttRead, mqttPublish = mqttPublish, httpGet = httpGet, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, sessions = sessions, skills = skills, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
+            profileInformation = profileInformation, mqttRead = mqttRead, mqttPublish = mqttPublish, httpGet = httpGet, attachments = pendingAttachments, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, sessions = sessions, skills = skills, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
             awaitHistoryClear = { historyUndo?.awaitDone(HISTORY_UNDO_KEY) },
             commitHistoryClear = { historyUndo?.let { it.commit(HISTORY_UNDO_KEY); it.awaitDone(HISTORY_UNDO_KEY) } }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,
