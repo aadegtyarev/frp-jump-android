@@ -112,6 +112,15 @@ class PaletteContrastTest {
     }
 
     @Test
+    fun `fullscreen exit stays legible on its tile and outlined over web and terminal content`() {
+        for ((palette, edge) in listOf(DarkPalette to DarkPalette.faint, LightPalette to LightPalette.muted)) {
+            assertTrue(contrast(palette.ink, palette.tile) >= 4.5)
+            for (background in listOf(0xFFFFFFFF, 0xFF141311))
+                assertTrue(maxOf(contrast(palette.tile, background), contrast(edge, background)) >= 3.0)
+        }
+    }
+
+    @Test
     fun `dark is graphite, not black, and its accent is toned down`() {
         assertTrue(luminance(DarkPalette.ground) > luminance(0xFF000000) + 0.005)
         // Warm: red above blue in the ground.

@@ -12,9 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -23,11 +23,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -118,7 +119,7 @@ fun SystemBarsHidden(hidden: Boolean) {
 }
 
 /**
- * The small round "Exit full screen" over a full-screen page or terminal,
+ * The small "Exit full screen" over a full-screen page or terminal,
  * at the top end, clear of a display cutout; drag it away from whatever it
  * covers. It stays on the screen, whatever the drag or a rotation.
  */
@@ -149,13 +150,20 @@ fun BoxScope.CollapseButton(onClick: () -> Unit) {
         ) {
             IconButton(
                 onClick = onClick,
-                modifier = Modifier
-                    .size(40.dp)
-                    // Dark with a light ring: seen on a white page and on a black terminal.
-                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
-                    .border(1.dp, Color.White.copy(alpha = 0.6f), CircleShape),
+                modifier = Modifier.size(TARGET).testTag("fullscreen_exit"),
             ) {
-                Icon(FullscreenExitGlyph, contentDescription = stringResource(R.string.fullscreen_exit), tint = Color.White, modifier = Modifier.size(20.dp))
+                val colors = AppTheme.colors
+                val shape = MaterialTheme.shapes.small
+                Box(
+                    Modifier.size(40.dp)
+                        .shadow(1.dp, shape)
+                        .background(colors.tile, shape)
+                        .border(1.dp, if (colors.palette === DarkPalette) colors.faint else colors.muted, shape)
+                        .testTag("fullscreen_exit_tile"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(FullscreenExitGlyph, contentDescription = stringResource(R.string.fullscreen_exit), tint = colors.ink, modifier = Modifier.size(20.dp))
+                }
             }
         }
     }
