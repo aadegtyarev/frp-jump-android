@@ -19,8 +19,8 @@ import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.tunnel.SessionKind
 
 /** Captures the authorizing basis before enqueue and checks it again on the scheduler. */
-internal class MqttPublishAuthority(val prepare: (GrantTarget) -> (() -> Boolean)?) : AbstractCoroutineContextElement(Key) {
-    companion object Key : CoroutineContext.Key<MqttPublishAuthority>
+internal class ChangeDispatchAuthority(val prepare: (AssistantToolId, GrantTarget) -> (() -> Boolean)?) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<ChangeDispatchAuthority>
 }
 
 /** Resolves only the owner's existing saved connection and connected explorer. */
@@ -34,7 +34,7 @@ class AssistantMqttPublish(private val tunnels: AssistantTunnels, private val se
         val context = currentCoroutineContext()
         val job = context[Job]
         val admission = context[SideEffectAdmission]
-        val authority = context[MqttPublishAuthority]?.prepare(GrantTarget(pin.ids.profileId, pin.ids.connectionId))
+        val authority = context[ChangeDispatchAuthority]?.prepare(AssistantToolId.MQTT_PUBLISH, GrantTarget(pin.ids.profileId, pin.ids.connectionId))
             ?: return OpResult.Refused(MqttWriteRefusal.NotConnected())
         val host = MqttPublishHost { target ->
             if (target.profile != pin.ids.profileId || target.connectionId != pin.ids.connectionId || !connected.valid(pin) || loginRevision() != captured.loginRevision) null

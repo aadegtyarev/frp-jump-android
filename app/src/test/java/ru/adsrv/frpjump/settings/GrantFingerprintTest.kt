@@ -55,4 +55,12 @@ class GrantFingerprintTest {
         assertTrue(fp().startsWith("v1:")); assertEquals(3 + 43, fp().length)
         for (secret in listOf("Service", "board1", "root", "alias", "CERT")) assertFalse(secret, fp().contains(secret))
     }
+    @Test fun `Web certificate participates only in Web fingerprints`() {
+        val web = connection.copy(kind = PortKind.WEB, port = 443, https = true)
+        fun value(c: Connection, cert: String?) = GrantFingerprint.of(c, "p1", "alias", false, enrollment, login, hostKey, null, cert)
+        assertNotEquals(value(web, null), value(web, "A")); assertNotEquals(value(web, "A"), value(web, "B"))
+        assertEquals(value(connection, null), value(connection, "A"))
+        assertEquals(value(connection.copy(kind = PortKind.MQTT), null), value(connection.copy(kind = PortKind.MQTT), "A"))
+    }
+
 }

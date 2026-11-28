@@ -1660,4 +1660,19 @@
     <string name="chat_context_session">Session</string>
     <string name="chat_context_title">Selected context</string>
     <plurals name="chat_context_count"><item quantity="one">%d item</item><item quantity="other">%d items</item></plurals>
+    <string name="action_class_http_post">HTTP POST</string>
+    <string name="tool_http_post">HTTP POST</string>
+    <string name="tool_http_post_hint">Sends a POST through an open Web tunnel; may change the device. The response is sent to the selected provider.</string>
+    <string name="tool_http_post_progress">Sending HTTP POST…</string>
+    <string name="confirm_http_title">Send HTTP POST?</string>
+    <string name="confirm_http_endpoint">Endpoint</string>
+    <string name="confirm_http_path">Path</string>
+    <string name="confirm_http_target">%1$s · \"%2$s\"</string>
+    <string name="confirm_http_type">Content type</string>
+    <string name="confirm_http_body">Body</string>
+    <string name="confirm_http_empty">Empty body</string>
+    <string name="confirm_http_warning">This request may change the device.</string>
+    <string name="confirm_http_remember_hint">For session: HTTP POST while this tunnel stays open. For this connection: until it is edited or its certificate changes. Undo: the mark on the tunnel card.</string>
+    <string name="connection_assistant_sheet_session_http">For session: HTTP POST.</string>
+    <string name="connection_assistant_sheet_connection_http">For this connection: HTTP POST (since %1$s).</string>
 </resources>

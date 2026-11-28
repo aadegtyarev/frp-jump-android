@@ -22,9 +22,9 @@ class AssistantToolCatalogTest {
         .filterKeys { it.startsWith("assistant_") && it !in nonToolKeys }
 
     @Test fun `catalog keeps the stable order wire names setting keys and effects`() {
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "http_get", "mqtt_read", "mqtt_publish", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "read_skill", "skills_list", "skill_save", "skill_delete", "wait_for", "ssh_command"), AssistantToolId.entries.map { it.wire })
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "http_get", "http_post", "mqtt_read", "mqtt_publish", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "read_skill", "skills_list", "skill_save", "skill_delete", "wait_for", "ssh_command"), AssistantToolId.entries.map { it.wire })
         // One switch, one entry: terminal_read follows terminal_tabs' switch and has none of its own.
-        assertEquals(listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_http_get", "assistant_mqtt_read", "assistant_mqtt_publish", "assistant_tunnels", "assistant_terminal_tabs", "assistant_terminal_input", "assistant_sessions", "assistant_skills", "assistant_waits", "assistant_ssh_command"),
+        assertEquals(listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_http_get", "assistant_http_post", "assistant_mqtt_read", "assistant_mqtt_publish", "assistant_tunnels", "assistant_terminal_tabs", "assistant_terminal_input", "assistant_sessions", "assistant_skills", "assistant_waits", "assistant_ssh_command"),
             AssistantToolId.switches.map { it.settingKey })
         assertEquals(listOf(AssistantToolId.STOP_TUNNEL, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE, AssistantToolId.READ_SKILL, AssistantToolId.SKILL_SAVE, AssistantToolId.SKILL_DELETE), AssistantToolId.entries.filter { !it.ownsSwitch })
         assertEquals(AssistantToolId.TERMINAL_OPEN.settingKey, AssistantToolId.TERMINAL_SHOW.settingKey); assertEquals(AssistantToolId.TERMINAL_OPEN.settingKey, AssistantToolId.TERMINAL_CLOSE.settingKey)
@@ -41,7 +41,7 @@ class AssistantToolCatalogTest {
         assertEquals(AssistantToolId.TERMINAL_TABS.settingKey, AssistantToolId.TERMINAL_READ.settingKey)
         assertEquals(AssistantToolId.entries.size, AssistantToolId.entries.map { it.wire }.toSet().size)
         assertEquals(AssistantToolId.switches.size, AssistantToolId.switches.map { it.settingKey }.toSet().size)
-        assertEquals(listOf(AssistantToolId.MQTT_PUBLISH, AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL, AssistantToolId.TERMINAL_RENAME, AssistantToolId.TERMINAL_INPUT, AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE, AssistantToolId.SKILL_SAVE, AssistantToolId.SKILL_DELETE, AssistantToolId.WAIT_FOR, AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { it.effect.changes })
+        assertEquals(listOf(AssistantToolId.HTTP_POST, AssistantToolId.MQTT_PUBLISH, AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL, AssistantToolId.TERMINAL_RENAME, AssistantToolId.TERMINAL_INPUT, AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE, AssistantToolId.SKILL_SAVE, AssistantToolId.SKILL_DELETE, AssistantToolId.WAIT_FOR, AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { it.effect.changes })
         assertEquals(Effect.CHANGE_REMOTE, AssistantToolId.TERMINAL_INPUT.effect)
         assertEquals(setOf(Effect.READ_REMOTE, Effect.READ_LOCAL), AssistantToolId.entries.filter { !it.effect.changes }.map { it.effect }.toSet())
         // Skills: reading needs no switch and no question; saving and deleting ask like every changing tool, locally.
@@ -64,7 +64,7 @@ class AssistantToolCatalogTest {
         assertEquals(AssistantToolId.switches.map { it.settingKey }.toSet(), enabledFields(AppSettings()).keys)
     }
 
-    private val allOn = AssistantTools(search = true, readPage = true, inspectImage = true, profileInformation = true, sshCommand = true, terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true, mqttRead = true, mqttPublish = true, httpGet = true)
+    private val allOn = AssistantTools(search = true, readPage = true, inspectImage = true, profileInformation = true, sshCommand = true, terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true, mqttRead = true, mqttPublish = true, httpGet = true, httpPost = true)
 
     @Test fun `AssistantTools switch and with address exactly one switch each`() {
         for (id in AssistantToolId.switches) {

@@ -11,7 +11,7 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
     /** Whether a call of this tool, when its effect changes something, goes through the owner's confirmation. False only for [TERMINAL_RENAME]. */
     val confirms: Boolean = true,
     /**
-     * Whether "For session" may cover a call of this tool (true for [SSH_COMMAND], [TERMINAL_INPUT] and [MQTT_PUBLISH]). A property of the tool, not of its
+     * Whether "For session" may cover a call of this tool (true for [SSH_COMMAND], [TERMINAL_INPUT], [MQTT_PUBLISH] and [HTTP_POST]). A property of the tool, not of its
      * class: tools sharing a class with a grantable one are not covered by its grant.
      */
     val grantable: Boolean = false) {
@@ -20,6 +20,7 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
     INSPECT_IMAGE("inspect_image", "assistant_inspect_image", Effect.READ_REMOTE, ActionClass.PUBLIC_READ),
     PROFILE_INFORMATION("profile_information", "assistant_profile_information", Effect.READ_REMOTE, ActionClass.CONNECTION_READ),
     HTTP_GET("http_get", "assistant_http_get", Effect.READ_REMOTE, ActionClass.CONNECTION_READ),
+    HTTP_POST("http_post", "assistant_http_post", Effect.CHANGE_REMOTE, ActionClass.HTTP_POST, grantable = true),
     MQTT_READ("mqtt_read", "assistant_mqtt_read", Effect.READ_REMOTE, ActionClass.CONNECTION_READ),
     MQTT_PUBLISH("mqtt_publish", "assistant_mqtt_publish", Effect.CHANGE_REMOTE, ActionClass.MQTT_PUBLISH, grantable = true),
     /**

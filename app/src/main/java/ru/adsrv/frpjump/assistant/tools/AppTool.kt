@@ -90,7 +90,8 @@ internal class ChangeRequest(val tool: AssistantToolId, val target: GrantTarget?
     val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null, val close: ru.adsrv.frpjump.assistant.CloseCard? = null,
     val skill: ru.adsrv.frpjump.assistant.SkillCard? = null,
     /** The grantable tools a For session answer on this call's card covers, as the card says (set by the gate when the card is raised). */
-    val sessionTools: Set<AssistantToolId> = emptySet(), val mqtt: ru.adsrv.frpjump.assistant.chat.MqttPublishCard? = null)
+    val sessionTools: Set<AssistantToolId> = emptySet(), val mqtt: ru.adsrv.frpjump.assistant.chat.MqttPublishCard? = null,
+    val http: ru.adsrv.frpjump.assistant.chat.HttpPostCard? = null)
 
 internal sealed interface ChangeCheck {
     data object Invalid : ChangeCheck

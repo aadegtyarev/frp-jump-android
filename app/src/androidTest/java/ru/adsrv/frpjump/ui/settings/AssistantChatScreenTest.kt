@@ -1162,6 +1162,43 @@ class AssistantChatScreenTest {
         toolToggle("mqtt_publish").assertIsOn()
     }
 
+    @Test fun httpPostConfirmationShowsExactRequestAndTarget() {
+        val connection = ru.adsrv.frpjump.connections.Connection("c", "synthetic-device", 8443, ru.adsrv.frpjump.ports.PortKind.WEB,
+            customName = "Synthetic connection with a long name", https = true)
+        val target = ru.adsrv.frpjump.settings.GrantTarget("p", "c")
+        val info = ConfirmationTargetInfo("Synthetic profile with a long name", connection)
+        val post = HttpPostCard(info.profileName, connection.customName!!, connection.device, connection.port, true, "/api/submit?value=one", "application/json")
+        val payload = "{\"value\":\"synthetic ✓\"}"
+        val card = PendingConfirmation(1, AssistantToolId.HTTP_POST, payload, target, info, sessionTools = setOf(AssistantToolId.HTTP_POST), http = post)
+        var answer: ConfirmationDecision? = null
+        compose.activityRule.scenario.onActivity { activity ->
+            localizeActivity(activity)
+            activity.setContent { FrpJumpTheme { ChatConfirmationCard(card, { answer = it }, wide = landscape()) } }
+        }
+        compose.onNodeWithTag("chat_confirm_target").assertTextContains("Synthetic profile", substring = true).assertTextContains("Synthetic connection", substring = true)
+        compose.onNodeWithTag("chat_confirm_http_endpoint").assertTextContains("https://synthetic-device:8443", substring = true)
+        compose.onNodeWithTag("chat_confirm_http_path").assertTextContains("/api/submit?value=one", substring = true)
+        compose.onNodeWithTag("chat_confirm_http_type").assertTextContains("application/json", substring = true)
+        compose.onNodeWithTag("chat_confirm_command").assertTextContains(payload, substring = true)
+        compose.onNodeWithTag("chat_confirm_remember_hint").assertTextContains("POST", substring = true)
+        shot("card-http-post")
+        val allow = compose.onNodeWithTag("chat_confirm_allow")
+        if (!allow.isDisplayed()) allow.performScrollTo()
+        allow.performClick()
+        compose.runOnIdle { assertEquals(ConfirmationDecision.ONCE, answer) }
+    }
+
+    @Test fun toolsScreenShowsHttpPostSwitchOffAndSavesIt() {
+        install(); button("chat_tools").performClick()
+        compose.onNodeWithTag("tool_http_post").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_http_post_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_http_post"))).assertExists()
+        toolToggle("http_post").assertIsOff(); assertFalse(settings.assistantAvailability.tools.httpPost)
+        shot("tools-http-post-off")
+        toolToggle("http_post").performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.httpPost }
+        toolToggle("http_post").assertIsOn()
+    }
+
     @Test fun mqttConfirmationShowsPinnedTargetAndEmptyRetainedDeletion() {
         val connection = ru.adsrv.frpjump.connections.Connection("c", "synthetic-device", 1883, ru.adsrv.frpjump.ports.PortKind.MQTT,
             customName = "Synthetic connection with a long name for wrapping")

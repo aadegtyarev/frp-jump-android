@@ -90,6 +90,10 @@ fun certFingerprint(der: ByteArray): String =
  * Reads at construction, writes on [pin]: call that off the main thread.
  */
 class WebCertStore(private val storage: TextStorage) {
+    @Volatile var readable: Boolean = true
+        private set
+    private val revisions = mutableMapOf<Pair<String, Int>, Long>()
+    @Synchronized fun revision(device: String, port: Int): Long = revisions[device to port] ?: 0L
     private var pins: Map<String, Map<String, String>> = read()
 
     @Synchronized
@@ -104,8 +108,12 @@ class WebCertStore(private val storage: TextStorage) {
         val value = pins + (device to (pins[device].orEmpty() + (port.toString() to fingerprint)))
         storage.write(WireJson.encodeToString(value))
         pins = value
+        readable = true
+        val key = device to port
+        revisions[key] = (revisions[key] ?: 0L) + 1
     }
 
-    private fun read(): Map<String, Map<String, String>> =
-        runCatching { storage.read()?.let { WireJson.decodeFromString<Map<String, Map<String, String>>>(it) } }.getOrNull().orEmpty()
+    private fun read(): Map<String, Map<String, String>> = try {
+        storage.read()?.let { WireJson.decodeFromString<Map<String, Map<String, String>>>(it) }.orEmpty()
+    } catch (_: Exception) { readable = false; emptyMap() }
 }

@@ -1713,4 +1713,19 @@
     <string name="chat_context_session">Сессия</string>
     <string name="chat_context_title">Выбранный контекст</string>
     <plurals name="chat_context_count"><item quantity="one">%d объект</item><item quantity="few">%d объекта</item><item quantity="many">%d объектов</item><item quantity="other">%d объекта</item></plurals>
+    <string name="action_class_http_post">HTTP POST</string>
+    <string name="tool_http_post">HTTP POST</string>
+    <string name="tool_http_post_hint">Отправляет POST через открытый веб-туннель и может изменить устройство. Ответ передаётся выбранному провайдеру.</string>
+    <string name="tool_http_post_progress">Отправляю HTTP POST…</string>
+    <string name="confirm_http_title">Отправить HTTP POST?</string>
+    <string name="confirm_http_endpoint">Адрес устройства</string>
+    <string name="confirm_http_path">Путь</string>
+    <string name="confirm_http_target">%1$s · «%2$s»</string>
+    <string name="confirm_http_type">Тип содержимого</string>
+    <string name="confirm_http_body">Тело запроса</string>
+    <string name="confirm_http_empty">Пустое тело</string>
+    <string name="confirm_http_warning">Запрос может изменить устройство.</string>
+    <string name="confirm_http_remember_hint">Для сессии — HTTP POST, пока туннель открыт. Для подключения — до его изменения или смены сертификата. Разрешения можно отозвать на карточке туннеля.</string>
+    <string name="connection_assistant_sheet_session_http">Для сессии: HTTP POST.</string>
+    <string name="connection_assistant_sheet_connection_http">Для подключения: HTTP POST (с %1$s).</string>
 </resources>

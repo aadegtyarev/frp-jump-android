@@ -76,7 +76,7 @@ class AssistantToolRequestTest {
             // ssh_command is on but has no SSH owner in this fixture, so it is not offered; it is on, so it is not in the enum.
             assertEquals(listOf("read_page", "request_tool"), f.requests.last().tools.map { it.name })
             assertEquals(all - "read_page" - "ssh_command", enum(f.requests.last().tools.last()))
-            f.on(AssistantToolId.WEB_SEARCH, AssistantToolId.INSPECT_IMAGE, AssistantToolId.PROFILE_INFORMATION, AssistantToolId.HTTP_GET, AssistantToolId.MQTT_READ, AssistantToolId.MQTT_PUBLISH, AssistantToolId.TERMINAL_TABS, AssistantToolId.START_TUNNEL, AssistantToolId.WAIT_FOR, AssistantToolId.SKILLS_LIST)
+            f.on(AssistantToolId.WEB_SEARCH, AssistantToolId.INSPECT_IMAGE, AssistantToolId.PROFILE_INFORMATION, AssistantToolId.HTTP_GET, AssistantToolId.HTTP_POST, AssistantToolId.MQTT_READ, AssistantToolId.MQTT_PUBLISH, AssistantToolId.TERMINAL_TABS, AssistantToolId.START_TUNNEL, AssistantToolId.WAIT_FOR, AssistantToolId.SKILLS_LIST)
             f.send()
             // The tabs are on now, so typing into them may be asked for; every other tool is on.
             assertEquals(listOf("web_search", "read_page", "inspect_image", "request_tool"), f.requests.last().tools.map { it.name })

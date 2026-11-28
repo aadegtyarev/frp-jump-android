@@ -18,7 +18,7 @@ internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime,
     /** Whether a chat screen was attached at that real time: a card that runs out while none was ends the attempt. */
     val screenAttachedAt: (Long) -> Boolean = { true },
     /** Told once when an attempt ended that way (the owner keeps it for the notification). */
-    val onUnanswered: () -> Unit = {}, val mqttRead: AssistantMqttRead? = null, val mqttPublish: AssistantMqttPublish? = null, val httpGet: AssistantHttpGet? = null) {
+    val onUnanswered: () -> Unit = {}, val mqttRead: AssistantMqttRead? = null, val mqttPublish: AssistantMqttPublish? = null, val webHttp: AssistantWebHttp? = null) {
     val confirmIds = java.util.concurrent.atomic.AtomicLong()
 }
 
@@ -47,7 +47,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private val noQuestion = java.util.concurrent.ConcurrentHashMap<String, ru.adsrv.frpjump.settings.NoQuestion>()
     private var startedCall: String? = null
     private var candidateCall: ToolCall? = null
-    private var mqttOffCount: Long? = null
+    private var changeOffCount: Long? = null
 
     suspend fun run() {
         // Active time only: a pause (owner confirmation, from the next change on) does not count against the Send.
@@ -77,15 +77,15 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
                 }
             } ?: throw CancellationException()
         }
-        val mqttAuthority = MqttPublishAuthority { target ->
-            val id = candidateCall?.takeIf { it.name == AssistantToolId.MQTT_PUBLISH.wire }?.id
-            if (id == null) null else mqttDispatchCheck(env.confirm, mqttOffCount, noQuestion[id], target)
+        val changeAuthority = ChangeDispatchAuthority { tool, target ->
+            val id = candidateCall?.takeIf { it.name == tool.wire }?.id
+            if (id == null) null else changeDispatchCheck(tool, env.confirm, changeOffCount, noQuestion[id], target)
         }
-        withContext(env.io + admission + progress + mqttAuthority) {
+        withContext(env.io + admission + progress + changeAuthority) {
             val past = a.past.map { it to it.model(active) }
             val limits = env.limits(a.settings, a.limits)
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
-                env.waits, a.limits, env.sessions, env.skills, env.mqttRead, env.mqttPublish, env.httpGet)
+                env.waits, a.limits, env.sessions, env.skills, env.mqttRead, env.mqttPublish, env.webHttp)
             // The skills the model may use are fixed for the Send, like the tool list: the system text is the same in every request of it.
             val skillsSection = env.skills?.section(a.tools, a.limits.skillsListChars) ?: SkillsSection(emptyList())
             val summary = summary(active, prompts.summary)
@@ -101,7 +101,8 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
 
     /** The kernel's `authorize` hook: see [authorizeCall]. Pauses the Send's active-time clock while the owner is asked. */
     private suspend fun authorize(tools: Map<String, AgentTool>, call: ToolCall): ToolOutput? {
-        if (call.name == AssistantToolId.MQTT_PUBLISH.wire) mqttOffCount = env.confirm?.grants?.toolOffCount(AssistantToolId.MQTT_PUBLISH)
+        val guardedTool = AssistantToolId.fromWire(call.name)?.takeIf { it == AssistantToolId.MQTT_PUBLISH || it == AssistantToolId.HTTP_POST }
+        changeOffCount = guardedTool?.let { env.confirm?.grants?.toolOffCount(it) }
         val output = authorizeCall(env.confirm, tools, call, wait = { request, info -> deadline.paused { ask(request, info) } },
             onNotSaved = { own.guarded(owner, "notice") { mutable.value = mutable.value.copy(confirmationNotSaved = true) } }, io = env.io,
             onNoQuestion = { c, reason -> noQuestion[c.id] = reason })
@@ -118,7 +119,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         own.guarded(owner, "confirmation") {
             confirmation = slot
             mutable.value = mutable.value.copy(confirmation = PendingConfirmation(id, request.tool, request.command, request.target, info, request.typing, request.stop, request.close, request.skill,
-                sessionTools = request.sessionTools, mqtt = request.mqtt))
+                sessionTools = request.sessionTools, mqtt = request.mqtt, http = request.http))
         } ?: throw CancellationException("Send no longer owned")
         try {
             // The coroutine timer does not count device sleep, so the wait also looks at the real clock every few seconds.
@@ -229,7 +230,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
                     started = true.takeIf { startedCall == event.result.callId && event.result.outcome in setOf(ToolOutcome.FAILED, ToolOutcome.TIMEOUT) })
                 startedCall = null
                 candidateCall = null
-                mqttOffCount = null
+                changeOffCount = null
                 val value = update { record -> val last = record.exchanges.last(); record.copy(exchanges = record.exchanges.dropLast(1) + last.copy(results = last.results + received)) }
                 project(value)
                 if (value.records.last().chars > ChatLimits.MAX_HISTORY_CHARS) throw HistoryFull()

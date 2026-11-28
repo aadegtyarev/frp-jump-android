@@ -70,6 +70,34 @@ class SshTargetsTest {
 
     private fun <T> fixture(block: suspend (Fixture) -> T): T = runBlocking { Fixture().use { f -> f.ready(); block(f) } }
 
+    @Test fun `Web certificate revisions invalidate HTTPS period without changing SSH or unrelated endpoints`() = fixture { f ->
+        f.runtime.connections.save(Connection("web", "same", 22, PortKind.WEB, https = true))
+        val before = f.targets.period("home", "web")
+        val ssh = f.targets.period("home", "ssh")
+        assertNotNull(before); assertNotNull(ssh)
+        val beforeFp = f.targets.persistentFingerprint("home", "web")
+        f.runtime.webCerts.pin("other", 22, "A")
+        assertEquals(before, f.targets.period("home", "web"))
+        f.runtime.webCerts.pin("same", 22, "A")
+        assertNotEquals(before, f.targets.period("home", "web")); assertEquals(ssh, f.targets.period("home", "ssh"))
+        assertNotEquals(beforeFp, f.targets.persistentFingerprint("home", "web"))
+        val first = f.targets.period("home", "web")
+        val fake = ru.adsrv.frpjump.settings.FakeGrantWorld()
+        val world = object : ru.adsrv.frpjump.settings.GrantWorld by fake {
+            override fun period(target: ru.adsrv.frpjump.settings.GrantTarget) = f.targets.period(target.profileId, target.connectionId)
+            override fun persistentFingerprint(target: ru.adsrv.frpjump.settings.GrantTarget) = f.targets.persistentFingerprint(target.profileId, target.connectionId)
+        }
+        val settings = ru.adsrv.frpjump.settings.SettingsStore(MemoryStorage()).apply { update { it.copy(assistantEnabled = true, assistantHttpPost = true) } }
+        val grants = ru.adsrv.frpjump.settings.ConnectionGrants(settings, world)
+        val id = ru.adsrv.frpjump.settings.GrantTarget("home", "web")
+        val stamp = grants.stamp(id)!!
+        f.runtime.webCerts.pin("same", 22, "B"); f.runtime.webCerts.pin("same", 22, "A")
+        assertNotEquals(first, f.targets.period("home", "web"))
+        assertEquals(ru.adsrv.frpjump.settings.RecordResult.NOT_RECORDED,
+            grants.record(ru.adsrv.frpjump.settings.GrantKey(ru.adsrv.frpjump.ops.ActionClass.HTTP_POST, id),
+                ru.adsrv.frpjump.assistant.AssistantToolId.HTTP_POST, stamp, setOf(ru.adsrv.frpjump.assistant.AssistantToolId.HTTP_POST)))
+    }
+
     // ---- resolveSaved: every refusal branch, nothing is started ----
 
     @Test fun `ready saved SSH connection resolves with its tunnel`() = fixture { f ->

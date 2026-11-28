@@ -120,6 +120,7 @@ data class AppSettings(
     @SerialName("assistant_search") val assistantSearch: Boolean = false,
     @SerialName("assistant_read_page") val assistantReadPage: Boolean = false,
     @SerialName("assistant_profile_information") val assistantProfileInformation: Boolean = false,
+    @SerialName("assistant_http_post") val assistantHttpPost: Boolean = false,
     @SerialName("assistant_http_get") val assistantHttpGet: Boolean = false,
     @SerialName("assistant_mqtt_read") val assistantMqttRead: Boolean = false,
     @SerialName("assistant_mqtt_publish") val assistantMqttPublish: Boolean = false,
@@ -188,7 +189,7 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
     /** One switch for `skills_list`, `skill_save` and `skill_delete`. `read_skill` has none: it is on whenever a skill is relevant. */
     val skills: Boolean = false,
     /** "Offer to turn tools on": whether `request_tool` is offered while some tool is off. Captured at Send with the tool switches. */
-    val offer: Boolean = true, val mqttRead: Boolean = false, val mqttPublish: Boolean = false, val httpGet: Boolean = false) {
+    val offer: Boolean = true, val mqttRead: Boolean = false, val mqttPublish: Boolean = false, val httpGet: Boolean = false, val httpPost: Boolean = false) {
     /** Whether the tool is in effect: its switch, and for `terminal_input` also the terminal tabs switch. Everything that asks "is this tool on" asks here. */
     operator fun get(id: AssistantToolId): Boolean = when (id) {
         AssistantToolId.TERMINAL_INPUT -> terminalInput && terminalTabs
@@ -203,6 +204,7 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.READ_PAGE -> readPage
         AssistantToolId.INSPECT_IMAGE -> inspectImage
         AssistantToolId.PROFILE_INFORMATION -> profileInformation
+        AssistantToolId.HTTP_POST -> httpPost
         AssistantToolId.HTTP_GET -> httpGet
         AssistantToolId.MQTT_READ -> mqttRead
         AssistantToolId.MQTT_PUBLISH -> mqttPublish
@@ -225,6 +227,7 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.READ_PAGE -> copy(readPage = enabled)
         AssistantToolId.INSPECT_IMAGE -> copy(inspectImage = enabled)
         AssistantToolId.PROFILE_INFORMATION -> copy(profileInformation = enabled)
+        AssistantToolId.HTTP_POST -> copy(httpPost = enabled)
         AssistantToolId.HTTP_GET -> copy(httpGet = enabled)
         AssistantToolId.MQTT_READ -> copy(mqttRead = enabled)
         AssistantToolId.MQTT_PUBLISH -> copy(mqttPublish = enabled)
@@ -239,9 +242,9 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.READ_SKILL, AssistantToolId.SKILLS_LIST, AssistantToolId.SKILL_SAVE, AssistantToolId.SKILL_DELETE -> copy(skills = enabled)
     }
 }
-fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantTerminalTabs, assistantTerminalInput, assistantTunnels, assistantWaits, assistantSessions, assistantSkills, assistantOfferTools, assistantMqttRead, assistantMqttPublish, assistantHttpGet)
+fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantTerminalTabs, assistantTerminalInput, assistantTunnels, assistantWaits, assistantSessions, assistantSkills, assistantOfferTools, assistantMqttRead, assistantMqttPublish, assistantHttpGet, assistantHttpPost)
 private fun AppSettings.withAssistantTools(tools: AssistantTools) = copy(assistantSearch = tools.search, assistantReadPage = tools.readPage,
-    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantTerminalTabs = tools.terminalTabs, assistantTerminalInput = tools.terminalInput, assistantTunnels = tools.tunnels, assistantWaits = tools.waits, assistantSessions = tools.sessions, assistantSkills = tools.skills, assistantOfferTools = tools.offer, assistantMqttRead = tools.mqttRead, assistantMqttPublish = tools.mqttPublish, assistantHttpGet = tools.httpGet)
+    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantTerminalTabs = tools.terminalTabs, assistantTerminalInput = tools.terminalInput, assistantTunnels = tools.tunnels, assistantWaits = tools.waits, assistantSessions = tools.sessions, assistantSkills = tools.skills, assistantOfferTools = tools.offer, assistantMqttRead = tools.mqttRead, assistantMqttPublish = tools.mqttPublish, assistantHttpGet = tools.httpGet, assistantHttpPost = tools.httpPost)
 /** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
 data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
     val tools: AssistantTools = AssistantTools(),

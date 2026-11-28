@@ -31,6 +31,9 @@ class AssistantMarksTest {
     }
 
     @Test fun `the sheet names exactly the tools a grant covers`() {
+        assertEquals(GrantCover.HTTP, coverOf(setOf(AssistantToolId.HTTP_POST)))
+        assertEquals(R.string.connection_assistant_sheet_session_http, sessionLineRes(GrantCover.HTTP))
+        assertEquals(R.string.connection_assistant_sheet_connection_http, connectionLineRes(GrantCover.HTTP))
         assertEquals(GrantCover.COMMANDS, coverOf(setOf(cmd)))
         assertEquals(GrantCover.INPUT, coverOf(setOf(typing)))
         assertEquals(GrantCover.BOTH, coverOf(setOf(cmd, typing)))

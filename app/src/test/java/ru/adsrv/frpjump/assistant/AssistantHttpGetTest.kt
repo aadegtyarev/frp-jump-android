@@ -39,8 +39,8 @@ class AssistantHttpGetTest {
 
     @Test fun `uses exact loopback and root path and returns status and text`() = runBlocking {
         serve(response("hello".toByteArray())) { port, request ->
-            val target = HttpGetTarget(port, false, null, "connection", "period")
-            val tool = AssistantHttpGetTool(AssistantHttpGet { if (it == ids) target else null }, 1000)
+            val target = WebHttpTarget(port, false, null, "connection", "period")
+            val tool = AssistantHttpGetTool(AssistantWebHttp { if (it == ids) target else null }, 1000)
             val result = withContext(SideEffectAdmission { true }) { tool.execute(args("/a?x=1")) }
             assertEquals(ToolOutcome.SUCCESS, result.outcome)
             assertTrue(result.text.contains("\"status\":200")); assertTrue(result.text.contains("hello"))
@@ -48,23 +48,23 @@ class AssistantHttpGetTest {
         }
     }
     @Test fun `rejects authority and changed target without exposing response`() = runBlocking {
-        val unavailable = AssistantHttpGetTool(AssistantHttpGet { null }, 1000)
+        val unavailable = AssistantHttpGetTool(AssistantWebHttp { null }, 1000)
         assertEquals(ToolOutcome.FAILED, withContext(SideEffectAdmission { true }) { unavailable.execute(args("//other/")) }.outcome)
         serve(response("private".toByteArray())) { port, _ ->
             var calls = 0
-            val tool = AssistantHttpGetTool(AssistantHttpGet { HttpGetTarget(port, false, null, "connection", if (++calls < 4) 1 else 2) }, 1000)
+            val tool = AssistantHttpGetTool(AssistantWebHttp { WebHttpTarget(port, false, null, "connection", if (++calls < 4) 1 else 2) }, 1000)
             val result = withContext(SideEffectAdmission { true }) { tool.execute(args("/")) }
             assertEquals(ToolOutcome.FAILED, result.outcome); assertFalse(result.text.contains("private"))
         }
     }
     @Test fun `binary omitted and text bounded`() = runBlocking {
         serve(response(byteArrayOf(0, 65), "application/octet-stream")) { port, _ ->
-            val tool = AssistantHttpGetTool(AssistantHttpGet { HttpGetTarget(port, false, null, 1, 1) }, 1000)
+            val tool = AssistantHttpGetTool(AssistantWebHttp { WebHttpTarget(port, false, null, 1, 1) }, 1000)
             val result = withContext(SideEffectAdmission { true }) { tool.execute(args("/")) }
             assertTrue(result.text.contains("\"unreadable\":true")); assertTrue(result.text.contains("\"text\":\"\""))
         }
         serve(response("a".repeat(3000).toByteArray())) { port, _ ->
-            val tool = AssistantHttpGetTool(AssistantHttpGet { HttpGetTarget(port, false, null, 1, 1) }, 1000)
+            val tool = AssistantHttpGetTool(AssistantWebHttp { WebHttpTarget(port, false, null, 1, 1) }, 1000)
             val result = withContext(SideEffectAdmission { true }) { tool.execute(args("/")) }
             assertTrue(result.text.length <= 1000); assertTrue(result.text.contains("\"truncated\":true"))
         }
@@ -93,7 +93,7 @@ class AssistantHttpGetTest {
                 socket.getOutputStream().write(response("tls-ok".toByteArray()))
             } } }
             try {
-                val tool = AssistantHttpGetTool(AssistantHttpGet { HttpGetTarget(server.localPort, true, pin, 1, 1) }, 1000)
+                val tool = AssistantHttpGetTool(AssistantWebHttp { WebHttpTarget(server.localPort, true, pin, 1, 1) }, 1000)
                 val result = withContext(SideEffectAdmission { true }) { tool.execute(args("/")) }
                 if (pin == fingerprint) { assertEquals(ToolOutcome.SUCCESS, result.outcome); assertTrue(result.text.contains("tls-ok")) }
                 else { assertEquals(ToolOutcome.FAILED, result.outcome); assertFalse(result.text.contains("tls-ok")) }
@@ -116,7 +116,7 @@ class AssistantHttpGetTest {
                     try { server.accept().close(); 2 } catch (_: java.net.SocketTimeoutException) { 1 }
                 }
                 try {
-                    val tool = AssistantHttpGetTool(AssistantHttpGet { HttpGetTarget(server.localPort, false, null, 1, 1) }, 1000)
+                    val tool = AssistantHttpGetTool(AssistantWebHttp { WebHttpTarget(server.localPort, false, null, 1, 1) }, 1000)
                     withContext(SideEffectAdmission { true }) { tool.execute(args("/")) }
                     assertEquals(1, requests.get(2, TimeUnit.SECONDS))
                 } finally { executor.shutdownNow() }
@@ -149,7 +149,7 @@ class AssistantHttpGetTest {
                 }
             }
             try {
-                val tool = AssistantHttpGetTool(AssistantHttpGet { HttpGetTarget(server.localPort, false, null, 1, 1) }, 1000)
+                val tool = AssistantHttpGetTool(AssistantWebHttp { WebHttpTarget(server.localPort, false, null, 1, 1) }, 1000)
                 val task = async(Dispatchers.IO + SideEffectAdmission { true }) { tool.execute(args("/")) }
                 assertTrue(started.await(3, TimeUnit.SECONDS))
                 task.cancelAndJoin()

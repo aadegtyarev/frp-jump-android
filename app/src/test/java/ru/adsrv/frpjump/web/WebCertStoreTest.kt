@@ -150,4 +150,13 @@ class WebCertStoreTest {
             lines,
         )
     }
+    @Test fun `revision is per endpoint and unreadable storage is explicit`() {
+        val store = WebCertStore(MemoryStorage())
+        assertTrue(store.readable); assertEquals(0L, store.revision("one", 443))
+        store.pin("one", 443, a); assertEquals(1L, store.revision("one", 443)); assertEquals(0L, store.revision("two", 443))
+        store.pin("one", 443, b); assertEquals(2L, store.revision("one", 443)); assertEquals(0L, store.revision("one", 8443))
+        val bad = WebCertStore(MemoryStorage("not json"))
+        assertTrue(!bad.readable)
+    }
+
 }
