@@ -117,6 +117,9 @@ class SshTargets(
             runtime.sshLogins.stored(connection.device, connection.port), runtime.hostKeys.pinned(connection.device, connection.port), user))
     }
 
+    /** The configured public MQTT principal; never unseals a password. */
+    fun rememberedMqttUser(profileId: String, connectionId: String): String? = mqttUser(profileId, connectionId)
+
     /** Whether the connection is hidden for Undo (its delete waits for the notice to go): a persistent permission does not act then. */
     fun hidden(profileId: String, connectionId: String): Boolean = PendingUndo.connectionKey(profileId, connectionId) in hidden.value
 

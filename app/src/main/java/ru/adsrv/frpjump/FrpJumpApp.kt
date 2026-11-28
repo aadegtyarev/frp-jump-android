@@ -162,7 +162,7 @@ class FrpJumpApp : Application() {
      * connection's fingerprint, the assistant's off switch, the tools' switches, the app lock). Built on first use (the first chat, or a connection card).
      */
     val sessionGrants: ru.adsrv.frpjump.settings.SessionGrants by lazy {
-        ru.adsrv.frpjump.assistant.appSessionGrants(sshTargets, settings, lock, appScope)
+        ru.adsrv.frpjump.assistant.appSessionGrants(sshTargets, settings, lock, appScope, mqttPrincipal = ::mqttGrantPrincipal, mqttChanges = mqtt.through)
     }
 
     /**
@@ -170,7 +170,14 @@ class FrpJumpApp : Application() {
      * conversation (a changed connection, login, host key or enrollment, a forgotten profile). Built on first use (the first chat, or a connection card).
      */
     val connectionGrants: ru.adsrv.frpjump.settings.ConnectionGrants by lazy {
-        ru.adsrv.frpjump.assistant.appConnectionGrants(sshTargets, settings, lock, appScope)
+        ru.adsrv.frpjump.assistant.appConnectionGrants(sshTargets, settings, lock, appScope, mqttPrincipal = ::mqttGrantPrincipal, mqttChanges = mqtt.through)
+    }
+
+    private fun mqttGrantPrincipal(target: ru.adsrv.frpjump.settings.GrantTarget): Pair<Any, String?>? {
+        val session = mqtt.find(target.profileId, target.connectionId) ?: return null
+        val tunnel = ru.adsrv.frpjump.tunnel.TunnelRef(session.profile, session.device, session.port)
+        if (ru.adsrv.frpjump.sessions.sessionHidden(pendingUndo.hidden.value, ru.adsrv.frpjump.tunnel.SessionKind.MQTT, session.id, tunnel)) return null
+        return session.acceptedPrincipal()
     }
 
     /** The owner's saved tunnels for the assistant's `start_tunnel` and `stop_tunnel`: the screens' own operations over the same tunnels and Undo queue. */
@@ -294,7 +301,13 @@ class FrpJumpApp : Application() {
             grants = sessionGrants, connectionGrants = connectionGrants,
             mqttRead = ru.adsrv.frpjump.assistant.AssistantMqttRead(assistantTunnels, mqtt, pendingUndo.hidden) { target ->
                 profiles.runtime(target.profileId)?.tunnels?.state?.value?.tunnels?.singleOrNull { it.device == target.device && it.port == target.port }?.localPort
-            })
+            },
+            mqttPublish = ru.adsrv.frpjump.assistant.AssistantMqttPublish(assistantTunnels, mqtt, pendingUndo.hidden, localPort = { target ->
+                profiles.runtime(target.profileId)?.tunnels?.state?.value?.let { state ->
+                    val key = ru.adsrv.frpjump.ports.localPortKey(target.device, target.port)
+                    if (state.pending[key] != null) null else state.tunnels.singleOrNull { it.key == key }?.localPort
+                }
+            }, loginRevision = { mqttLogins.revision }, hideCount = pendingUndo::hideCount))
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)

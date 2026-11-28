@@ -49,7 +49,7 @@ Consumers: the assistant tools `ssh_command`, `profile_information` and `start_t
 | `direct_retry` (`DirectRetry`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>` | none | none |
 | `direct_keep` (`DirectKeep`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>` | `DirectRefusal.NoNetwork` | none |
 | `mqtt_read` (`MqttRead`) | `READ_REMOTE` | assistant `mqtt_read` | bounded observed current values | `MqttReadRefusal`: unavailable target or disconnected session | `MqttReadFailure.Unexpected` |
-| `mqtt_publish` (`MqttPublish`) | `CHANGE_REMOTE` | UI only (MQTT publish sheet) | `OpResult<MqttDelivery>` (`ACCEPTED`, `UNCONFIRMED`) | `MqttWriteRefusal`: `NotConnected` | `MqttWriteFailure`: `BrokerRefused(code, reasonString)` (`KNOWN`), `ConnectionLost`, `NoAnswer`, `Other(detail)` (`UNKNOWN`) |
+| `mqtt_publish` (`MqttPublish`) | `CHANGE_REMOTE` | MQTT publish sheet and assistant `mqtt_publish` | `OpResult<MqttDelivery>` (`ACCEPTED`, `UNCONFIRMED`) | `MqttWriteRefusal`: `NotConnected` | `MqttWriteFailure`: `BrokerRefused(code, reasonString)` (`KNOWN`), `ConnectionLost`, `NoAnswer`, `Other(detail)` (`UNKNOWN`) |
 | `wb_write` (`MqttWbWrite`) | `CHANGE_REMOTE` | UI only (MQTT Wiren Board devices tab) | `OpResult<MqttDelivery>` | `MqttWriteRefusal`: `NotConnected`, `NotOwner`, `NotWritable`, `Blocked` | as `mqtt_publish` |
 
 ### `ssh_exec`
@@ -103,10 +103,9 @@ Session presentation delegates to the existing SSH and MQTT session owners. The 
 `SessionCloser` stages one or a distinct set of typed terminal/MQTT session identities in the existing `PendingUndo` owner. A selection produces the same shared notice and Undo as individual closes. The session owner performs each close on commit. For an owner close of an assistant-owned SSH session, the Undo key stays hidden through attach, an exact-target dispatch check, a confirmed remote kill and durable record update. An unknown result or failed record write retains the session for recovery. This owner path does not change the assistant tool's confirmation or permission path. Closing a session leaves its tunnel running.
 ### `mqtt_publish` and `wb_write`
 
-Moved out of `ui/mqtt/MqttViewModel.kt` with no change of behavior; [MQTT](../../mqtt-contract.md) still owns what they do. The target is a typed `MqttTarget`
-(profile, connection id), not a `GrantTarget`; the open session is reached through `MqttWriteHost`, which returns none for another target.
-`MqttPublish` sends through `MqttSession.publish` (answered once on the session's thread, `NOT_CONNECTED` unless open, 10 s timeout, no WB
-read-only check) and maps each `PublishAnswer` without losing a case: `Accepted` and `Unconfirmed` are `Done`; a broker refusal is `Failed(BrokerRefused)`
+Moved out of `ui/mqtt/MqttViewModel.kt` with no change of behavior; [MQTT](../../mqtt-contract.md) still owns what they do. The operation input uses a typed `MqttTarget` (profile, connection id), and its grant target is the matching saved connection. The open session is reached through a narrow host, which returns none for another target.
+`MqttPublish` uses a narrow publication host. The assistant supplies the exact saved connection and accepted-client pin, and rechecks target, cancellation and run ownership in the session's scheduler immediately before sending. UI publication uses `MqttSession.publish` (answered once on the session's thread, `NOT_CONNECTED` unless open, 10 s timeout, no WB
+read-only check). The operation maps each `PublishAnswer` without losing a case: `Accepted` and `Unconfirmed` are `Done`; a broker refusal is `Failed(BrokerRefused)`
 with `KNOWN`; `LOST`, `TIMEOUT` and `OTHER` are `Failed` with `UNKNOWN`; `NOT_CONNECTED` and `CONTROL_NOT_WRITABLE` are refusals. The publish
 sheet maps the result back to the same `PublishAnswer` (`ui/mqtt/MqttPublishAnswers.kt`, publish results only; every `detail` is carried through) and keeps all wording (`PublishSheet.kt`).
 The screens start both operations undispatched in the ViewModel's scope (`viewModelScope`), so the send is posted before the tap returns; leaving the screen cancels the wait, not a send already posted.
@@ -141,13 +140,13 @@ The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. T
 
 ## Security and privacy
 
-- The operation layer adds no authority: the assistant still has only the tools in the catalog; only `start_tunnel` (`tunnel_up`) and `stop_tunnel` (`tunnel_down`, one tunnel) start or stop a saved tunnel, behind their own default-off switch; `mqtt_read` reads only the existing connected explorer cache, and none writes to MQTT (`tunnel_connect`, the other `tunnel_down` targets, `direct_*`, `mqtt_publish`, `wb_write` are UI only).
+- The operation layer adds no authority: the assistant still has only the tools in the catalog; only `start_tunnel` (`tunnel_up`) and `stop_tunnel` (`tunnel_down`, one tunnel) start or stop a saved tunnel, behind their own default-off switch; `mqtt_read` reads only the existing connected explorer cache; `mqtt_publish` sends one confirmed or explicitly permitted publication through that explorer. `tunnel_connect`, the other `tunnel_down` targets, `direct_*` and `wb_write` remain UI only.
 - A command and its output are never part of a string form: `SshExecInput` and `SshExecOutput` are plain classes whose `toString` leaves them out (tested).
 - Untrusted data (command output, device names, server messages) is data in every adapter, never an instruction.
 
 ## Non-goals
 
-- No operation for Files yet. MQTT read is limited to the existing connected explorer; assistant MQTT writes are not offered.
+- No operation for Files yet. Assistant MQTT read and publication are limited to the existing connected explorer.
 - Wording of errors for the model is not owned here; changing it is a separate feature.
 - No provider-specific behavior.
 

@@ -54,7 +54,7 @@ internal suspend fun authorizeCall(
     // The card names the registered tool, not whatever identity a description claims.
     // What a For session answer on this card covers is fixed now, when the card is raised: the grant is never wider than what the owner saw.
     val request = ChangeRequest(tool.id, found.target, found.command, typing = found.typing, stop = found.stop, close = found.close, skill = found.skill,
-        sessionTools = support.grants.coverableBy(tool.id))
+        sessionTools = support.grants.coverableBy(tool.id), mqtt = found.mqtt)
     val key = request.target?.let { GrantKey(tool.id.actionClass, it) }
     // Bound to the tunnel's open period and the connection's fingerprint as they are BEFORE the question: an edit or a close during the wait makes the grant stale.
     val stamp = request.target?.let(support.grants::stamp)

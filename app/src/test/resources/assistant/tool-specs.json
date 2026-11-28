@@ -69,6 +69,48 @@
     }
   },
   {
+    "name": "mqtt_publish",
+    "description": "Publish one owner-requested text message through an already connected saved MQTT explorer. Use profile_id and connection_id from profile_information. The owner may be asked to approve the exact topic, payload, QoS and retained flag. Empty retained payload clears the retained value. No retries.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "connection_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "topic": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "payload": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "qos": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "retain": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "profile_id",
+        "connection_id",
+        "topic",
+        "payload",
+        "qos",
+        "retain"
+      ]
+    }
+  },
+  {
     "name": "start_tunnel",
     "description": "Start one saved tunnel from profile_information (profile_id, connection_id), as the owner's Start button does, and wait until the device takes connections through it. Changes only this app, nothing on the device.",
     "parameters": {
@@ -212,6 +254,7 @@
               "inspect_image",
               "profile_information",
               "mqtt_read",
+              "mqtt_publish",
               "start_tunnel",
               "terminal_tabs",
               "terminal_input",
@@ -222,7 +265,7 @@
             ]
           },
           "minItems": 0,
-          "maxItems": 12
+          "maxItems": 13
         },
         "body": {
           "type": "string",

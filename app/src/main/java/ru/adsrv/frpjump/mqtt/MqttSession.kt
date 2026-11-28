@@ -172,6 +172,13 @@ class MqttSession(
     private var generation = 0
 
     @Volatile private var acceptedWbOwner: WbWriteOwner? = null
+    @Volatile private var acceptedUser: String? = null
+    /** Accepted client and its public login name; null while no client is open. */
+    fun acceptedPrincipal(): Pair<WbWriteOwner, String?>? {
+        val owner = wbWriteOwner ?: return null
+        val user = acceptedUser
+        return (owner to user).takeIf { wbWriteOwner === owner }
+    }
     val wbWriteOwner: WbWriteOwner? get() = acceptedWbOwner.takeIf { _state.value is MqttState.Open }
     fun ownsWbWrites(owner: WbWriteOwner?): Boolean = owner != null && owner === wbWriteOwner
     private var reconnectStep = 0
@@ -288,6 +295,12 @@ class MqttSession(
      * [PUBLISH_TIMEOUT_MS] without one.
      */
     fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) = scheduler.post {
+        publishNow(topic, payload, qos, retain, done)
+    }
+
+    /** Dispatch only while the captured client and the caller's current authority are still valid. */
+    fun publishGuarded(owner: WbWriteOwner?, allowed: () -> Boolean, topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) = scheduler.post {
+        if (!ownsWbWrites(owner) || !allowed()) return@post done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
         publishNow(topic, payload, qos, retain, done)
     }
 
@@ -473,6 +486,7 @@ class MqttSession(
             persistLogin(LoginStorageChoice(typed, rememberTyped))
         }
         loginTyped = false
+        acceptedUser = login?.user
         acceptedWbOwner = WbWriteOwner()
         _state.value = MqttState.Open(v)
         subscribed.clear()

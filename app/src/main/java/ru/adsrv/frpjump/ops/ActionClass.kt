@@ -16,6 +16,8 @@ enum class ActionClass(val wire: String, val grantable: Boolean) {
     CONNECTION_READ("connection_read", false),
     /** Changes something on a device through a saved connection or its sessions. */
     CONNECTION_CHANGE("connection_change", true),
+    /** Publishes to the owner's MQTT explorer only. */
+    MQTT_PUBLISH("mqtt_publish", true),
     /** Reads the app's own state (skills). */
     APP_READ("app_read", false),
     /** Changes the app's own state (skills, tunnels, tab names, waits). */

@@ -108,6 +108,21 @@ class ConnectionGrants(private val settings: SettingsStore, private val world: G
         }
     }
 
+    /** A validated record carried to a queued dispatch; checks there use memory only. */
+    class DispatchStamp internal constructor(internal val key: GrantKey, internal val tool: AssistantToolId,
+        internal val record: ConfirmationOverride, internal val revocations: Long)
+
+    fun dispatchStamp(tool: AssistantToolId, key: GrantKey): DispatchStamp? {
+        val before = revocations.get()
+        val record = settings.assistantConfirmations.recordOf(key.actionClass, key.target) ?: return null
+        if (!covers(tool, key)) return null
+        return DispatchStamp(key, tool, record, before).takeIf(::dispatchValid)
+    }
+
+    fun dispatchValid(stamp: DispatchStamp): Boolean = revocations.get() == stamp.revocations && !isRevoked(stamp.key.target) &&
+        world.enabled() && !world.locked() && world.inEffect(stamp.tool) && !world.hidden(stamp.key.target) &&
+        settings.assistantConfirmations.recordOf(stamp.key.actionClass, stamp.key.target) == stamp.record
+
     /**
      * Stops the USE of the records of one connection at once, in memory only (no disk, safe on Main): what the Forget tap calls before it starts the write.
      * It lasts until the committed record is really gone ([forget] or [sweep]).

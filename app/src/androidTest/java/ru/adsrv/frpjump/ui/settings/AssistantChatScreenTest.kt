@@ -1152,6 +1152,46 @@ class AssistantChatScreenTest {
         shot("tools-mqtt-read-on")
     }
 
+    @Test fun toolsScreenShowsMqttPublishSwitchOffAndSavesIt() {
+        install()
+        button("chat_tools").performClick()
+        compose.onNodeWithTag("tool_mqtt_publish").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_mqtt_publish_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_mqtt_publish"))).assertExists()
+        toolToggle("mqtt_publish").assertIsOff()
+        assertFalse(settings.assistantAvailability.tools.mqttPublish)
+        shot("tools-mqtt-publish-off")
+        toolToggle("mqtt_publish").performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.mqttPublish }
+        toolToggle("mqtt_publish").assertIsOn()
+    }
+
+    @Test fun mqttConfirmationShowsPinnedTargetAndEmptyRetainedDeletion() {
+        val connection = ru.adsrv.frpjump.connections.Connection("c", "synthetic-device", 1883, ru.adsrv.frpjump.ports.PortKind.MQTT,
+            customName = "Synthetic connection with a long name for wrapping")
+        val target = ru.adsrv.frpjump.settings.GrantTarget("p", "c")
+        val info = ConfirmationTargetInfo("Synthetic profile with a long name", connection)
+        val mqtt = MqttPublishCard("devices/synthetic/control", 2, true, info.profileName, connection.customName!!, connection.device, connection.port)
+        val card = PendingConfirmation(1, AssistantToolId.MQTT_PUBLISH, "", target, info, sessionTools = setOf(AssistantToolId.MQTT_PUBLISH), mqtt = mqtt)
+        var answer: ConfirmationDecision? = null
+        compose.activityRule.scenario.onActivity { activity ->
+            localizeActivity(activity)
+            activity.setContent { FrpJumpTheme { ChatConfirmationCard(card, { answer = it }, wide = landscape()) } }
+        }
+        compose.onNodeWithTag("chat_confirm_target").assertIsDisplayed().assertTextContains("1883", substring = true)
+        compose.onNodeWithTag("chat_confirm_mqtt_topic").assertTextContains("devices/synthetic/control", substring = true)
+        compose.onNodeWithTag("chat_confirm_mqtt_qos").assertTextContains("2", substring = true)
+        compose.onNodeWithTag("chat_confirm_mqtt_clear").assertExists()
+        compose.onNodeWithTag("chat_confirm_mqtt_empty").assertExists()
+        compose.onNodeWithTag("chat_confirm_command_box").assertDoesNotExist()
+        compose.onNodeWithTag("chat_confirm_tool").assertDoesNotExist()
+        compose.onNodeWithTag("chat_confirm_remember_hint").assertTextContains("MQTT", substring = true)
+        shot("card-mqtt-publish-empty")
+        val allow = compose.onNodeWithTag("chat_confirm_allow")
+        if (!allow.isDisplayed()) allow.performScrollTo()
+        allow.performClick()
+        compose.runOnIdle { assertEquals(ConfirmationDecision.ONCE, answer) }
+    }
+
     /** SSH failure is available to the model without an automatic receipt. */
     @Test fun sshFailureDoesNotExposeCommandReceipt() {
         settings.setAssistantConfirmations(ru.adsrv.frpjump.settings.ConfirmationMode.OFF)

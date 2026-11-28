@@ -61,7 +61,9 @@ import ru.adsrv.frpjump.ui.connections.kindWord
  * The one hint under the remember answers: what For session and For this connection cover. It names the grantable tools in the grant (both, typing
  * only, or commands); with none known, the card's own kind decides. It is the same grant the card said it covers when it was raised.
  */
-internal fun rememberHintRes(sessionTools: Set<AssistantToolId>, typing: Boolean): Int = when {
+internal fun rememberHintRes(sessionTools: Set<AssistantToolId>, typing: Boolean, mqtt: Boolean = false): Int = when {
+    mqtt -> R.string.confirm_mqtt_remember_hint
+    AssistantToolId.MQTT_PUBLISH in sessionTools -> R.string.confirm_mqtt_remember_hint
     sessionTools.size > 1 -> R.string.confirm_remember_hint_both
     sessionTools.singleOrNull() == AssistantToolId.TERMINAL_INPUT -> R.string.confirm_remember_hint_input
     sessionTools.singleOrNull() != null -> R.string.confirm_remember_hint
@@ -78,7 +80,10 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val stop = confirmation.stop
     val close = confirmation.close
     val skill = confirmation.skill
-    val target = if (skill != null) {
+    val mqtt = confirmation.mqtt
+    val target = if (mqtt != null) {
+        stringResource(R.string.confirm_stop_target, mqtt.profile, ru.adsrv.frpjump.ssh.isolateName(mqtt.name), mqtt.device, mqtt.port)
+    } else if (skill != null) {
         // The skill's name, bidi-isolated.
         ru.adsrv.frpjump.ssh.isolateName(skill.name)
     } else if (close != null) {
@@ -109,7 +114,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val always = stringResource(R.string.confirm_always)
     val decline = stringResource(R.string.confirm_decline)
     // What For session covers: the grantable tools of the class that were in effect when the card was raised (both: commands and typing).
-    val rememberHint = stringResource(rememberHintRes(confirmation.sessionTools, typing != null))
+    val rememberHint = stringResource(rememberHintRes(confirmation.sessionTools, typing != null, mqtt != null))
     val escapeStyle = SpanStyle(background = AppTheme.colors.accentContainer, color = AppTheme.colors.onAccentContainer, fontWeight = FontWeight.Bold)
     val shownCommand = remember(confirmation.id, escapeStyle) {
         val spans = if (typing != null) displayTypedSpans(confirmation.command, forRender = true) else displayCommandSpans(confirmation.command, forRender = true)
@@ -123,7 +128,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val rtl = remember(confirmation.id) { containsStrongRtl(confirmation.command) }
     val sectionScroll = rememberScrollState()
     val commandScroll = rememberScrollState()
-    val commandLabel = stringResource(if (skill != null) R.string.confirm_skill_text else if (typing != null) R.string.confirm_text else R.string.confirm_command)
+    val commandLabel = stringResource(if (mqtt != null) R.string.confirm_mqtt_payload else if (skill != null) R.string.confirm_skill_text else if (typing != null) R.string.confirm_text else R.string.confirm_command)
     var askAlways by remember(confirmation.id) { mutableStateOf(false) }
     // No "For session" for a stop: its hint speaks of commands on a tunnel.
     val canSession = info != null && confirmation.target != null && confirmation.tool.grantable && stop == null && close == null && skill == null
@@ -144,25 +149,34 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         Column(Modifier.onSizeChanged { headerPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // A command names the connection it runs in ("Run in <name>?"): the name bidi-isolated, tied to "in" by a no-break space; a card without a known
             // connection keeps "Run this command?". The other cards keep their titles.
-            val title = if (skill != null) stringResource(skillTitle(skill)) else if (close != null) stringResource(R.string.confirm_close_title)
+            val title = if (mqtt != null) stringResource(R.string.confirm_mqtt_title) else if (skill != null) stringResource(skillTitle(skill)) else if (close != null) stringResource(R.string.confirm_close_title)
                 else if (stop != null) stringResource(R.string.confirm_stop_title) else if (typing != null) stringResource(R.string.confirm_input_title)
                 else if (info != null) stringResource(R.string.confirm_title_in, ru.adsrv.frpjump.ssh.isolateName(info.connection.label { kindWord(context, it) }))
                 else stringResource(R.string.confirm_title)
             Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite }.testTag("chat_confirm_title"))
             // Portrait: two lines, "class · tool" must not lose the tool at a large font. Two-pane: one line, "tool · class", the class is what gets cut.
-            if (wide) Text(wideTool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            if (mqtt == null && wide) Text(wideTool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { contentDescription = tool }.testTag("chat_confirm_tool"))
-            else Text(tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            else if (mqtt == null) Text(tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("chat_confirm_tool"))
             if (typing != null) {
                 // The tab and the program as lines of their own, each with its label; the whole value stays readable (the section scrolls).
                 FieldLine(stringResource(R.string.confirm_tab), target, "chat_confirm_target")
                 typing.program?.let { FieldLine(stringResource(R.string.confirm_program), it, "chat_confirm_program") }
+            } else if (mqtt != null) {
+                Text(target, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted,
+                    modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
             } else {
                 // Two lines at most, ellipsis after that; TalkBack reads the whole name.
                 Text(target, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
+            }
+            if (mqtt != null) {
+                FieldLine(stringResource(R.string.confirm_mqtt_topic), skillText(mqtt.topic, escapeStyle), "chat_confirm_mqtt_topic")
+                FieldLine(stringResource(R.string.confirm_mqtt_qos), mqtt.qos.toString(), "chat_confirm_mqtt_qos")
+                FieldLine(stringResource(R.string.confirm_mqtt_retain), stringResource(if (mqtt.retain) R.string.confirm_mqtt_yes else R.string.confirm_mqtt_no), "chat_confirm_mqtt_retain")
+                if (mqtt.retain && confirmation.command.isEmpty()) Text(stringResource(R.string.confirm_mqtt_clear), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_mqtt_clear"))
             }
             if (skill != null) {
                 // The whole skill as plain text: its description and what it requires here, its text in the box below.
@@ -184,8 +198,9 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
                 if (more) Text(stringResource(R.string.confirm_more), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_more"))
                 if (rtl) Text(stringResource(R.string.confirm_rtl_note), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_rtl"))
             }
-            if (typing != null || skill != null) Text(commandLabel, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("chat_confirm_text_label"))
-            Box(Modifier.heightIn(max = lineHeight * (if (skill != null) (if (wide) 6 else 10) else if (wide) 3 else 4)).verticalScroll(commandScroll).testTag("chat_confirm_command_box")) {
+            if (typing != null || skill != null || mqtt != null) Text(commandLabel, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("chat_confirm_text_label"))
+            if (mqtt != null && confirmation.command.isEmpty()) Text(stringResource(R.string.confirm_mqtt_empty), modifier = Modifier.testTag("chat_confirm_mqtt_empty"))
+            if (mqtt == null || confirmation.command.isNotEmpty()) Box(Modifier.heightIn(max = lineHeight * (if (skill != null) (if (wide) 6 else 10) else if (wide) 3 else 4)).verticalScroll(commandScroll).testTag("chat_confirm_command_box")) {
                 SelectionContainer {
                     Text(shownCommand, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Ltr),
                         modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$commandLabel: $describedCommand" }.testTag("chat_confirm_command"))
@@ -197,7 +212,9 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val showCommand = stop == null && close == null && (skill == null || skill.kind != ru.adsrv.frpjump.assistant.SkillCard.Kind.DELETE) && (typing == null || confirmation.command.isNotEmpty())
     // A stop says how many tabs close, only when some do.
     @Composable fun Warning() {
-        if (skill != null) {
+        if (mqtt != null) {
+            Text(stringResource(R.string.confirm_mqtt_warning), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_warning"))
+        } else if (skill != null) {
             // The card shows the whole skill: no further warning.
         } else if (close != null) {
             Text(stringResource(R.string.confirm_close_warning), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("chat_confirm_close_warning"))

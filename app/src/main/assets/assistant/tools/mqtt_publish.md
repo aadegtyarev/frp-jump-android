@@ -1,0 +1,1 @@
+Use mqtt_publish only when the owner asks to publish. Supply the exact saved MQTT connection IDs, topic, literal text payload, QoS and retain flag. An empty retained payload clears the broker's retained value. Do not retry an uncertain publication; report its outcome.

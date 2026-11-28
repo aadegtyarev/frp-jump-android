@@ -1632,4 +1632,21 @@
     <string name="chat_work_collapsed">Collapsed</string>
     <string name="chat_checked_tunnels">Devices and tunnels</string>
     <string name="chat_checked_terminals">Open terminal tabs</string>
+    <string name="action_class_mqtt_publish">MQTT publication</string>
+    <string name="tool_mqtt_publish">Publish MQTT message</string>
+    <string name="tool_mqtt_publish_hint">Publishes a message through an open MQTT session; may change the device.</string>
+    <string name="tool_mqtt_publish_progress">Publishing MQTT message…</string>
+    <string name="confirm_mqtt_title">Publish MQTT message?</string>
+    <string name="confirm_mqtt_topic">Topic</string>
+    <string name="confirm_mqtt_payload">Payload</string>
+    <string name="confirm_mqtt_qos">QoS</string>
+    <string name="confirm_mqtt_retain">Retained</string>
+    <string name="confirm_mqtt_yes">Yes</string>
+    <string name="confirm_mqtt_no">No</string>
+    <string name="confirm_mqtt_clear">An empty retained message clears the broker’s retained value.</string>
+    <string name="confirm_mqtt_empty">Empty payload</string>
+    <string name="confirm_mqtt_warning">Publishing may change the device.</string>
+    <string name="confirm_mqtt_remember_hint">For session: MQTT publishing until the broker disconnects or reconnects. For this connection: until it is edited. Undo: the mark on the tunnel card.</string>
+    <string name="connection_assistant_sheet_session_mqtt">For session: MQTT publishing.</string>
+    <string name="connection_assistant_sheet_connection_mqtt">For this connection: MQTT publishing (since %1$s).</string>
 </resources>

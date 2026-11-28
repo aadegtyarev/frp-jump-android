@@ -49,11 +49,16 @@ class ConfirmationPolicyTest {
             val target = GrantTarget("p", "c"); val k = GrantKey(tool.actionClass, target)
             val none = grants()
             val held = grants().also { g -> g.record(GrantKey(ActionClass.CONNECTION_CHANGE, target), AssistantToolId.SSH_COMMAND, g.stamp(target)!!, g.coverableBy(AssistantToolId.SSH_COMMAND)) }
+            val mqttHeld = grants().also { g ->
+                val mqtt = AssistantToolId.MQTT_PUBLISH
+                assertTrue(g.record(GrantKey(ActionClass.MQTT_PUBLISH, target), mqtt, g.stamp(target)!!, g.coverableBy(mqtt)))
+            }
             val asksToday = tool.effect.changes && tool.confirms
             assertEquals("${tool.name}: no grant, ask", asksToday, mustAsk(tool, k, ask, none))
             assertFalse("${tool.name}: global off", mustAsk(tool, k, off, none)); assertFalse("${tool.name}: global off with a grant", mustAsk(tool, k, off, held))
             // A valid grant of CONNECTION_CHANGE waives only the grantable tools of that class.
-            assertEquals("${tool.name}: a valid grant", asksToday && !(tool.grantable), mustAsk(tool, k, ask, held))
+            assertEquals("${tool.name}: SSH grant", asksToday && !(tool.grantable && tool.actionClass == ActionClass.CONNECTION_CHANGE), mustAsk(tool, k, ask, held))
+            assertEquals("${tool.name}: MQTT grant", asksToday && !(tool.grantable && tool.actionClass == ActionClass.MQTT_PUBLISH), mustAsk(tool, k, ask, mqttHeld))
         }
     }
 
