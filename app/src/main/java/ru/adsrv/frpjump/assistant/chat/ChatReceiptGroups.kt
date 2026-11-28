@@ -113,7 +113,7 @@ internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("a
         // A skill is named by its own name (the model's text, cleaned below).
         AssistantToolId.READ_SKILL.wire, AssistantToolId.SKILL_SAVE.wire, AssistantToolId.SKILL_DELETE.wire -> a.text("name")
         AssistantToolId.TEMP_FILE_CREATE.wire -> a.text("name")
-        AssistantToolId.HTTP_POST.wire -> a.text("path")
+        AssistantToolId.HTTP_POST.wire, AssistantToolId.HTTP_UPLOAD.wire -> a.text("path")
         AssistantToolId.HTTP_GET.wire -> a.text("path")
         AssistantToolId.MQTT_PUBLISH.wire -> a.text("topic")
         AssistantToolId.MQTT_READ.wire -> a.text("filter") ?: words.connectionName(a.text("profile_id").orEmpty(), a.text("connection_id").orEmpty())

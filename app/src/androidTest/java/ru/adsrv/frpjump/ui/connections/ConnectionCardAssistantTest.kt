@@ -133,6 +133,17 @@ class ConnectionCardAssistantTest {
         shot("connection-card-assistant-sheet-both")
     }
 
+    @Test fun webPermissionSheetNamesBothPostAndUpload() {
+        val web = row.copy(connection = Connection("web", "synthetic-device", 8443, PortKind.WEB, customName = "Synthetic Web", https = true))
+        val permissions = setOf(ru.adsrv.frpjump.assistant.AssistantToolId.HTTP_POST, ru.adsrv.frpjump.assistant.AssistantToolId.HTTP_UPLOAD)
+        card { ConnectionCard(web, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions,
+            assistant = AssistantMark(sessionTools = permissions, rememberedAt = dateMillis, rememberedTools = permissions)) }
+        compose.onNodeWithTag(chip, useUnmergedTree = true).performClick(); compose.waitForIdle()
+        compose.onNodeWithText(text(R.string.connection_assistant_sheet_session_http_both)).assertExists()
+        compose.onNodeWithText(text(R.string.connection_assistant_sheet_connection_http_both, date(dateMillis, "dMMM").trimEnd('.'))).assertExists()
+        shot("connection-card-assistant-web-both")
+    }
+
     @Test fun aTypingOnlyGrantSaysTypingIntoTabsNotCommands() {
         card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(sessionTools = INPUT, rememberedAt = dateMillis, rememberedTools = INPUT)) }
         compose.onNodeWithTag(chip, useUnmergedTree = true).performClick(); compose.waitForIdle()

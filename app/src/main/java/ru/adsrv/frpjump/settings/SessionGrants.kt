@@ -147,6 +147,8 @@ class SessionGrants(private val world: GrantWorld = GrantWorld.None) {
         publish()
     }
 
+    fun forget(key: GrantKey) = synchronized(entries) { entries.remove(key); publish() }
+
     /** "Forget": every grant of one connection at once. */
     fun forgetConnection(profileId: String, connectionId: String) = synchronized(entries) {
         entries.keys.removeAll { it.target == GrantTarget(profileId, connectionId) }; publish()

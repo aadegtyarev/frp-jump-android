@@ -58,6 +58,7 @@ class AssistantModelSurfaceTest {
         actual += specJson(profileTool().spec)
         actual += specJson(AssistantHttpGetTool(AssistantWebHttp { null }, 1000, true).spec)
         actual += specJson(AssistantHttpPostTool(AssistantWebHttp { null }, 1000).spec)
+        actual += specJson(AssistantHttpUploadTool(AssistantWebHttp { null }, 1000) { null }.spec)
         actual += specJson(AssistantMqttReadTool(noMqttReader().operation, AssistantLimits()).spec)
         actual += specJson(AssistantMqttPublishTool(mqttPublisherFixture()).spec)
         actual += specJson(StartTunnelTool(TunnelFixture().tunnels).spec); actual += specJson(StopTunnelTool(TunnelFixture().tunnels).spec)
@@ -70,7 +71,7 @@ class AssistantModelSurfaceTest {
         actual += specJson(TemporaryCreateTool().spec); actual += specJson(TemporaryListTool(2000).spec); actual += specJson(TemporaryReadTool(2000).spec)
         SshFixture().use { f -> actual += specJson(f.tool.spec) }
         assertEquals(golden, JsonArray(actual))
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "http_get", "http_post", "mqtt_read", "mqtt_publish", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "read_skill", "skills_list", "skill_save", "skill_delete", "wait_for", "temp_file_create", "temp_file_list", "temp_file_read", "ssh_command"),
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "http_get", "http_post", "http_upload", "mqtt_read", "mqtt_publish", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "read_skill", "skills_list", "skill_save", "skill_delete", "wait_for", "temp_file_create", "temp_file_list", "temp_file_read", "ssh_command"),
             actual.map { it.jsonObject.getValue("name").jsonPrimitive.content })
     }
 
@@ -80,7 +81,7 @@ class AssistantModelSurfaceTest {
             withTimeout(5000) { c.chat.state.first { !it.busy } }
             val request = c.requests.first()
             assertEquals(TestPrompts.real.system(TestPrompts.allTools, c.skills.section(TestPrompts.allTools, AssistantLimits().skillsListChars)), request.instructions)
-            assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "http_get", "http_post", "mqtt_read", "mqtt_publish", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "read_skill", "skills_list", "skill_save", "skill_delete", "wait_for", "temp_file_create", "temp_file_list", "temp_file_read", "ssh_command"), request.tools.map { it.name })
+            assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "http_get", "http_post", "http_upload", "mqtt_read", "mqtt_publish", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "read_skill", "skills_list", "skill_save", "skill_delete", "wait_for", "temp_file_create", "temp_file_list", "temp_file_read", "ssh_command"), request.tools.map { it.name })
             val golden = Json.parseToJsonElement(javaClass.getResource("/assistant/tool-specs.json")!!.readText()).jsonArray
             assertEquals(golden, JsonArray(request.tools.map(::specJson)))
         } }

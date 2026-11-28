@@ -93,6 +93,8 @@ internal fun sessionLineRes(cover: GrantCover): Int = when (cover) {
     GrantCover.INPUT -> R.string.connection_assistant_sheet_session_input
     GrantCover.BOTH -> R.string.connection_assistant_sheet_session_both
     GrantCover.HTTP -> R.string.connection_assistant_sheet_session_http
+    GrantCover.HTTP_UPLOAD -> R.string.connection_assistant_sheet_session_upload
+    GrantCover.HTTP_BOTH -> R.string.connection_assistant_sheet_session_http_both
     GrantCover.MQTT -> R.string.connection_assistant_sheet_session_mqtt
 }
 
@@ -102,5 +104,7 @@ internal fun connectionLineRes(cover: GrantCover): Int = when (cover) {
     GrantCover.INPUT -> R.string.connection_assistant_sheet_connection_input
     GrantCover.BOTH -> R.string.connection_assistant_sheet_connection_both
     GrantCover.HTTP -> R.string.connection_assistant_sheet_connection_http
+    GrantCover.HTTP_UPLOAD -> R.string.connection_assistant_sheet_connection_upload
+    GrantCover.HTTP_BOTH -> R.string.connection_assistant_sheet_connection_http_both
     GrantCover.MQTT -> R.string.connection_assistant_sheet_connection_mqtt
 }

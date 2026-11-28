@@ -80,6 +80,7 @@ class ChatReceiptGroupsTest {
             "web_search" to mapOf("query" to "kernel news"), "read_page" to mapOf("url" to "https://example.org/a"),
             "inspect_image" to mapOf("url" to "https://example.org/cat.png", "question" to "what"),
             "mqtt_publish" to mapOf("profile_id" to "p", "connection_id" to "c", "topic" to "sensors/x", "payload" to "private"),
+            "http_upload" to mapOf("profile_id" to "p", "connection_id" to "c", "path" to "/upload", "file_id" to "f"),
             "http_post" to mapOf("profile_id" to "p", "connection_id" to "c", "path" to "/status", "content_type" to "text/plain", "body" to "private"),
             "temp_file_create" to mapOf("name" to "note.txt", "text" to "private"),
             "http_get" to mapOf("profile_id" to "p", "connection_id" to "c", "path" to "/status"),

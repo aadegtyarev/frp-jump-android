@@ -570,9 +570,11 @@ data class AssistantMark(
 }
 
 /** What a grant covers, in the words of the sheet: the assistant's commands, its typing into tabs, or both. */
-enum class GrantCover { COMMANDS, INPUT, BOTH, MQTT, HTTP }
+enum class GrantCover { COMMANDS, INPUT, BOTH, MQTT, HTTP, HTTP_UPLOAD, HTTP_BOTH }
 
 internal fun coverOf(tools: Set<AssistantToolId>): GrantCover = when {
+    AssistantToolId.HTTP_POST in tools && AssistantToolId.HTTP_UPLOAD in tools -> GrantCover.HTTP_BOTH
+    AssistantToolId.HTTP_UPLOAD in tools -> GrantCover.HTTP_UPLOAD
     AssistantToolId.HTTP_POST in tools -> GrantCover.HTTP
     AssistantToolId.MQTT_PUBLISH in tools -> GrantCover.MQTT
     AssistantToolId.SSH_COMMAND in tools && AssistantToolId.TERMINAL_INPUT in tools -> GrantCover.BOTH

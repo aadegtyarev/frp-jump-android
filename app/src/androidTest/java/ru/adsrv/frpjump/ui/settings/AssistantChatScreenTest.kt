@@ -1206,6 +1206,30 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertEquals(ConfirmationDecision.ONCE, answer) }
     }
 
+    @Test fun httpUploadConfirmationShowsFileAndTarget() {
+        val connection = ru.adsrv.frpjump.connections.Connection("c", "synthetic-device", 8443, ru.adsrv.frpjump.ports.PortKind.WEB,
+            customName = "Synthetic connection with a long name", https = true)
+        val target = ru.adsrv.frpjump.settings.GrantTarget("p", "c")
+        val info = ConfirmationTargetInfo("Synthetic profile with a long name", connection)
+        val post = HttpPostCard(info.profileName, connection.customName!!, connection.device, connection.port, true, "/api/upload?value=one", "application/octet-stream", "synthetic-archive.bin", 2048)
+        val card = PendingConfirmation(1, AssistantToolId.HTTP_UPLOAD, "", target, info, sessionTools = setOf(AssistantToolId.HTTP_UPLOAD), http = post)
+        var answer: ConfirmationDecision? = null
+        compose.activityRule.scenario.onActivity { activity ->
+            localizeActivity(activity)
+            activity.setContent { FrpJumpTheme { ChatConfirmationCard(card, { answer = it }, wide = landscape()) } }
+        }
+        compose.onNodeWithTag("chat_confirm_target").assertTextContains("Synthetic profile", substring = true)
+        compose.onNodeWithTag("chat_confirm_http_endpoint").assertTextContains("https://synthetic-device:8443", substring = true)
+        compose.onNodeWithTag("chat_confirm_http_path").assertTextContains("/api/upload?value=one", substring = true)
+        compose.onNodeWithTag("chat_confirm_http_file").assertTextContains("synthetic-archive.bin", substring = true)
+        compose.onNodeWithTag("chat_confirm_http_size").assertTextContains("2048", substring = true)
+        compose.onAllNodesWithTag("chat_confirm_command").assertCountEquals(0)
+        shot("card-http-upload")
+        val allow = compose.onNodeWithTag("chat_confirm_allow")
+        if (!allow.isDisplayed()) allow.performScrollTo()
+        allow.performClick(); compose.runOnIdle { assertEquals(ConfirmationDecision.ONCE, answer) }
+    }
+
     @Test fun toolsScreenShowsTemporaryFilesDisclosureAndSavesSwitch() {
         install(); button("chat_tools").performClick()
         compose.onNodeWithTag("tool_temp_file_create").performScrollTo().assertIsDisplayed()
