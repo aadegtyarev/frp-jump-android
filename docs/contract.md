@@ -1068,6 +1068,8 @@ consume settings and write v2 immediately:
 
 ## Optional LLM assistant
 
+An assistant answer can offer an action for a saved tunnel. Ready SSH, Web and MQTT tunnels open their usual destination. TCP, stopped and pending tunnels open their exact card. Back returns to the conversation. See [answer references](agent-contract.md#text-chat).
+
 The optional module is off by default. Settings has one Assistant row that opens the Assistant screen, where the master switch, provider setup,
 secure key storage, model discovery, effort and context limits, the owner's own
 instructions for the model (guidance only, sent with every message, never

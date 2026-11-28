@@ -612,6 +612,7 @@ fun ConnectionDialogs(
     onOpenTerminal: (sessionId: Int) -> Unit,
     /** Opens the file screen whose login has this id. */
     onOpenFiles: (targetId: Int) -> Unit,
+    resolveSshRow: (() -> ConnectionRow?)? = null,
 ) {
     val notificationsFirst = rememberNotificationsFirst()
     val sessionChanges by actions.sessions.collectAsStateWithLifecycle(emptyList())
@@ -619,10 +620,13 @@ fun ConnectionDialogs(
     ui.terminalPicker?.let { row ->
         val choices = remember(row, sessionChanges) { actions.terminalChoices(row) }
         val dismiss = { ui.terminalPicker = null }
-        fun currentRow(): ConnectionRow? = rows.firstOrNull {
-            it.profile == row.profile && it.connection.id == row.connection.id &&
-                it.connection.device == row.connection.device && it.connection.port == row.connection.port
-        }?.let(actions::currentTerminalRow)
+        fun currentRow(): ConnectionRow? {
+            if (resolveSshRow != null) return resolveSshRow()?.takeIf(ConnectionRow::opensFromReference)
+            return rows.firstOrNull {
+                it.profile == row.profile && it.connection.id == row.connection.id &&
+                    it.connection.device == row.connection.device && it.connection.port == row.connection.port
+            }?.let(actions::currentTerminalRow)
+        }
         TerminalChoicesSheet(row.connection.device, choices, dismiss, onChoose = { session ->
             dismiss()
             val latest = currentRow()
@@ -658,8 +662,15 @@ fun ConnectionDialogs(
             onConnect = { user, method: SshAuthMethod, password, remember ->
                 ui.login = null
                 // "Change login" from "⋮" may come with the tunnel down: it is brought up first.
-                val open = { actions.openSshWhenUp(row, user, method, password, remember, onOpenTerminal) }
-                if (row.tunnel == null && row.pending == null) notificationsFirst(open) else open()
+                val current = if (resolveSshRow == null) row else resolveSshRow()?.takeIf {
+                    it.pending == null && (row.tunnel == null || it.opensFromReference())
+                }
+                if (current == null) {
+                    context.notice(context.getString(R.string.files_tunnel_down), NoticeKind.WARN)
+                } else {
+                    val open = { actions.openSshWhenUp(current, user, method, password, remember, onOpenTerminal) }
+                    if (current.tunnel == null && current.pending == null) notificationsFirst(open) else open()
+                }
             },
             onDismiss = { ui.login = null },
         )

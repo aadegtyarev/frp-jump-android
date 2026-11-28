@@ -25,4 +25,17 @@ class AssistantTerminalReferencesTest {
         assertEquals(emptyList<ToolReference>(), referenceAnswer(token, listOf(receipt(name = "terminal_read"))).references)
         assertEquals(emptyList<ToolReference>(), referenceAnswer(token, emptyList()).references)
     }
+    @Test fun `only the profile result can offer a saved tunnel`() {
+        val tunnel = ToolReference(
+            "[tunnel:123]", label = "Work · router · Web",
+            tunnel = TunnelReference("profile", "connection", "router", 443, "WEB", true),
+        )
+        val calls = listOf("profile_information", "terminal_tabs")
+        for (name in calls) {
+            val call = ToolCall("c", name, buildJsonObject {})
+            val result = ToolResult("c", name, "row", ToolOutcome.SUCCESS, references = listOf(tunnel))
+            val answer = referenceAnswer("Dashboard\n\n${tunnel.token}", listOf(ChatToolReceipt(call, result)))
+            assertEquals(if (name == "profile_information") listOf(tunnel) else emptyList(), answer.references)
+        }
+    }
 }

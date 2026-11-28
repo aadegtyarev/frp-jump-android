@@ -39,6 +39,8 @@ internal class AssistantProfileInformationTool(
     }
     override val invalidArguments = ToolOutput("Invalid profile information arguments: optional query/profile_id strings up to 256 characters and a nonnegative integer offset.", ToolOutcome.FAILED)
     override fun render(input: ProfileInformationQuery, output: ProfileInformationState) = profileInformationText(output, input, sshResultBudget(limits.toolOutputChars))
+    override fun renderOutput(input: ProfileInformationQuery, output: ProfileInformationState) =
+        profileInformationOutput(output, input, sshResultBudget(limits.toolOutputChars))
     override val unexpected: OpFailure = ProfileQueryFailure.Unavailable
     // A reading operation has no refusal; its failure is worded here.
     override fun modelText(refusal: OpRefusal): String = error("profile_information has no refusals")

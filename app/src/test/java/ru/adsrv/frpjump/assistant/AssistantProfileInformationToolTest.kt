@@ -22,6 +22,32 @@ import ru.adsrv.frpjump.ui.devices.devicesUiState
 
 class AssistantProfileInformationToolTest {
     private val empty = buildJsonObject { }
+    @Test fun `references name only saved connections on the emitted page`() {
+        val rows = PortKind.entries.mapIndexed { i, kind ->
+            ConnectionRow("p", Connection("id$i", "host", 1000 + i, kind, "same", https = kind == PortKind.WEB), true, null, null, null)
+        } + ConnectionRow("p", Connection("unsaved", "host", 9999, PortKind.TCP), false, null, null, null)
+        val state = ProfileInformationState(loaded = true, profiles = listOf(ProfileInformationPart("p", "Work", "blue", false, true, rows = rows)))
+        val out = profileInformationOutput(state, ru.adsrv.frpjump.ops.profile.ProfileInformationQuery(), 7800)
+        assertEquals(4, out.references.size)
+        assertEquals(rows.take(4).map { it.connection.id }.toSet(), out.references.map { it.tunnel!!.connectionId }.toSet())
+        assertTrue(out.references.all { it.evidence == out.text && out.text.contains(it.token) && it.tunnel!!.profileId == "p" })
+        assertEquals(4, out.references.map { it.token }.distinct().size)
+        rows.take(4).forEach { row ->
+            val c = row.connection
+            assertEquals(TunnelReference("p", c.id, c.device, c.port, c.kind.name, c.https),
+                out.references.single { it.tunnel!!.connectionId == c.id }.tunnel)
+        }
+        val huge = rows.first().copy(connection = rows.first().connection.copy(id = "x".repeat(4000)))
+        val hugeState = state.copy(profiles = listOf(state.profiles.single().copy(rows = listOf(huge))))
+        val unavailable = profileInformationOutput(hugeState, ru.adsrv.frpjump.ops.profile.ProfileInformationQuery(offset = 1), 1800)
+        assertTrue(unavailable.references.isEmpty())
+        val small = profileInformationOutput(state, ru.adsrv.frpjump.ops.profile.ProfileInformationQuery(), 1800)
+        val emitted = Json.parseToJsonElement(small.text).jsonObject.getValue("results").jsonArray
+        assertEquals(emitted.count { it.jsonObject["reference"] != null }, small.references.size)
+        assertTrue(small.references.size < out.references.size)
+        val filtered = profileInformationOutput(state, ru.adsrv.frpjump.ops.profile.ProfileInformationQuery(profileId = "absent"), 7800)
+        assertTrue(filtered.references.isEmpty())
+    }
     private class Chat(val f: SyntheticProfileInformation, val provider: AgentProvider, val limits: AgentLimits = AgentLimits()) : AutoCloseable {
         val settings = SettingsStore(MemoryStorage()).apply { update { it.copy(assistantEnabled = true) } }
         val store = AssistantProviderStore(MemoryStorage(), object : SecretBox {
