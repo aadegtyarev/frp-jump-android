@@ -43,6 +43,32 @@
     }
   },
   {
+    "name": "mqtt_read",
+    "description": "Read current values already observed by the owner's connected MQTT explorer for a saved MQTT connection. Use profile_id and connection_id from profile_information. Optional filter is an MQTT topic filter; no subscription is made. Results are incomplete cached observations, not broker state. Private messages go to the configured model.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "connection_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "filter": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "profile_id",
+        "connection_id"
+      ]
+    }
+  },
+  {
     "name": "start_tunnel",
     "description": "Start one saved tunnel from profile_information (profile_id, connection_id), as the owner's Start button does, and wait until the device takes connections through it. Changes only this app, nothing on the device.",
     "parameters": {
@@ -185,6 +211,7 @@
               "read_page",
               "inspect_image",
               "profile_information",
+              "mqtt_read",
               "start_tunnel",
               "terminal_tabs",
               "terminal_input",
@@ -195,7 +222,7 @@
             ]
           },
           "minItems": 0,
-          "maxItems": 11
+          "maxItems": 12
         },
         "body": {
           "type": "string",

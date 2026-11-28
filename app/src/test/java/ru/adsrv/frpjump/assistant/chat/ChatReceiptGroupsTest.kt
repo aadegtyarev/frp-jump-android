@@ -79,6 +79,7 @@ class ChatReceiptGroupsTest {
         val typical = mapOf(
             "web_search" to mapOf("query" to "kernel news"), "read_page" to mapOf("url" to "https://example.org/a"),
             "inspect_image" to mapOf("url" to "https://example.org/cat.png", "question" to "what"),
+            "mqtt_read" to mapOf("profile_id" to "p", "connection_id" to "c", "filter" to "sensors/+"),
             "profile_information" to emptyMap(), "read_skill" to mapOf("name" to "restart-nginx"), "skill_save" to mapOf("name" to "restart-nginx"), "skill_delete" to mapOf("name" to "restart-nginx"), "ssh_command" to mapOf("profile_id" to "p", "connection_id" to "c", "command" to "uptime"),
             AssistantRequestTool.WIRE to mapOf("name" to "web_search", "why" to "x"))
         // terminal_tabs takes no arguments, so there is nothing to tell its calls apart by; terminal_read has its own test below.

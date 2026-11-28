@@ -1619,4 +1619,7 @@
     <string name="chat_open_tunnel">Open tunnel %1$s</string>
     <string name="chat_tunnel_unavailable">This tunnel is no longer available.</string>
     <string name="chat_open_terminal">Open terminal %1$s</string>
+    <string name="tool_mqtt_read">Read MQTT messages</string>
+    <string name="tool_mqtt_read_hint">Private MQTT messages from an open explorer go to the configured provider.</string>
+    <string name="tool_mqtt_read_progress">Reading MQTT messages</string>
 </resources>

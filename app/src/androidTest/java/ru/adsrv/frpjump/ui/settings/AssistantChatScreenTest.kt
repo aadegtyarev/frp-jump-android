@@ -1097,6 +1097,20 @@ class AssistantChatScreenTest {
         shot("tools-tunnels-on")
     }
 
+    @Test fun toolsScreenShowsMqttReadDisclosureAndSavesSwitch() {
+        install()
+        button("chat_tools").performClick()
+        compose.onNodeWithTag("tool_mqtt_read").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_mqtt_read_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_mqtt_read"))).assertExists()
+        toolToggle("mqtt_read").assertIsOff()
+        assertFalse(settings.assistantAvailability.tools.mqttRead)
+        shot("tools-mqtt-read-off")
+        toolToggle("mqtt_read").performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.mqttRead }
+        toolToggle("mqtt_read").assertIsOn()
+        shot("tools-mqtt-read-on")
+    }
+
     /** SSH failure is available to the model without an automatic receipt. */
     @Test fun sshFailureDoesNotExposeCommandReceipt() {
         settings.setAssistantConfirmations(ru.adsrv.frpjump.settings.ConfirmationMode.OFF)

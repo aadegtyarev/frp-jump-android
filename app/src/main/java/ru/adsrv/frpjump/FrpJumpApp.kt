@@ -291,7 +291,10 @@ class FrpJumpApp : Application() {
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
             realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
             terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, sessions = assistantSessions, skills = assistantSkills, waitCountOut = assistantWaitCount,
-            grants = sessionGrants, connectionGrants = connectionGrants)
+            grants = sessionGrants, connectionGrants = connectionGrants,
+            mqttRead = ru.adsrv.frpjump.assistant.AssistantMqttRead(assistantTunnels, mqtt, pendingUndo.hidden) { target ->
+                profiles.runtime(target.profileId)?.tunnels?.state?.value?.tunnels?.singleOrNull { it.device == target.device && it.port == target.port }?.localPort
+            })
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)

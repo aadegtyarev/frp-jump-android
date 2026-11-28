@@ -19,6 +19,7 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
     READ_PAGE("read_page", "assistant_read_page", Effect.READ_REMOTE, ActionClass.PUBLIC_READ),
     INSPECT_IMAGE("inspect_image", "assistant_inspect_image", Effect.READ_REMOTE, ActionClass.PUBLIC_READ),
     PROFILE_INFORMATION("profile_information", "assistant_profile_information", Effect.READ_REMOTE, ActionClass.CONNECTION_READ),
+    MQTT_READ("mqtt_read", "assistant_mqtt_read", Effect.READ_REMOTE, ActionClass.CONNECTION_READ),
     /**
      * Starts one saved tunnel as the owner's Start button does and waits until the device takes connections. The switch of the two tunnel tools
      * (`assistant_tunnels`, default off). It changes only this app and runs without a question ([confirms] false, as [TERMINAL_RENAME]).

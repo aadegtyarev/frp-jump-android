@@ -26,7 +26,7 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test: one hash per asset.
-        assertEquals(21, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(22, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(3, AssistantPrompts.SUMMARY_VERSION)
         val pinned = mapOf(
         "assistant/skill.md" to "63799dcffeba98d471d22d4bc08f3aa45a6e4cea72445df7a32ee29074040954",
@@ -34,6 +34,7 @@ class AssistantPromptsTest {
         "assistant/tools/skills.md" to "03cf883318f91b760c5be8cb946b54ba1f823286730017d3f124eeef3a1ab585",
         "assistant/summary.md" to "b1d30cb5d6ed25e55fe6c1f81e989a91972747723e7b39647b3c21333bfdadeb",
         "assistant/tools/inspect_image.md" to "50831383f2b4610ae976ecda4fb7e69f83f3dcbe9edce084794cabb6d3405f46",
+        "assistant/tools/mqtt_read.md" to "9a751c473e2fbe109d6b41feff07a6975dda5da0f29f0299b6cc1b7bce3cdc50",
         "assistant/tools/profile_information.md" to "d87a87abc62a3b28a6cad96421619b6c05b30c7ac93bcdcd9aac71128acadf8d",
         "assistant/tools/read_page.md" to "8058bc888631e661bb46156b9effc77a15f2ce04750398815c0e25569d9831f8",
         "assistant/tools/search.md" to "532f4d35bded5deeff747134ce034c91208cbb8700e8df4b56f29b314c84d821",
@@ -138,6 +139,7 @@ class AssistantPromptsTest {
         val sentenceOf = mapOf(
             AssistantToolId.WEB_SEARCH to "web_search is unofficial", AssistantToolId.READ_PAGE to "read_page does not run JavaScript.",
             AssistantToolId.INSPECT_IMAGE to "inspect_image gives an unverified model answer.", AssistantToolId.PROFILE_INFORMATION to "profile_information finds",
+            AssistantToolId.MQTT_READ to "Use mqtt_read for current values",
             AssistantToolId.START_TUNNEL to "start_tunnel and stop_tunnel start and stop a saved tunnel", AssistantToolId.TERMINAL_TABS to "terminal_tabs and terminal_read show",
             AssistantToolId.TERMINAL_INPUT to "terminal_input types into an open tab", AssistantToolId.TERMINAL_OPEN to "terminal_open opens a session of your own", AssistantToolId.SKILLS_LIST to "skills_list, skill_save and skill_delete manage", AssistantToolId.WAIT_FOR to "wait_for waits in the background",
             AssistantToolId.SSH_COMMAND to "ssh_command runs one noninteractive command")

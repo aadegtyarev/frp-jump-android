@@ -107,3 +107,9 @@ sealed interface MqttWriteFailure : OpFailure {
     /** Anything else; [detail] is the exception's class name (`UNKNOWN`). */
     data class Other(val detail: String?) : MqttWriteFailure
 }
+
+sealed interface MqttReadRefusal : OpRefusal {
+    data object TargetUnavailable : MqttReadRefusal
+    data object NotConnected : MqttReadRefusal
+}
+sealed interface MqttReadFailure : OpFailure { data object Unexpected : MqttReadFailure }
