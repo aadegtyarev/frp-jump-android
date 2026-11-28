@@ -46,6 +46,8 @@ data class AgentRequest(val instructions: String, val tools: List<ToolSpec>, val
     /** Final answer after tool steps: exactly one provider request, no tools or provider-backed compaction. */
     val finalSynthesis: Boolean = false)
 
+const val FINAL_SYNTHESIS_INSTRUCTION = "Tools are finished. Answer the original question using the results already available, state what remains unknown, and reply in ordinary text without simulating a tool call."
+
 /** Fixed, model-facing heading of the owner's own instructions; the text follows after one line break. */
 const val OWNER_INSTRUCTIONS_HEADER = "## Owner's additional instructions"
 
@@ -72,6 +74,7 @@ object Utf8TokenEstimate : TokenCounter {
         fun size(text: String) = text.toByteArray(Charsets.UTF_8).size.toLong()
         // The owner's part (separator, header and text) is inside the first message; it adds a framing allowance only when present.
         var total = 256L + size(request.systemContent()) + if (request.ownerInstructions.isEmpty()) 0 else OWNER_FRAMING_TOKENS
+        if (request.finalSynthesis) total += 64 + size(FINAL_SYNTHESIS_INSTRUCTION)
         request.tools.forEach { total += 128 + size(it.name) + size(it.description) + size(it.parameters.toString()) }
         request.turns.forEach { turn ->
             total += 64 + size(turn.user)

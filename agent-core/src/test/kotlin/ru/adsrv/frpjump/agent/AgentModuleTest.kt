@@ -59,6 +59,16 @@ class AgentModuleTest {
         assertTrue(window.estimatedTokens > Utf8TokenEstimate.count(AgentRequest("skill", emptyList(), listOf(AgentTurn("current")), 100)))
     }
 
+    @Test fun `final instruction counts against the context window`() {
+        val limits = AgentLimits(contextTokens = 512, outputReserveTokens = 100)
+        val turn = AgentTurn("question")
+        val normal = selectAgentWindow("base", emptyList(), emptyList(), turn, limits)
+        val final = selectAgentWindow("base", emptyList(), emptyList(), turn, limits, finalSynthesis = true)
+        assertNotNull(normal.request)
+        assertNull(final.request)
+        assertTrue(final.estimatedTokens > limits.contextTokens - limits.outputReserveTokens)
+    }
+
     @Test fun `window drops whole old turns never the current request or instructions`() {
         val history = listOf(AgentTurn("old", listOf(exchange("x".repeat(500)))), AgentTurn("recent"))
         val window = selectAgentWindow("skill", emptyList(), history, AgentTurn("current"), AgentLimits(contextTokens = 512, outputReserveTokens = 100), textCounter)
