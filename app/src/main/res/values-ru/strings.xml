@@ -1702,4 +1702,7 @@
     <string name="confirm_mqtt_remember_hint">Для сессии — публикации MQTT до отключения или переподключения к брокеру. Для подключения — пока его не изменят. Отменить: метка на карточке туннеля.</string>
     <string name="connection_assistant_sheet_session_mqtt">Для сессии: публикации MQTT.</string>
     <string name="connection_assistant_sheet_connection_mqtt">Для подключения: публикации MQTT (с %1$s).</string>
+    <string name="tool_http_get">Чтение веб-туннеля</string>
+    <string name="tool_http_get_hint">Данные из открытого веб-туннеля передаются выбранному провайдеру.</string>
+    <string name="tool_http_get_progress">Читаю веб-туннель…</string>
 </resources>

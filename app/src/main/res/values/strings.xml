@@ -1649,4 +1649,7 @@
     <string name="confirm_mqtt_remember_hint">For session: MQTT publishing until the broker disconnects or reconnects. For this connection: until it is edited. Undo: the mark on the tunnel card.</string>
     <string name="connection_assistant_sheet_session_mqtt">For session: MQTT publishing.</string>
     <string name="connection_assistant_sheet_connection_mqtt">For this connection: MQTT publishing (since %1$s).</string>
+    <string name="tool_http_get">Read Web tunnel</string>
+    <string name="tool_http_get_hint">Responses from an open Web tunnel go to the configured provider.</string>
+    <string name="tool_http_get_progress">Reading Web tunnel…</string>
 </resources>

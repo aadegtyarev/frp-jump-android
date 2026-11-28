@@ -14,12 +14,13 @@ internal object AssistantToolFactory {
         sshCommands: AssistantSshCommands?, publish: (ChatSource) -> Unit,
         declined: Set<String> = emptySet(), terminalTabs: AssistantTerminalTabs? = null, tunnels: AssistantTunnels? = null,
         waits: WaitAdder? = null, limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits(),
-        sessions: AssistantSessions? = null, skills: SkillRegistry? = null, mqttRead: AssistantMqttRead? = null, mqttPublish: AssistantMqttPublish? = null): List<AgentTool> {
+        sessions: AssistantSessions? = null, skills: SkillRegistry? = null, mqttRead: AssistantMqttRead? = null, mqttPublish: AssistantMqttPublish? = null, httpGet: AssistantHttpGet? = null): List<AgentTool> {
         val web = AssistantWebTools(enabled, runtime.publicWeb, runtime.webSearch, active as? ImageInspector, publish)
         // terminal_input is offered only while the tabs are on: the model asks for terminal_tabs first.
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }
         return web.tools + (if (enabled.profileInformation && profileInformation != null) listOf(
             AssistantProfileInformationTool(profileInformation, limits)) else emptyList()) +
+            (if (enabled.httpGet && httpGet != null) listOf(AssistantHttpGetTool(httpGet, limits.toolOutputChars)) else emptyList()) +
             (if (enabled.mqttRead && mqttRead != null) listOf(AssistantMqttReadTool(mqttRead.operation, limits)) else emptyList()) +
             (if (enabled.mqttPublish && mqttPublish != null) listOf(AssistantMqttPublishTool(mqttPublish)) else emptyList()) +
             (if (enabled.tunnels && tunnels != null) listOf(StartTunnelTool(tunnels, limits.toolTimeoutSeconds * 1000L), StopTunnelTool(tunnels)) else emptyList()) +

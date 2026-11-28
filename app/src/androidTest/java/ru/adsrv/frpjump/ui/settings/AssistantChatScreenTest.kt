@@ -1138,6 +1138,19 @@ class AssistantChatScreenTest {
         shot("tools-tunnels-on")
     }
 
+    @Test fun toolsScreenShowsHttpGetDisclosureAndSavesSwitch() {
+        install()
+        button("chat_tools").performClick()
+        compose.onNodeWithTag("tool_http_get").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_http_get_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_http_get"))).assertExists()
+        toolToggle("http_get").assertIsOff()
+        assertFalse(settings.assistantAvailability.tools.httpGet)
+        shot("tools-http-get-off")
+        toolToggle("http_get").performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.httpGet }
+        toolToggle("http_get").assertIsOn()
+    }
+
     @Test fun toolsScreenShowsMqttReadDisclosureAndSavesSwitch() {
         install()
         button("chat_tools").performClick()

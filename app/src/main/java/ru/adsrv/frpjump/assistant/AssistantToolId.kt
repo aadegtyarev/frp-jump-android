@@ -19,6 +19,7 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
     READ_PAGE("read_page", "assistant_read_page", Effect.READ_REMOTE, ActionClass.PUBLIC_READ),
     INSPECT_IMAGE("inspect_image", "assistant_inspect_image", Effect.READ_REMOTE, ActionClass.PUBLIC_READ),
     PROFILE_INFORMATION("profile_information", "assistant_profile_information", Effect.READ_REMOTE, ActionClass.CONNECTION_READ),
+    HTTP_GET("http_get", "assistant_http_get", Effect.READ_REMOTE, ActionClass.CONNECTION_READ),
     MQTT_READ("mqtt_read", "assistant_mqtt_read", Effect.READ_REMOTE, ActionClass.CONNECTION_READ),
     MQTT_PUBLISH("mqtt_publish", "assistant_mqtt_publish", Effect.CHANGE_REMOTE, ActionClass.MQTT_PUBLISH, grantable = true),
     /**
