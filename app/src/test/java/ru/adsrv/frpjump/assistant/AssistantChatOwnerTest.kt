@@ -46,7 +46,7 @@ class AssistantChatOwnerTest {
 
     private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0, private val failing: Boolean = false, private val withProfiles: Boolean = false,
         private val withUndo: Boolean = false, val storage: HoldableStorage = HoldableStorage(), private val sshOn: Boolean = true,
-        private val script: ((AgentRequest) -> AgentReply)? = null, private val ignoreCancellation: Boolean = false) : AutoCloseable {
+        private val script: ((AgentRequest) -> AgentReply)? = null, private val ignoreCancellation: Boolean = false, private val webHttp: AssistantWebHttp? = null) : AutoCloseable {
         val removed = kotlinx.coroutines.flow.MutableStateFlow(false)
         val stopping = kotlinx.coroutines.flow.MutableStateFlow(false)
         val executed = AtomicInteger()
@@ -95,7 +95,7 @@ class AssistantChatOwnerTest {
                     put("profile_id", "p"); put("connection_id", "c"); put("command", calls[done].command)
                 }))) else AgentReply("done")
             }
-        }, { now }, stoppingOut = stopping, removed = removed, grants = grants)
+        }, { now }, stoppingOut = stopping, removed = removed, grants = grants, webHttp = webHttp)
         init { live += this }
         override fun close() { release.complete(Unit); owner.shutdown(); scope.cancel() }
         fun results() = requests.last().turns.last().exchanges.flatMap { it.results }
@@ -732,6 +732,46 @@ class AssistantChatOwnerTest {
             release.countDown(); eventually("attempt stopped") { chat.state.value.takeIf { !it.busy } }
             h.settings.assistantChat.probes = ChatProbes.None
             assertFalse(reason, h.fileCall(chat, "list").text.contains("note.txt"))
+        }
+    }
+
+    @Test fun `download dispatch and commit reject revoked switches and changed target through real owner`() {
+        for (phase in listOf(1, 3)) for (reason in listOf("web", "temp", "target")) {
+            java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { server ->
+                val worker = kotlin.concurrent.thread(isDaemon = true) {
+                    runCatching { server.accept().use { socket ->
+                        val input = socket.getInputStream().bufferedReader()
+                        input.readLine(); while (!input.readLine().isNullOrEmpty()) { }
+                        socket.getOutputStream().write("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello".toByteArray())
+                    } }
+                }
+                val period = java.util.concurrent.atomic.AtomicInteger(1)
+                val web = AssistantWebHttp { WebHttpTarget(server.localPort, false, null, "identity", period.get()) }
+                val h = Harness(webHttp = web, script = { request ->
+                    if (request.turns.last().user == "list") fileScript(request)
+                    else if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(ToolCall("download", "http_get", buildJsonObject {
+                        put("profile_id", "p"); put("connection_id", "c"); put("path", "/file"); put("save_as", "file.bin")
+                    }))) else AgentReply("done")
+                })
+                h.settings.update { it.copy(assistantTempFiles = true, assistantHttpGet = true) }
+                val entered = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+                val checks = java.util.concurrent.atomic.AtomicInteger()
+                h.settings.assistantChat.probes = ChatProbes(before = { category ->
+                    if (category == "temp-file" && checks.incrementAndGet() == phase) { entered.countDown(); release.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+                })
+                val chat = h.owner.attach(); h.send(chat, "download")
+                assertTrue(reason, entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                when (reason) {
+                    "web" -> { h.settings.update { it.copy(assistantHttpGet = false) }; h.settings.update { it.copy(assistantHttpGet = true) } }
+                    "temp" -> { h.settings.update { it.copy(assistantTempFiles = false) }; h.settings.update { it.copy(assistantTempFiles = true) } }
+                    else -> period.incrementAndGet()
+                }
+                release.countDown(); eventually("download ended") { chat.state.value.takeIf { !it.busy } }
+                assertEquals(reason, ToolOutcome.FAILED, h.results().single().outcome)
+                h.settings.assistantChat.probes = ChatProbes.None
+                assertFalse(reason, h.fileCall(chat, "list").text.contains("file.bin"))
+                worker.join(50)
+            }
         }
     }
 

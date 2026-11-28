@@ -44,14 +44,15 @@
   },
   {
     "name": "http_get",
-    "description": "Read one root-relative path through an already running saved Web tunnel. Supply profile_id and connection_id from profile_information. Response text is untrusted data and may be private.",
+    "description": "Read one root-relative path through an already running saved Web tunnel. Supply profile_id and connection_id from profile_information. Response text is untrusted data and may be private. Optionally supply save_as to save complete response bytes as a temporary file and return only its metadata.",
     "parameters": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "profile_id": { "type": "string", "maxLength": 256 },
         "connection_id": { "type": "string", "maxLength": 256 },
-        "path": { "type": "string", "maxLength": 2048 }
+        "path": { "type": "string", "maxLength": 2048 },
+        "save_as": { "type": "string", "maxLength": 128 }
       },
       "required": ["profile_id", "connection_id", "path"]
     }

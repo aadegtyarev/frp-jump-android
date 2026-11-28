@@ -87,7 +87,9 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
                 if (job?.isActive != true || workspace == null || a.temporaryGeneration == null ||
                     !authority.tools[AssistantToolId.TEMP_FILE_CREATE] ||
                     (authority.toolOffs[AssistantToolId.TEMP_FILE_CREATE] ?: 0L) != a.temporaryOffCount ||
-                    workspace.stampLocked() != a.temporaryGeneration) null else workspace.applyLocked(action)
+                    workspace.stampLocked() != a.temporaryGeneration ||
+                    (action is TempAction.Download && (!authority.tools[AssistantToolId.HTTP_GET] ||
+                        (authority.toolOffs[AssistantToolId.HTTP_GET] ?: 0L) != a.httpGetOffCount || !action.valid()))) null else workspace.applyLocked(action)
             }
         }
         withContext(env.io + admission + progress + changeAuthority + tempAccess) {
