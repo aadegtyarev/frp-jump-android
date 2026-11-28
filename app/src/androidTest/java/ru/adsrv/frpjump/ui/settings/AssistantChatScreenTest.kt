@@ -665,7 +665,7 @@ class AssistantChatScreenTest {
     }
 
     /** Tool calls remain available to the model while the conversation stays quiet. */
-    @Test fun twoProfileCallsStayQuietWhileRunningAndWhenFinished() {
+    @Test fun twoProfileCallsShowWorkWhileRunningAndCollapsedAboveAnswer() {
         informationFixture = ProfileInformationFixture(); information = informationFixture!!.information
         mode = "two-profile-calls"; settings.update { it.copy(assistantProfileInformation = true) }
         // Two pages of facts are far over the default context budget; the turn must run to its answer, not fail on size.
@@ -676,11 +676,52 @@ class AssistantChatScreenTest {
         compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 2 && r.all { it.result != null } } }
         compose.waitForIdle()
         compose.onAllNodesWithTag("chat_tool_call_0").assertCountEquals(0)
+        compose.onNodeWithTag("chat_work_step").assertTextContains("×2", substring = true)
+        shot("work-progress-running")
         assertFieldEmpty(); button("chat_stop").assertIsDisplayed()
         compose.runOnIdle { heldProviderReply.complete(Unit) }
         awaitIdle()
         compose.onAllNodesWithTag("chat_tool_receipts").assertCountEquals(0)
         compose.onAllNodesWithTag("chat_profile_information_facts").assertCountEquals(0)
+        compose.onAllNodesWithTag("chat_work_step").assertCountEquals(0)
+        compose.onNodeWithTag("chat_work_toggle").performScrollTo().assertIsDisplayed()
+        shot("work-progress-collapsed")
+        compose.onNodeWithTag("chat_work_toggle").performClick()
+        compose.onNodeWithTag("chat_work_step").assertTextContains("×2", substring = true)
+        shot("work-progress-expanded")
+        compose.onNodeWithTag("chat_work_toggle").performClick()
+        compose.onAllNodesWithTag("chat_work_step").assertCountEquals(0)
+    }
+
+    @Test fun runningActionShowsItsLabelAndStopRemainsAvailable() {
+        mode = "tool-read"
+        settings.update { it.copy(assistantReadPage = true) }
+        settings.assistantChat.publicWeb = PublicFetcher { _, _, _ -> heldProviderReply.await(); throw WebException(WebFailure.NETWORK) }
+        install()
+        input().performTextInput("Read the page")
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.toolProgress == ChatToolProgress.Tool(AssistantToolId.READ_PAGE) }
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_read_progress)) and hasAnyAncestor(hasTestTag("chat_run_status")), useUnmergedTree = true).assertExists()
+        shot("work-progress-active")
+        button("chat_stop").performClick()
+        awaitIdle()
+    }
+
+    @Test fun awaitingConfirmationDoesNotShowUnstartedWork() {
+        startConfirmation()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.confirm_waiting)) and hasAnyAncestor(hasTestTag("chat_run_status")), useUnmergedTree = true).assertExists()
+        compose.onAllNodesWithTag("chat_work_step").assertCountEquals(0)
+        shown("chat_confirm_decline").performClick()
+        awaitIdle()
+    }
+
+    @Test fun directAnswerHasNoWorkControl() {
+        install()
+        input().performTextInput("Hello")
+        sendAndAwait()
+        awaitIdle()
+        compose.onAllNodesWithTag("chat_work_toggle").assertCountEquals(0)
+        compose.onAllNodesWithTag("chat_work_step").assertCountEquals(0)
     }
 
     /** Terminal results stay in the model context, outside the transcript. */

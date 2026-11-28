@@ -448,7 +448,7 @@ makes no request.
 The conversation is a quiet, left-aligned text dialogue on one background, not
 message bubbles or cards. Localized “You” and “Assistant” labels distinguish
 roles as well as the theme's accent for user text and normal ink for answers;
-pending user text uses the same presentation. Text remains selectable. Answers
+pending user text uses the same presentation. While a reply runs, localized labels beneath the user's message show calls that actually started and their outcome; a current action is shown only after authorization. Confirmation and Stop take priority. Once the answer arrives, the labels are in a collapsed “Work done” / «Ход работы» control immediately above it; consecutive identical outcomes are counted. A direct answer has no control. Declined, unknown and unstarted proposals are not presented as work; failures and timeouts are named without claiming success. No arguments, commands or raw output appear there. Text remains selectable. Answers
 have display-only bold, italic, headings, unordered/ordered (nested) lists,
 quotes, horizontal rules, GFM tables and monospaced inline/fenced code through a
 Compose Markdown component. A table scrolls horizontally inside its own area,
@@ -579,7 +579,7 @@ size; display projections are not another history. A received current record ove
 512,000 characters ends context-full and retains its bounded received data.
 Input remains limited to 8,000 UTF-16 characters: excess edits retain the previous
 text with feedback. Current input/answers are never silently truncated or split.
-Tool calls/results remain selectable through per-turn details.
+Tool arguments and results are not shown in the work summary. An executed failure or timeout may carry an optional execution-start flag in this same encrypted history; success implies a started call, while older ambiguous failures are omitted from the work summary. Older app versions with strict history decoding cannot read a document that contains the new field.
 
 The encoded document is still capped at 8,000,000 plaintext / 16,000,000 sealed
 characters, including JSON escaping. Encoding can reach that limit before the
@@ -1685,7 +1685,7 @@ explain relevant failures in its answer. No raw body, exception message, stack,
 credential or private app context is disclosed. Nonempty model inability text
 is data, not a client-classified technical failure. Chat does not render separate tool
 receipts, raw results or tool errors, including after history restoration. It
-shows quiet progress, genuine pending confirmations and requests, and localized
+shows localized work labels, genuine pending confirmations and requests, and localized
 app/provider problems. Tool calls and results continue to follow the existing
 encrypted-history and model-context lifecycle; late unauthorized output is
 withheld. The assistant may quote relevant available output on explicit request.

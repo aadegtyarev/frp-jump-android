@@ -45,6 +45,8 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private var unanswered = false
     /** Why a call of this Send ran without a question, by call id, until its result is recorded (memory only; never saved). */
     private val noQuestion = java.util.concurrent.ConcurrentHashMap<String, ru.adsrv.frpjump.settings.NoQuestion>()
+    private var startedCall: String? = null
+    private var candidateCall: ToolCall? = null
 
     suspend fun run() {
         // Active time only: a pause (owner confirmation, from the next change on) does not count against the Send.
@@ -65,7 +67,16 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             (a.retained ?: env.prepare(a.saved)) to loaded
         }
         own.adopt(owner, active)
-        withContext(env.io + SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }) {
+        val admission = SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }
+        val progress = ToolRunObserver {
+            own.guarded(owner, "progress") {
+                candidateCall?.let { call ->
+                    startedCall = call.id
+                    mutable.value = mutable.value.copy(toolProgress = progressOnCall(call.name))
+                }
+            } ?: throw CancellationException()
+        }
+        withContext(env.io + admission + progress) {
             val past = a.past.map { it to it.model(active) }
             val limits = env.limits(a.settings, a.limits)
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
@@ -203,9 +214,15 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
                 project(value)
                 if (value.records.last().chars > ChatLimits.MAX_HISTORY_CHARS) throw HistoryFull()
             }
-            is AgentEvent.Calling -> own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = progressOnCall(event.call.name)) }
+            is AgentEvent.Calling -> own.guarded(owner, "progress") {
+                candidateCall = event.call
+                mutable.value = mutable.value.copy(toolProgress = null)
+            }
             is AgentEvent.FinishedTool -> {
-                val received = SavedResult.of(event.result).copy(noQuestion = noQuestion.remove(event.result.callId))
+                val received = SavedResult.of(event.result).copy(noQuestion = noQuestion.remove(event.result.callId),
+                    started = true.takeIf { startedCall == event.result.callId && event.result.outcome in setOf(ToolOutcome.FAILED, ToolOutcome.TIMEOUT) })
+                startedCall = null
+                candidateCall = null
                 val value = update { record -> val last = record.exchanges.last(); record.copy(exchanges = record.exchanges.dropLast(1) + last.copy(results = last.results + received)) }
                 project(value)
                 if (value.records.last().chars > ChatLimits.MAX_HISTORY_CHARS) throw HistoryFull()

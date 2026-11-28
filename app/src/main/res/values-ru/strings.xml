@@ -1675,4 +1675,14 @@
     <string name="tool_mqtt_read">Чтение сообщений MQTT</string>
     <string name="tool_mqtt_read_hint">Сообщения из открытой MQTT-сессии передаются выбранному провайдеру.</string>
     <string name="tool_mqtt_read_progress">Чтение сообщений MQTT</string>
+    <string name="chat_work_title">Ход работы</string>
+    <string name="chat_work_done">Готово</string>
+    <string name="chat_work_failed">Не удалось</string>
+    <string name="chat_work_timeout">Время вышло</string>
+    <string name="chat_checking_tunnels">Проверяю устройства и туннели…</string>
+    <string name="chat_checking_terminals">Смотрю, что открыто в терминале…</string>
+    <string name="chat_work_expanded">Развёрнуто</string>
+    <string name="chat_work_collapsed">Свёрнуто</string>
+    <string name="chat_checked_tunnels">Проверка устройств и туннелей</string>
+    <string name="chat_checked_terminals">Открытые вкладки терминала</string>
 </resources>
