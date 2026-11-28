@@ -15,6 +15,7 @@ class ActionClassCatalogTest {
         Row(AssistantToolId.READ_PAGE, PUBLIC_READ, READ_REMOTE, true, false),
         Row(AssistantToolId.INSPECT_IMAGE, PUBLIC_READ, READ_REMOTE, true, false),
         Row(AssistantToolId.PROFILE_INFORMATION, CONNECTION_READ, READ_REMOTE, true, false),
+        Row(AssistantToolId.MQTT_READ, CONNECTION_READ, READ_REMOTE, true, false),
         Row(AssistantToolId.TERMINAL_TABS, CONNECTION_READ, READ_REMOTE, true, false),
         Row(AssistantToolId.TERMINAL_READ, CONNECTION_READ, READ_REMOTE, true, false),
         Row(AssistantToolId.SSH_COMMAND, CONNECTION_CHANGE, CHANGE_REMOTE, true, true),
@@ -32,8 +33,8 @@ class ActionClassCatalogTest {
         Row(AssistantToolId.WAIT_FOR, APP_CHANGE, CHANGE_LOCAL, false, false),
     )
 
-    @Test fun `every tool has the class effect confirms and grantable of its row, and the table lists all 19`() {
-        assertEquals(19, AssistantToolId.entries.size); assertEquals(19, table.size)
+    @Test fun `every tool has the class effect confirms and grantable of its row, and the table lists all 20`() {
+        assertEquals(20, AssistantToolId.entries.size); assertEquals(20, table.size)
         assertEquals("every catalog entry is in the table", AssistantToolId.entries.toSet(), table.map { it.tool }.toSet())
         for (row in table) {
             assertEquals("${row.tool} class", row.actionClass, row.tool.actionClass)
@@ -42,7 +43,7 @@ class ActionClassCatalogTest {
             assertEquals("${row.tool} grantable", row.grantable, row.tool.grantable)
         }
         val counts = AssistantToolId.entries.groupingBy { it.actionClass }.eachCount()
-        assertEquals(mapOf(PUBLIC_READ to 3, CONNECTION_READ to 3, CONNECTION_CHANGE to 4, APP_READ to 2, APP_CHANGE to 7), counts)
+        assertEquals(mapOf(PUBLIC_READ to 3, CONNECTION_READ to 4, CONNECTION_CHANGE to 4, APP_READ to 2, APP_CHANGE to 7), counts)
     }
 
     @Test fun `a tool asks exactly when its effect changes and it confirms - six tools - and two are grantable`() {

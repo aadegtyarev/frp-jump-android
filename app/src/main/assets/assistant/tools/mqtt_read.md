@@ -1,0 +1,1 @@
+Use mqtt_read for current values already observed by the owner's connected MQTT explorer. Supply profile and connection IDs from profile_information. An optional MQTT filter only filters observed values; it does not subscribe. The cache may be incomplete; do not infer that an unobserved topic is absent from the broker.

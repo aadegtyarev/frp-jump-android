@@ -54,6 +54,7 @@ internal class AssistantRequestTool(private val off: List<AssistantToolId>, priv
             AssistantToolId.WEB_SEARCH -> "search the public web"
             AssistantToolId.READ_PAGE -> "read a public web page"
             AssistantToolId.INSPECT_IMAGE -> "ask the model about a public image"
+            AssistantToolId.MQTT_READ -> "read private messages already observed by a connected MQTT explorer"
             AssistantToolId.PROFILE_INFORMATION -> "find the app's profiles, devices and saved tunnels"
             // One entry for both terminal tools; the wire name is terminal_tabs.
             AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> "read and rename the owner's open terminal tabs"

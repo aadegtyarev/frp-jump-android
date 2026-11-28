@@ -9,9 +9,21 @@ internal val requestToolSpec get() = AssistantRequestTool(AssistantToolId.switch
 internal object TestPrompts {
     /** Every tool switch on. */
     val allTools = ru.adsrv.frpjump.settings.AssistantTools(search = true, readPage = true, inspectImage = true, profileInformation = true, sshCommand = true,
-        terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true)
+        terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true, mqttRead = true)
     val real: AssistantPrompts by lazy { AssistantPrompts.load { File("src/main/assets/$it").inputStream() } }
     val lazy: Lazy<AssistantPrompts> = lazy { real }
     /** Dummy strings for tests that never inspect prompt text. */
     val placeholder: Lazy<AssistantPrompts> = lazy { AssistantPrompts("assistant system prompt", "assistant summary prompt") }
+}
+
+/** A catalog fixture with no MQTT explorers and no broker traffic. */
+internal fun noMqttReader(): AssistantMqttRead {
+    val storage = ru.adsrv.frpjump.ssh.MemoryStorage()
+    val env = ru.adsrv.frpjump.mqtt.MqttEnvironment(
+        ru.adsrv.frpjump.mqtt.MqttLogins(storage, ru.adsrv.frpjump.profiles.FakeKeystore().box("synthetic-mqtt")),
+        ru.adsrv.frpjump.mqtt.PinStore(storage), ru.adsrv.frpjump.mqtt.MqttConnector { _, _, _ -> error("must not connect") },
+        ru.adsrv.frpjump.mqtt.FakeScheduler())
+    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
+    val sessions = ru.adsrv.frpjump.mqtt.MqttSessions(env, kotlinx.coroutines.flow.emptyFlow(), scope, kotlinx.coroutines.Dispatchers.Unconfined)
+    return AssistantMqttRead(TunnelFixture().tunnels, sessions, kotlinx.coroutines.flow.MutableStateFlow(emptySet())) { null }
 }

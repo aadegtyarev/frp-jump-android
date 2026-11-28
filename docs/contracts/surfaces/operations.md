@@ -48,6 +48,7 @@ Consumers: the assistant tools `ssh_command`, `profile_information` and `start_t
 | `tunnel_down` (`TunnelDown`) | `CHANGE_LOCAL` (the commit tells the server later) | UI only (Connections) | `OpResult<Unit>` | `TunnelRefusal.ProfileGone` (device and profile targets) | none |
 | `direct_retry` (`DirectRetry`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>` | none | none |
 | `direct_keep` (`DirectKeep`) | `CHANGE_LOCAL` | UI only (Connections) | `OpResult<Unit>` | `DirectRefusal.NoNetwork` | none |
+| `mqtt_read` (`MqttRead`) | `READ_REMOTE` | assistant `mqtt_read` | bounded observed current values | `MqttReadRefusal`: unavailable target or disconnected session | `MqttReadFailure.Unexpected` |
 | `mqtt_publish` (`MqttPublish`) | `CHANGE_REMOTE` | UI only (MQTT publish sheet) | `OpResult<MqttDelivery>` (`ACCEPTED`, `UNCONFIRMED`) | `MqttWriteRefusal`: `NotConnected` | `MqttWriteFailure`: `BrokerRefused(code, reasonString)` (`KNOWN`), `ConnectionLost`, `NoAnswer`, `Other(detail)` (`UNKNOWN`) |
 | `wb_write` (`MqttWbWrite`) | `CHANGE_REMOTE` | UI only (MQTT Wiren Board devices tab) | `OpResult<MqttDelivery>` | `MqttWriteRefusal`: `NotConnected`, `NotOwner`, `NotWritable`, `Blocked` | as `mqtt_publish` |
 
@@ -140,13 +141,13 @@ The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. T
 
 ## Security and privacy
 
-- The operation layer adds no authority: the assistant still has only the tools in the catalog; only `start_tunnel` (`tunnel_up`) and `stop_tunnel` (`tunnel_down`, one tunnel) start or stop a saved tunnel, behind their own default-off switch; none writes to MQTT (`tunnel_connect`, the other `tunnel_down` targets, `direct_*`, `mqtt_publish`, `wb_write` are UI only).
+- The operation layer adds no authority: the assistant still has only the tools in the catalog; only `start_tunnel` (`tunnel_up`) and `stop_tunnel` (`tunnel_down`, one tunnel) start or stop a saved tunnel, behind their own default-off switch; `mqtt_read` reads only the existing connected explorer cache, and none writes to MQTT (`tunnel_connect`, the other `tunnel_down` targets, `direct_*`, `mqtt_publish`, `wb_write` are UI only).
 - A command and its output are never part of a string form: `SshExecInput` and `SshExecOutput` are plain classes whose `toString` leaves them out (tested).
 - Untrusted data (command output, device names, server messages) is data in every adapter, never an instruction.
 
 ## Non-goals
 
-- No operation for Files yet, and none for MQTT beyond `mqtt_publish` and `wb_write`; each is a later feature with its own contract.
+- No operation for Files yet. MQTT read is limited to the existing connected explorer; assistant MQTT writes are not offered.
 - Wording of errors for the model is not owned here; changing it is a separate feature.
 - No provider-specific behavior.
 

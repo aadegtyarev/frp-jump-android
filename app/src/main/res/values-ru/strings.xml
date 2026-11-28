@@ -1672,4 +1672,7 @@
     <string name="chat_open_tunnel">Открыть туннель %1$s</string>
     <string name="chat_tunnel_unavailable">Этот туннель уже недоступен.</string>
     <string name="chat_open_terminal">Открыть терминал %1$s</string>
+    <string name="tool_mqtt_read">Чтение сообщений MQTT</string>
+    <string name="tool_mqtt_read_hint">Сообщения из открытой MQTT-сессии передаются выбранному провайдеру.</string>
+    <string name="tool_mqtt_read_progress">Чтение сообщений MQTT</string>
 </resources>

@@ -60,6 +60,7 @@ class AssistantConversation(
     private val onUnanswered: () -> Unit = {},
     /** Told once when an attempt finished by itself (not stopped, disabled or removed): true for a reply, false for a failure or timeout. */
     private val onEnded: (Boolean) -> Unit = {},
+    private val mqttRead: AssistantMqttRead? = null,
 ) {
     private val gate = runtime.gate
     /** Events that fired and wait for a turn (under the gate), notes for the model's next turn, and the event replies in a row since the owner last wrote. */
@@ -81,7 +82,7 @@ class AssistantConversation(
     }
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
     private val own = RunOwnership(c, runtime, availability, snapshot, onRevoked = { disabled -> endWaitsLocked(note = disabled) })
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, sessions, skills, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, sessions, skills, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered, mqttRead)
     val state: StateFlow<ChatState> = c.mutable
 
     init {

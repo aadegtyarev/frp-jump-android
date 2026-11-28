@@ -236,11 +236,12 @@ class TopicTree(
      * the root (as [summary] does), with their paths, in no order: one walk
      * under the lock for a view that reads a whole convention at once.
      */
-    fun values(pattern: List<LevelPattern>): List<Pair<MqttPath, TopicValue>> {
+    fun values(pattern: List<LevelPattern>, limit: Int = Int.MAX_VALUE): List<Pair<MqttPath, TopicValue>> {
+        require(limit > 0)
         if (pattern.isEmpty()) return emptyList()
         val found = ArrayList<Pair<MqttPath, TopicValue>>()
         synchronized(lock) {
-            walk(root, true, pattern, false, 0, ArrayList()) { levels, node ->
+            walk(root, true, pattern, false, 0, ArrayList(), { found.size < limit }) { levels, node ->
                 node.history.firstOrNull()?.let { found += MqttPath(levels.toList()) to it }
             }
         }
@@ -286,7 +287,7 @@ class TopicTree(
     }
 
     /** [node] is at [levels]; [k] is the pattern level its children are matched against. Heap frames, not recursion. */
-    private fun walk(node: Node, atRoot: Boolean, pattern: List<LevelPattern>, ignoreCase: Boolean, k: Int, levels: ArrayList<String>, found: (ArrayList<String>, Node) -> Unit) {
+    private fun walk(node: Node, atRoot: Boolean, pattern: List<LevelPattern>, ignoreCase: Boolean, k: Int, levels: ArrayList<String>, keepGoing: () -> Boolean = { true }, found: (ArrayList<String>, Node) -> Unit) {
         class Frame(val node: Node, val index: Int) {
             var children: Iterator<Map.Entry<String, Node>>? = null
         }
@@ -296,14 +297,14 @@ class TopicTree(
             stack.removeLast()
             if (stack.isNotEmpty()) levels.removeAt(levels.lastIndex)
         }
-        while (stack.isNotEmpty()) {
+        while (stack.isNotEmpty() && keepGoing()) {
             val frame = stack.last()
             val part = pattern[frame.index]
             if (frame.children == null) {
                 if (part == LevelPattern.Rest) {
                     // `a/#` matches `a` as well, unless `a` is where the search started.
                     if (levels.isNotEmpty() && frame.node.history.isNotEmpty()) found(levels, frame.node)
-                    collectAll(frame.node, atRoot && levels.isEmpty(), levels, found)
+                    collectAll(frame.node, atRoot && levels.isEmpty(), levels, keepGoing, found)
                     leave()
                     continue
                 }
@@ -330,10 +331,10 @@ class TopicTree(
     }
 
     /** Every topic below [node]; [noDollar] skips its `$` children. */
-    private fun collectAll(node: Node, noDollar: Boolean, levels: ArrayList<String>, found: (ArrayList<String>, Node) -> Unit) {
+    private fun collectAll(node: Node, noDollar: Boolean, levels: ArrayList<String>, keepGoing: () -> Boolean, found: (ArrayList<String>, Node) -> Unit) {
         val stack = ArrayDeque<Iterator<Map.Entry<String, Node>>>()
         stack.addLast(node.children.entries.iterator())
-        while (stack.isNotEmpty()) {
+        while (stack.isNotEmpty() && keepGoing()) {
             val children = stack.last()
             if (!children.hasNext()) {
                 stack.removeLast()

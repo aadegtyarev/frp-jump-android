@@ -13,6 +13,7 @@ class AssistantToolTextsTest {
             AssistantToolId.READ_PAGE to Triple(R.string.tool_read, R.string.tool_read_hint, R.string.tool_read_progress),
             AssistantToolId.INSPECT_IMAGE to Triple(R.string.tool_image, R.string.tool_image_hint, R.string.tool_image_progress),
             AssistantToolId.PROFILE_INFORMATION to Triple(R.string.tool_profile_information, R.string.tool_profile_information_hint, R.string.tool_profile_information_progress),
+            AssistantToolId.MQTT_READ to Triple(R.string.tool_mqtt_read, R.string.tool_mqtt_read_hint, R.string.tool_mqtt_read_progress),
             // The two terminal tools share one switch (its title and hint); each has its own progress line.
             AssistantToolId.START_TUNNEL to Triple(R.string.tool_tunnels, R.string.tool_tunnels_hint, R.string.tool_start_tunnel_progress),
             AssistantToolId.STOP_TUNNEL to Triple(R.string.tool_tunnels, R.string.tool_tunnels_hint, R.string.tool_stop_tunnel_progress),
