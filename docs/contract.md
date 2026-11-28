@@ -599,8 +599,10 @@ else happens: no click for the program, no keyboard.
   (`127.1`, `0x7f.0.0.1`, `2130706433`, percent-encoded, full-width or soft-hyphen spellings), because on the phone `127.0.0.1` is the app's own
   tunnel ports.
 - Wrapped lines: a link the emulator wrapped at the margin is one link. Under tmux (no wrap mark: it draws each row itself) rows are
-  joined only when the link reaches the last column and the next row begins with address characters; the sheet shows the whole address
-  before anything opens.
+  joined when the link reaches the last column and the next row begins with address characters, except when that row starts a new URL.
+  A separately redrawn parenthesized Web address with an established host and path may also continue at the same indentation when the
+  next row contains one address fragment and its closing parenthesis. A tap on either fragment and the visible-links list show the whole
+  address, including across viewport edges, before anything opens; other ambiguous indentation is not joined.
 - A tap on the cursor's line stays the cursor's, even when an address is typed there; a tap on a link in other output, or in a
   full-screen program, opens the sheet. Long-press selection works as before; while a selection is on or TalkBack's touch exploration is
   on, taps stay as they were.

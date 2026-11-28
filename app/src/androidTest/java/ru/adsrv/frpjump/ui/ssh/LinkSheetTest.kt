@@ -169,6 +169,36 @@ class LinkSheetTest {
         }
     }
 
+    private fun wrappedFromBuffer(row: Int, column: Int): String {
+        val output = object : com.termux.terminal.TerminalOutput() {
+            override fun write(data: ByteArray, offset: Int, count: Int) = Unit
+            override fun titleChanged(oldTitle: String?, newTitle: String?) = Unit
+            override fun onCopyTextToClipboard(text: String?) = Unit
+            override fun onPasteTextFromClipboard() = Unit
+            override fun onBell() = Unit
+            override fun onColorsChanged() = Unit
+        }
+        val emulator = com.termux.terminal.TerminalEmulator(output, 32, 3, 12, 24, 100, null)
+        val bytes = "\u001b[?1049h\u001b[1;1H  (https://art.example/abc123456\u001b[2;1H  suffix) next\u001b[3;1Hprompt".toByteArray()
+        emulator.append(bytes, bytes.size)
+        return checkNotNull(linkAt(BufferGrid(emulator), true, row, column))
+    }
+
+    @Test fun wrappedBufferAddressCopiesInFull() {
+        val address = "https://art.example/abc123456suffix"
+        show(wrappedFromBuffer(0, 6)); address().assertTextEquals(address)
+        compose.onNodeWithTag("link_copy").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(address, compose.activity.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString()) }
+    }
+
+    @Test fun wrappedBufferAddressOpensInFull() {
+        val address = "https://art.example/abc123456suffix"
+        show(wrappedFromBuffer(1, 3)); address().assertTextEquals(address)
+        shot("wrapped")
+        compose.onNodeWithTag("link_open").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf(address), opened) }
+    }
+
     @Test fun aNonLatinDomainShowsAndOpensPunycodeAndSaysWhatTheTextWas() {
         show("https://аррӏе.com/login")
         address().assertTextEquals("https://xn--80ak6aa92e.com/login")

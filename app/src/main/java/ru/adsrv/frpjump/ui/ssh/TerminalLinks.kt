@@ -319,8 +319,10 @@ internal fun rowChains(grid: TapGrid, hardWrapped: Boolean, from: Int, to: Int):
     var first = from
     var text = StringBuilder()
     var starts = ArrayList<Int>()
+    var skipIndent = 0
     for (row in from..to) {
         for (column in 0 until columns) {
+            if (column < skipIndent) { starts += text.length; continue }
             val gap = column == columns - 1 && row < to && grid.wraps(row) && grid.isBlank(row, column) && columns > 1 && grid.isWideTail(row + 1, 1)
             if (grid.isWideTail(row, column)) {
                 starts += starts.lastOrNull() ?: text.length
@@ -329,7 +331,9 @@ internal fun rowChains(grid: TapGrid, hardWrapped: Boolean, from: Int, to: Int):
                 if (!gap) text.append(grid.text(row, column))
             }
         }
-        val joins = row < to && (grid.wraps(row) || (hardWrapped && runsIntoNextRow(grid, row, text)))
+        val indent = if (row < to && hardWrapped && !grid.wraps(row)) enclosedContinuationIndent(grid, row) else null
+        val joins = row < to && (grid.wraps(row) || (hardWrapped && (indent != null || runsIntoNextRow(grid, row, text))))
+        skipIndent = indent ?: 0
         if (!joins || row == to) {
             chains += RowChain(first, row, text.toString(), columns, starts.toIntArray())
             first = row + 1
@@ -340,13 +344,60 @@ internal fun rowChains(grid: TapGrid, hardWrapped: Boolean, from: Int, to: Int):
     return chains
 }
 
+/** A separately drawn, indented parenthesized Web address with a complete closing delimiter on the next row. */
+private fun enclosedContinuationIndent(grid: TapGrid, row: Int): Int? {
+    val columns = grid.columns
+    if (columns < 4 || grid.isBlank(row, columns - 1) || grid.isWideTail(row, columns - 1)) return null
+    var indent = 0
+    while (indent < columns && grid.isBlank(row, indent)) indent++
+    if (indent == 0 || indent + 1 >= columns || grid.text(row, indent) != "(") return null
+    val prefix = StringBuilder()
+    for (column in indent + 1 until columns) {
+        if (grid.isWideTail(row, column)) continue
+        val cell = grid.text(row, column)
+        if (endsLink(cell.codePointAtOrSpace()) || cell == "(" || cell == ")") return null
+        prefix.append(cell)
+    }
+    val address = prefix.toString()
+    val authority = when {
+        address.startsWith("https://", true) -> 8
+        address.startsWith("http://", true) -> 7
+        else -> return null
+    }
+    if (address.indexOf('/', authority) <= authority || describeLink(address).verdict !in setOf(LinkVerdict.OPEN, LinkVerdict.REMOTE)) return null
+    for (column in 0 until indent) if (!grid.isBlank(row + 1, column)) return null
+    if (indent >= columns || grid.isBlank(row + 1, indent)) return null
+    val suffix = StringBuilder()
+    var closedAt = -1
+    for (column in indent until columns) {
+        if (grid.isWideTail(row + 1, column)) continue
+        val cell = grid.text(row + 1, column)
+        if (cell == ")") { closedAt = column; break }
+        if (endsLink(cell.codePointAtOrSpace()) || cell == "(") return null
+        suffix.append(cell)
+    }
+    if (suffix.isEmpty() || closedAt < 0 || SCHEME.containsMatchIn(suffix)) return null
+    if (closedAt + 1 < columns && !grid.isBlank(row + 1, closedAt + 1) && grid.text(row + 1, closedAt + 1) !in listOf(".", ",", ";", ":", "!", "?")) return null
+    return indent
+}
+
 /** tmux's case: the link in [text] (the lines so far) reaches [row]'s last column and the next row goes on with address characters. */
 private fun runsIntoNextRow(grid: TapGrid, row: Int, text: CharSequence): Boolean {
     val last = grid.columns - 1
     if (grid.isBlank(row, last) || grid.isWideTail(row, last)) return false
     if (grid.isBlank(row + 1, 0) || endsLink(grid.text(row + 1, 0).codePointAtOrSpace())) return false
+    // A new scheme at the next row is a separate address, even when the first fills the margin.
+    val next = StringBuilder()
+    for (column in 0 until minOf(grid.columns, MAX_LINK_CHARS + 1)) {
+        if (grid.isWideTail(row + 1, column)) continue
+        val cell = grid.text(row + 1, column)
+        if (endsLink(cell.codePointAtOrSpace())) break
+        next.append(cell)
+    }
+    val firstScheme = next.indexOfFirst { it !in OPENERS && it !in "'‘“" }.takeIf { it >= 0 } ?: return false
+    if (SCHEME.find(next, firstScheme)?.range?.first == firstScheme) return false
     var tokenStart = text.length
-    while (tokenStart > 0 && !endsLink(Character.codePointBefore(text, tokenStart))) tokenStart -= Character.charCount(Character.codePointBefore(text, tokenStart))
+    while (tokenStart > 0 && text.length - tokenStart <= MAX_LINK_CHARS && !endsLink(Character.codePointBefore(text, tokenStart))) tokenStart -= Character.charCount(Character.codePointBefore(text, tokenStart))
     if (text.length - tokenStart > MAX_LINK_CHARS) return false
     return SCHEME.containsMatchIn(text.subSequence(tokenStart, text.length))
 }
@@ -359,6 +410,7 @@ fun linkAt(grid: TapGrid, hardWrapped: Boolean, row: Int, column: Int): String? 
     val reach = MAX_LINK_CHARS / grid.columns + 2
     val chain = rowChains(grid, hardWrapped, maxOf(grid.firstRow, row - reach), minOf(grid.lastRow, row + reach))
         .firstOrNull { row in it.firstRow..it.lastRow } ?: return null
+    if (grid.isBlank(row, column.coerceIn(0, grid.columns - 1))) return null
     val index = chain.indexAt(row, column)
     if (index !in chain.text.indices || chain.text[index] == ' ') return null
     val span = findLinks(chain.text).firstOrNull { index >= it.start && index < it.end } ?: return null
@@ -370,12 +422,19 @@ fun linkAt(grid: TapGrid, hardWrapped: Boolean, row: Int, column: Int): String? 
  * the view is scrolled back into the history); the screen is as tall as the grid's rows from 0 to its last one.
  */
 fun linksOnScreen(grid: TapGrid, hardWrapped: Boolean, topRow: Int = 0, limit: Int = 100): List<String> {
+    if (grid.columns <= 0 || grid.lastRow < 0) return emptyList()
     val first = topRow.coerceIn(grid.firstRow, 0)
     val last = minOf(first + grid.lastRow, grid.lastRow)
+    val reach = MAX_LINK_CHARS / grid.columns + 2
     val found = LinkedHashSet<String>()
-    for (chain in rowChains(grid, hardWrapped, first, last)) {
+    for (chain in rowChains(grid, hardWrapped, maxOf(grid.firstRow, first - reach), minOf(grid.lastRow, last + reach))) {
+        val visibleFirst = maxOf(first, chain.firstRow)
+        val visibleLast = minOf(last, chain.lastRow)
+        if (visibleFirst > visibleLast) continue
+        val start = chain.indexAt(visibleFirst, 0)
+        val end = if (visibleLast < chain.lastRow) chain.indexAt(visibleLast + 1, 0) else chain.text.length
         for (span in findLinks(chain.text)) {
-            // A chain cut by the window's edge may hold a link that starts above it; only whole rows are read, so it is read as seen.
+            if (span.start >= end || span.end <= start) continue
             found += chain.text.substring(span.start, span.end)
             if (found.size >= limit) return found.toList()
         }
