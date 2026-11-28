@@ -64,6 +64,7 @@ class AssistantConversation(
     private val mqttRead: AssistantMqttRead? = null,
     private val mqttPublish: AssistantMqttPublish? = null,
     private val webHttp: AssistantWebHttp? = null,
+    private val temporary: TemporaryWorkspace? = null,
     private val attachments: MutableStateFlow<List<ChatAttachment>> = MutableStateFlow(emptyList()),
 ) {
     private val gate = runtime.gate
@@ -85,8 +86,8 @@ class AssistantConversation(
         WaitAdder { spec -> synchronized(gate) { val now = availability(); if (c.closed || !now.enabled || !now.tools.waits) AddWait.Invalid else w.add(spec) } }
     }
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
-    private val own = RunOwnership(c, runtime, availability, snapshot, onRevoked = { disabled -> endWaitsLocked(note = disabled) })
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, sessions, skills, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered, mqttRead, mqttPublish, webHttp)
+    private val own = RunOwnership(c, runtime, availability, snapshot, temporary, onRevoked = { disabled -> endWaitsLocked(note = disabled) })
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, sessions, skills, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered, mqttRead, mqttPublish, webHttp, temporary)
     val state: StateFlow<ChatState> = c.mutable
 
     init {
@@ -166,6 +167,7 @@ class AssistantConversation(
         synchronized(gate) {
             // The draft (typed while the clear waited, or kept through a Retry) goes into the new conversation.
             val draft = c.document.draft
+            temporary?.clearLocked()
             c.document = SavedChat().bind(snapshot().settings).copy(draft = draft); c.provider = null; confirmations?.grants?.clear()
             endWaitsLocked(note = false)
             c.clearing = false; c.clearFailed = false

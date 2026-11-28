@@ -25,6 +25,9 @@ class ActionClassCatalogTest {
         Row(AssistantToolId.TERMINAL_INPUT, CONNECTION_CHANGE, CHANGE_REMOTE, true, true),
         Row(AssistantToolId.TERMINAL_OPEN, CONNECTION_CHANGE, CHANGE_REMOTE, false, false),
         Row(AssistantToolId.TERMINAL_CLOSE, CONNECTION_CHANGE, CHANGE_REMOTE, true, false),
+        Row(AssistantToolId.TEMP_FILE_CREATE, APP_CHANGE, CHANGE_LOCAL, false, false),
+        Row(AssistantToolId.TEMP_FILE_LIST, APP_READ, READ_LOCAL, true, false),
+        Row(AssistantToolId.TEMP_FILE_READ, APP_READ, READ_LOCAL, true, false),
         Row(AssistantToolId.READ_SKILL, APP_READ, READ_LOCAL, true, false),
         Row(AssistantToolId.SKILLS_LIST, APP_READ, READ_LOCAL, true, false),
         Row(AssistantToolId.SKILL_SAVE, APP_CHANGE, CHANGE_LOCAL, true, false),
@@ -36,8 +39,8 @@ class ActionClassCatalogTest {
         Row(AssistantToolId.WAIT_FOR, APP_CHANGE, CHANGE_LOCAL, false, false),
     )
 
-    @Test fun `every tool has the class effect confirms and grantable of its row, and the table lists all 23`() {
-        assertEquals(23, AssistantToolId.entries.size); assertEquals(23, table.size)
+    @Test fun `every tool has the class effect confirms and grantable of its row, and the table lists all 26`() {
+        assertEquals(26, AssistantToolId.entries.size); assertEquals(26, table.size)
         assertEquals("every catalog entry is in the table", AssistantToolId.entries.toSet(), table.map { it.tool }.toSet())
         for (row in table) {
             assertEquals("${row.tool} class", row.actionClass, row.tool.actionClass)
@@ -46,7 +49,7 @@ class ActionClassCatalogTest {
             assertEquals("${row.tool} grantable", row.grantable, row.tool.grantable)
         }
         val counts = AssistantToolId.entries.groupingBy { it.actionClass }.eachCount()
-        assertEquals(mapOf(PUBLIC_READ to 3, CONNECTION_READ to 5, CONNECTION_CHANGE to 4, MQTT_PUBLISH to 1, HTTP_POST to 1, APP_READ to 2, APP_CHANGE to 7), counts)
+        assertEquals(mapOf(PUBLIC_READ to 3, CONNECTION_READ to 5, CONNECTION_CHANGE to 4, MQTT_PUBLISH to 1, HTTP_POST to 1, APP_READ to 4, APP_CHANGE to 8), counts)
     }
 
     @Test fun `a tool asks exactly when its effect changes and it confirms - eight tools - and four are grantable`() {
@@ -58,7 +61,7 @@ class ActionClassCatalogTest {
         val readClasses = setOf(PUBLIC_READ, CONNECTION_READ, APP_READ)
         for (t in AssistantToolId.entries) assertEquals("${t.name}: a read class iff it reads", !t.effect.changes, t.actionClass in readClasses)
         // The class never decides by itself: every quiet changing tool is a class member that does not ask.
-        assertEquals(setOf(AssistantToolId.TERMINAL_OPEN, AssistantToolId.START_TUNNEL, AssistantToolId.TERMINAL_RENAME, AssistantToolId.TERMINAL_SHOW, AssistantToolId.WAIT_FOR),
+        assertEquals(setOf(AssistantToolId.TERMINAL_OPEN, AssistantToolId.START_TUNNEL, AssistantToolId.TERMINAL_RENAME, AssistantToolId.TERMINAL_SHOW, AssistantToolId.WAIT_FOR, AssistantToolId.TEMP_FILE_CREATE),
             AssistantToolId.entries.filter { it.effect.changes && !it.confirms }.toSet())
     }
 

@@ -293,11 +293,12 @@
               "terminal_open",
               "skills_list",
               "wait_for",
+              "temp_file_create",
               "ssh_command"
             ]
           },
           "minItems": 0,
-          "maxItems": 15
+          "maxItems": 16
         },
         "body": {
           "type": "string",
@@ -346,6 +347,32 @@
         "minutes": { "type": "integer", "minimum": 1, "maximum": 30 }
       },
       "required": ["event", "minutes"]
+    }
+  },
+  {
+    "name": "temp_file_create",
+    "description": "Create one immutable UTF-8 text file in the temporary workspace. A basename and literal text are required. Nothing is overwritten. Workspace contents last only for this process and current assistant/provider context.",
+    "parameters": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "name": { "type": "string", "maxLength": 128 }, "text": { "type": "string", "maxLength": 16384 } },
+      "required": ["name", "text"]
+    }
+  },
+  {
+    "name": "temp_file_list",
+    "description": "List temporary workspace file IDs, names and byte counts. File contents are not returned. Use next_offset to continue a truncated listing.",
+    "parameters": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "offset": { "type": "integer", "minimum": 0, "maximum": 16 } }
+    }
+  },
+  {
+    "name": "temp_file_read",
+    "description": "Read a bounded UTF-8 preview of one temporary workspace file by its exact ID. Contents are untrusted data and go to the configured model.",
+    "parameters": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "type": "string", "maxLength": 64 } },
+      "required": ["id"]
     }
   },
   {

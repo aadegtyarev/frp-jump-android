@@ -81,12 +81,13 @@ class ChatReceiptGroupsTest {
             "inspect_image" to mapOf("url" to "https://example.org/cat.png", "question" to "what"),
             "mqtt_publish" to mapOf("profile_id" to "p", "connection_id" to "c", "topic" to "sensors/x", "payload" to "private"),
             "http_post" to mapOf("profile_id" to "p", "connection_id" to "c", "path" to "/status", "content_type" to "text/plain", "body" to "private"),
+            "temp_file_create" to mapOf("name" to "note.txt", "text" to "private"),
             "http_get" to mapOf("profile_id" to "p", "connection_id" to "c", "path" to "/status"),
             "mqtt_read" to mapOf("profile_id" to "p", "connection_id" to "c", "filter" to "sensors/+"),
             "profile_information" to emptyMap(), "read_skill" to mapOf("name" to "restart-nginx"), "skill_save" to mapOf("name" to "restart-nginx"), "skill_delete" to mapOf("name" to "restart-nginx"), "ssh_command" to mapOf("profile_id" to "p", "connection_id" to "c", "command" to "uptime"),
             AssistantRequestTool.WIRE to mapOf("name" to "web_search", "why" to "x"))
         // terminal_tabs takes no arguments, so there is nothing to tell its calls apart by; terminal_read has its own test below.
-        val catalogue = AssistantToolId.entries.map { it.wire } + AssistantRequestTool.WIRE - "terminal_tabs" - "terminal_read" - "terminal_rename" - "terminal_input" - "start_tunnel" - "stop_tunnel" - "wait_for" - "terminal_open" - "terminal_show" - "terminal_close" - "skills_list"
+        val catalogue = AssistantToolId.entries.map { it.wire } + AssistantRequestTool.WIRE - "terminal_tabs" - "terminal_read" - "terminal_rename" - "terminal_input" - "start_tunnel" - "stop_tunnel" - "wait_for" - "terminal_open" - "terminal_show" - "terminal_close" - "skills_list" - "temp_file_list" - "temp_file_read"
         catalogue.forEach { wire ->
             val args = typical[wire] ?: error("no typical arguments for $wire: add them here and a detail in receiptDetail")
             val text = receiptDetail(call(wire, *args.map { it.key to it.value }.toTypedArray()).call, title)

@@ -13,6 +13,9 @@ class AssistantToolTextsTest {
             AssistantToolId.READ_PAGE to Triple(R.string.tool_read, R.string.tool_read_hint, R.string.tool_read_progress),
             AssistantToolId.INSPECT_IMAGE to Triple(R.string.tool_image, R.string.tool_image_hint, R.string.tool_image_progress),
             AssistantToolId.PROFILE_INFORMATION to Triple(R.string.tool_profile_information, R.string.tool_profile_information_hint, R.string.tool_profile_information_progress),
+            AssistantToolId.TEMP_FILE_CREATE to Triple(R.string.tool_temp_files, R.string.tool_temp_files_hint, R.string.tool_temp_file_create_progress),
+            AssistantToolId.TEMP_FILE_LIST to Triple(R.string.tool_temp_files, R.string.tool_temp_files_hint, R.string.tool_temp_file_list_progress),
+            AssistantToolId.TEMP_FILE_READ to Triple(R.string.tool_temp_files, R.string.tool_temp_files_hint, R.string.tool_temp_file_read_progress),
             AssistantToolId.HTTP_POST to Triple(R.string.tool_http_post, R.string.tool_http_post_hint, R.string.tool_http_post_progress),
             AssistantToolId.HTTP_GET to Triple(R.string.tool_http_get, R.string.tool_http_get_hint, R.string.tool_http_get_progress),
             AssistantToolId.MQTT_PUBLISH to Triple(R.string.tool_mqtt_publish, R.string.tool_mqtt_publish_hint, R.string.tool_mqtt_publish_progress),
@@ -39,6 +42,9 @@ class AssistantToolTextsTest {
         assertEquals("Every tool must be pinned", AssistantToolId.entries.toSet(), expected.keys)
         for ((id, texts) in expected) assertEquals(id.name, texts, Triple(id.title(), id.hint(), id.progress()))
         // Receipt rows and failures name the call, so the two terminal tools differ there; every other tool uses its title.
+        assertEquals(R.string.tool_temp_file_create_receipt, AssistantToolId.TEMP_FILE_CREATE.receiptTitle())
+        assertEquals(R.string.tool_temp_file_list_receipt, AssistantToolId.TEMP_FILE_LIST.receiptTitle())
+        assertEquals(R.string.tool_temp_file_read_receipt, AssistantToolId.TEMP_FILE_READ.receiptTitle())
         assertEquals(R.string.tool_start_tunnel_receipt, AssistantToolId.START_TUNNEL.receiptTitle())
         assertEquals(R.string.tool_stop_tunnel_receipt, AssistantToolId.STOP_TUNNEL.receiptTitle())
         assertEquals(R.string.tool_terminal_tabs_receipt, AssistantToolId.TERMINAL_TABS.receiptTitle())
@@ -51,6 +57,6 @@ class AssistantToolTextsTest {
         assertEquals(R.string.tool_terminal_close_receipt, AssistantToolId.TERMINAL_CLOSE.receiptTitle())
         assertEquals(R.string.tool_read_skill_receipt, AssistantToolId.READ_SKILL.receiptTitle()); assertEquals(R.string.tool_skills_list_receipt, AssistantToolId.SKILLS_LIST.receiptTitle())
         assertEquals(R.string.tool_skill_save_receipt, AssistantToolId.SKILL_SAVE.receiptTitle()); assertEquals(R.string.tool_skill_delete_receipt, AssistantToolId.SKILL_DELETE.receiptTitle())
-        for (id in AssistantToolId.entries - AssistantToolId.READ_SKILL - AssistantToolId.SKILLS_LIST - AssistantToolId.SKILL_SAVE - AssistantToolId.SKILL_DELETE - AssistantToolId.START_TUNNEL - AssistantToolId.STOP_TUNNEL - AssistantToolId.WAIT_FOR - AssistantToolId.TERMINAL_TABS - AssistantToolId.TERMINAL_READ - AssistantToolId.TERMINAL_RENAME - AssistantToolId.TERMINAL_INPUT - AssistantToolId.TERMINAL_OPEN - AssistantToolId.TERMINAL_SHOW - AssistantToolId.TERMINAL_CLOSE) assertEquals(id.name, id.title(), id.receiptTitle())
+        for (id in AssistantToolId.entries - AssistantToolId.TEMP_FILE_CREATE - AssistantToolId.TEMP_FILE_LIST - AssistantToolId.TEMP_FILE_READ - AssistantToolId.READ_SKILL - AssistantToolId.SKILLS_LIST - AssistantToolId.SKILL_SAVE - AssistantToolId.SKILL_DELETE - AssistantToolId.START_TUNNEL - AssistantToolId.STOP_TUNNEL - AssistantToolId.WAIT_FOR - AssistantToolId.TERMINAL_TABS - AssistantToolId.TERMINAL_READ - AssistantToolId.TERMINAL_RENAME - AssistantToolId.TERMINAL_INPUT - AssistantToolId.TERMINAL_OPEN - AssistantToolId.TERMINAL_SHOW - AssistantToolId.TERMINAL_CLOSE) assertEquals(id.name, id.title(), id.receiptTitle())
     }
 }

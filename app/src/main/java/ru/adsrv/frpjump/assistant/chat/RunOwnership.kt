@@ -19,7 +19,8 @@ internal class Admission(val owner: Pending, val saved: AssistantProviderSnapsho
     /** The owner's limits at admission (the wait tool's description and caps read them). */
     val limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits(),
     /** What the model reads as this turn's text: [text], and after it, one line each, the events that came with the owner's message and the notes. */
-    val modelText: String = text)
+    val modelText: String = text,
+    val temporaryGeneration: Long? = null, val temporaryOffCount: Long = 0)
 
 /** What a Send carries besides its text: [events] of waits, [notes] for the model only; with [eventOnly] the events are the turn. */
 internal class Delivery(val events: List<WaitEvent>, val notes: List<String> = emptyList(), val eventOnly: Boolean = false)
@@ -27,6 +28,7 @@ internal class Delivery(val events: List<WaitEvent>, val notes: List<String> = e
 /** Who may commit: authority refresh, stop, the ownership check and Send admission. Every method documents whether it needs the gate. */
 internal class RunOwnership(private val c: ChatCells, private val runtime: AssistantChatRuntime,
     private val availability: () -> AssistantAvailability, private val snapshot: () -> AssistantProviderSnapshot,
+    private val temporary: TemporaryWorkspace? = null,
     /**
      * Called (under the gate) when this conversation's authority was reset: the assistant was switched off ([disabled] true), or the provider changed or
      * has a problem (the conversation starts again). What lives only with it (the waits) ends.
@@ -123,7 +125,8 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
             confirmationNotSaved = false)
         return Admission(owner, saved, settings, text, past, enabledTools, retained, AssistantOwnerInstructions.effective(captured.ownerInstructions),
             c.document.declinedTools.toSet(), fixed != null || delivery?.eventOnly == true, captured.limits,
-            withApp(text, attachmentText(attachments) + (if (delivery?.eventOnly == true) emptyList() else delivery?.events?.map { it.message() }.orEmpty()) + delivery?.notes.orEmpty()))
+            withApp(text, attachmentText(attachments) + (if (delivery?.eventOnly == true) emptyList() else delivery?.events?.map { it.message() }.orEmpty()) + delivery?.notes.orEmpty()),
+            temporary?.stampLocked(), captured.toolOffs[AssistantToolId.TEMP_FILE_CREATE] ?: 0L)
     }
 }
 

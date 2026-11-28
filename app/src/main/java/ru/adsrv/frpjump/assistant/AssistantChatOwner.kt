@@ -80,6 +80,12 @@ class AssistantChatOwner(
     private val mqttPublish: AssistantMqttPublish? = null,
     private val webHttp: AssistantWebHttp? = null,
 ) {
+    private val temporary = TemporaryWorkspace({ settingsStore.assistantAvailability }, { providerStore.currentSnapshot })
+    init {
+        // The owner outlives an idle conversation; keep the workspace bound to the live provider and assistant state even without a screen.
+        scope.launch { settingsStore.assistantDisables.collect { synchronized(settingsStore.assistantChat.gate) { temporary.stampLocked() } } }
+        scope.launch { providerStore.state.collect { synchronized(settingsStore.assistantChat.gate) { temporary.stampLocked() } } }
+    }
     private val pendingAttachments = MutableStateFlow<List<ru.adsrv.frpjump.assistant.chat.ChatAttachment>>(emptyList())
     val attachments: StateFlow<List<ru.adsrv.frpjump.assistant.chat.ChatAttachment>> = pendingAttachments.asStateFlow()
     fun attach(item: ru.adsrv.frpjump.assistant.chat.ChatAttachment): Boolean = attachAll(listOf(item))
@@ -142,6 +148,7 @@ class AssistantChatOwner(
 
     /** Ends everything now, attempt included (a test or a private owner going away). */
     fun shutdown() {
+        synchronized(settingsStore.assistantChat.gate) { temporary.clearLocked() }
         val old = synchronized(lock) { screens = 0; live.also { live = null }.also { activityOut.value = ChatActivity.IDLE; stoppingOut.value = false; waitCountOut.value = 0 } } ?: return
         old.conversation.close(); old.scope.cancel()
     }
@@ -172,7 +179,7 @@ class AssistantChatOwner(
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
-            profileInformation = profileInformation, mqttRead = mqttRead, mqttPublish = mqttPublish, webHttp = webHttp, attachments = pendingAttachments, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, sessions = sessions, skills = skills, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
+            profileInformation = profileInformation, mqttRead = mqttRead, mqttPublish = mqttPublish, webHttp = webHttp, attachments = pendingAttachments, temporary = temporary, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, sessions = sessions, skills = skills, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
             awaitHistoryClear = { historyUndo?.awaitDone(HISTORY_UNDO_KEY) },
             commitHistoryClear = { historyUndo?.let { it.commit(HISTORY_UNDO_KEY); it.awaitDone(HISTORY_UNDO_KEY) } }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,

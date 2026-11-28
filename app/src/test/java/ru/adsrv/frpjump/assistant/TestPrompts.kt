@@ -9,7 +9,7 @@ internal val requestToolSpec get() = AssistantRequestTool(AssistantToolId.switch
 internal object TestPrompts {
     /** Every tool switch on. */
     val allTools = ru.adsrv.frpjump.settings.AssistantTools(search = true, readPage = true, inspectImage = true, profileInformation = true, sshCommand = true,
-        terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true, mqttRead = true, mqttPublish = true, httpGet = true, httpPost = true)
+        terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true, mqttRead = true, mqttPublish = true, httpGet = true, httpPost = true, tempFiles = true)
     val real: AssistantPrompts by lazy { AssistantPrompts.load { File("src/main/assets/$it").inputStream() } }
     val lazy: Lazy<AssistantPrompts> = lazy { real }
     /** Dummy strings for tests that never inspect prompt text. */

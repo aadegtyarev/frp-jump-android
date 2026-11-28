@@ -74,6 +74,10 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
      * it changes only this app (the wait is visible in the chat and the owner can cancel it), so it runs without a question ([confirms] false).
      */
     WAIT_FOR("wait_for", "assistant_waits", Effect.CHANGE_LOCAL, ActionClass.APP_CHANGE, confirms = false),
+    /** One disposable process-memory workspace; creation changes no existing file or device and needs no separate question. */
+    TEMP_FILE_CREATE("temp_file_create", "assistant_temp_files", Effect.CHANGE_LOCAL, ActionClass.APP_CHANGE, confirms = false),
+    TEMP_FILE_LIST("temp_file_list", "assistant_temp_files", Effect.READ_LOCAL, ActionClass.APP_READ, ownsSwitch = false),
+    TEMP_FILE_READ("temp_file_read", "assistant_temp_files", Effect.READ_LOCAL, ActionClass.APP_READ, ownsSwitch = false),
     /** Arbitrary command: may change the remote system. */
     SSH_COMMAND("ssh_command", "assistant_ssh_command", Effect.CHANGE_REMOTE, ActionClass.CONNECTION_CHANGE, grantable = true);
 

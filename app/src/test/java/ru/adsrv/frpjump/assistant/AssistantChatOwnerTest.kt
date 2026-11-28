@@ -1,7 +1,7 @@
 package ru.adsrv.frpjump.assistant
 
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.*
 import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Assert.*
@@ -32,10 +32,11 @@ class AssistantChatOwnerTest {
     class HoldableStorage : ru.adsrv.frpjump.store.TextStorage {
         val inner = ru.adsrv.frpjump.ssh.MemoryStorage()
         @Volatile var holdDelete: java.util.concurrent.CountDownLatch? = null
+        @Volatile var failDelete = false
         val inDelete = java.util.concurrent.CountDownLatch(1)
         override fun read() = inner.read()
         override fun write(text: String) = inner.write(text)
-        override fun delete() { inDelete.countDown(); holdDelete?.await(5, java.util.concurrent.TimeUnit.SECONDS); inner.delete() }
+        override fun delete() { inDelete.countDown(); holdDelete?.await(5, java.util.concurrent.TimeUnit.SECONDS); if (failDelete) throw java.io.IOException("synthetic"); inner.delete() }
     }
     private class Box : SecretBox {
         override fun seal(plain: String) = plain
@@ -645,6 +646,93 @@ class AssistantChatOwnerTest {
         eventually("history restored") { restored.state.value.takeIf { !it.loading && it.turns.size == 1 } }
         assertEquals(listOf(item), restored.state.value.turns.single().attachments)
         assertTrue(h.owner.attachments.value.isEmpty())
+    }
+
+    private fun fileScript(request: AgentRequest): AgentReply {
+        val current = request.turns.last(); val step = current.exchanges.size
+        if (step > 0) return AgentReply("done")
+        val create = current.user.startsWith("create")
+        val args = if (create) buildJsonObject { put("name", "note.txt"); put("text", "private sample") } else buildJsonObject { }
+        return AgentReply(calls = listOf(ToolCall("file", if (create) "temp_file_create" else "temp_file_list", args)))
+    }
+    private fun Harness.fileCall(chat: AssistantConversation, question: String): ToolResult {
+        val before = requests.size
+        send(chat, question)
+        eventually("workspace reply") { chat.state.value.takeIf { !it.busy && requests.size > before && it.turns.isNotEmpty() } }
+        return requests.last().turns.last().exchanges.flatMap { it.results }.last()
+    }
+
+    @Test fun `workspace end to end create list and explicit read through the real owner`() {
+        val h = Harness(script = { request ->
+            val exchanges = request.turns.last().exchanges
+            when (exchanges.size) {
+                0 -> AgentReply(calls = listOf(ToolCall("create", "temp_file_create", buildJsonObject { put("name", "note.txt"); put("text", "private sample") })))
+                1 -> AgentReply(calls = listOf(ToolCall("list", "temp_file_list", buildJsonObject { })))
+                2 -> {
+                    val id = Json.parseToJsonElement(exchanges[0].results.single().text).jsonObject.getValue("file").jsonObject.getValue("id").jsonPrimitive.content
+                    AgentReply(calls = listOf(ToolCall("read", "temp_file_read", buildJsonObject { put("id", id) })))
+                }
+                else -> AgentReply("done")
+            }
+        })
+        h.settings.update { it.copy(assistantTempFiles = true) }
+        val chat = h.owner.attach(); h.send(chat)
+        eventually("workspace chain") { chat.state.value.takeIf { !it.busy && it.turns.size == 1 } }
+        val results = h.requests.last().turns.last().exchanges.flatMap { it.results }
+        assertEquals(listOf("temp_file_create", "temp_file_list", "temp_file_read"), results.map { it.name })
+        assertTrue(results.all { it.outcome == ToolOutcome.SUCCESS })
+        assertFalse(results[0].text.contains("private sample")); assertFalse(results[1].text.contains("private sample"))
+        assertTrue(results[2].text.contains("private sample"))
+    }
+
+    @Test fun `workspace survives idle close and Undo but committed Clear erases it`() {
+        val h = Harness(withUndo = true, script = ::fileScript)
+        h.settings.update { it.copy(assistantTempFiles = true) }
+        val chat = h.owner.attach(); assertEquals(ToolOutcome.SUCCESS, h.fileCall(chat, "create").outcome)
+        h.owner.detach(); val reopened = h.reopened(chat)
+        assertTrue(h.fileCall(reopened, "list").text.contains("note.txt"))
+        h.clear(reopened); h.undo!!.undoAll()
+        eventually("undo") { reopened.state.value.takeIf { !it.clearing && !it.restoring && !it.loading } }
+        assertTrue(h.fileCall(reopened, "list").text.contains("note.txt"))
+        h.clear(reopened); h.undo!!.commit(AssistantChatOwner.HISTORY_UNDO_KEY)
+        eventually("clear") { reopened.state.value.takeIf { !it.clearing && !it.loading } }
+        assertFalse(h.fileCall(reopened, "list").text.contains("note.txt"))
+    }
+
+    @Test fun `failed Clear leaves workspace intact`() {
+        val h = Harness(withUndo = true, script = ::fileScript)
+        h.settings.update { it.copy(assistantTempFiles = true) }
+        val chat = h.owner.attach(); h.fileCall(chat, "create")
+        h.storage.failDelete = true; h.clear(chat); h.undo!!.commit(AssistantChatOwner.HISTORY_UNDO_KEY)
+        eventually("failed clear restored") { chat.state.value.takeIf { !it.clearing && !it.loading && !it.restoring && it.historyProblem == ChatHistoryProblem.CLEAR } }
+        assertTrue(h.fileCall(chat, "list").text.contains("note.txt"))
+    }
+
+    @Test fun `provider revision and assistant disable erase workspace while chat is idle`() {
+        for (reason in listOf("provider", "disable")) {
+            val h = Harness(script = ::fileScript); h.settings.update { it.copy(assistantTempFiles = true) }
+            val chat = h.owner.attach(); h.fileCall(chat, "create"); h.owner.detach(); val reopened = h.reopened(chat); h.owner.detach()
+            if (reason == "provider") h.store.save(AssistantProviderDraft(AssistantProviderSettings(model = "m2"), h.store.currentSnapshot.revision, "synthetic"))
+            else { h.settings.update { it.copy(assistantEnabled = false) }; h.settings.update { it.copy(assistantEnabled = true) } }
+            val next = h.reopened(reopened)
+            assertFalse(reason, h.fileCall(next, "list").text.contains("note.txt"))
+        }
+    }
+
+    @Test fun `switch off and on or Stop at the commit probe cannot revive a stale write`() {
+        for (reason in listOf("switch", "stop")) {
+            val h = Harness(script = ::fileScript); h.settings.update { it.copy(assistantTempFiles = true) }
+            val entered = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+            val first = java.util.concurrent.atomic.AtomicBoolean(true)
+            h.settings.assistantChat.probes = ChatProbes(before = { category -> if (category == "temp-file" && first.compareAndSet(true, false)) { entered.countDown(); release.await(5, java.util.concurrent.TimeUnit.SECONDS) } })
+            val chat = h.owner.attach(); h.send(chat, "create")
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            if (reason == "switch") { h.settings.update { it.copy(assistantTempFiles = false) }; h.settings.update { it.copy(assistantTempFiles = true) } }
+            else chat.stop()
+            release.countDown(); eventually("attempt stopped") { chat.state.value.takeIf { !it.busy } }
+            h.settings.assistantChat.probes = ChatProbes.None
+            assertFalse(reason, h.fileCall(chat, "list").text.contains("note.txt"))
+        }
     }
 
 }
