@@ -58,6 +58,7 @@ internal object OpenAiCodec {
                     }) }
                 }
             }
+            if (request.finalSynthesis) add(buildJsonObject { put("role", "user"); put("content", FINAL_SYNTHESIS_INSTRUCTION) })
         }
         if (request.tools.isNotEmpty()) putJsonArray("tools") {
             request.tools.forEach { tool -> add(buildJsonObject {
@@ -113,6 +114,7 @@ internal object OpenAiCodec {
         }
         val content = if (imageReply && bodyContent.isBlank() && message["refusal"] != null && message["refusal"] != JsonNull)
             message["refusal"].text() else bodyContent
+        if (containsUnquotedDsml(content)) invalid()
         val raw = when (val value = message["tool_calls"]) {
             null, JsonNull -> emptyList()
             is JsonArray -> value.toList()
