@@ -30,6 +30,7 @@ internal fun AssistantToolId.title(): Int = when (this) {
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information
     AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish
+    AssistantToolId.TEMP_FILE_CREATE, AssistantToolId.TEMP_FILE_LIST, AssistantToolId.TEMP_FILE_READ -> R.string.tool_temp_files
     AssistantToolId.HTTP_POST -> R.string.tool_http_post
     AssistantToolId.HTTP_GET -> R.string.tool_http_get
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read
@@ -48,6 +49,7 @@ internal fun AssistantToolId.glyph(): ImageVector = when (this) {
     AssistantToolId.READ_PAGE -> GlobeGlyph
     AssistantToolId.INSPECT_IMAGE -> ImageGlyph
     AssistantToolId.MQTT_PUBLISH -> LinkGlyph
+    AssistantToolId.TEMP_FILE_CREATE, AssistantToolId.TEMP_FILE_LIST, AssistantToolId.TEMP_FILE_READ -> FileGlyph
     AssistantToolId.HTTP_POST -> LinkGlyph
     AssistantToolId.HTTP_GET -> LinkGlyph
     AssistantToolId.MQTT_READ -> LinkGlyph
@@ -67,6 +69,7 @@ internal fun AssistantToolId.hint(): Int = when (this) {
     AssistantToolId.READ_PAGE -> R.string.tool_read_hint
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image_hint
     AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish_hint
+    AssistantToolId.TEMP_FILE_CREATE, AssistantToolId.TEMP_FILE_LIST, AssistantToolId.TEMP_FILE_READ -> R.string.tool_temp_files_hint
     AssistantToolId.HTTP_POST -> R.string.tool_http_post_hint
     AssistantToolId.HTTP_GET -> R.string.tool_http_get_hint
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read_hint
@@ -85,6 +88,9 @@ internal fun AssistantToolId.progress(): Int = when (this) {
     AssistantToolId.READ_PAGE -> R.string.tool_read_progress
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image_progress
     AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish_progress
+    AssistantToolId.TEMP_FILE_CREATE -> R.string.tool_temp_file_create_progress
+    AssistantToolId.TEMP_FILE_LIST -> R.string.tool_temp_file_list_progress
+    AssistantToolId.TEMP_FILE_READ -> R.string.tool_temp_file_read_progress
     AssistantToolId.HTTP_POST -> R.string.tool_http_post_progress
     AssistantToolId.HTTP_GET -> R.string.tool_http_get_progress
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read_progress
@@ -111,6 +117,9 @@ internal fun AssistantToolId.progress(): Int = when (this) {
  * tools: the first two share one switch but are different calls, and typing has a title of its own for the call.
  */
 internal fun AssistantToolId.receiptTitle(): Int = when (this) {
+    AssistantToolId.TEMP_FILE_CREATE -> R.string.tool_temp_file_create_receipt
+    AssistantToolId.TEMP_FILE_LIST -> R.string.tool_temp_file_list_receipt
+    AssistantToolId.TEMP_FILE_READ -> R.string.tool_temp_file_read_receipt
     AssistantToolId.START_TUNNEL -> R.string.tool_start_tunnel_receipt
     AssistantToolId.STOP_TUNNEL -> R.string.tool_stop_tunnel_receipt
     AssistantToolId.READ_SKILL -> R.string.tool_read_skill_receipt

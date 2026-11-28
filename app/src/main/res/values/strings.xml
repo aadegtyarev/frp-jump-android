@@ -1675,4 +1675,12 @@
     <string name="confirm_http_remember_hint">For session: HTTP POST while this tunnel stays open. For this connection: until it is edited or its certificate changes. Undo: the mark on the tunnel card.</string>
     <string name="connection_assistant_sheet_session_http">For session: HTTP POST.</string>
     <string name="connection_assistant_sheet_connection_http">For this connection: HTTP POST (since %1$s).</string>
+    <string name="tool_temp_files">Temporary files</string>
+    <string name="tool_temp_files_hint">The selected model receives text when read. Files are removed when chat is cleared, the provider changes, the assistant is disabled or the app restarts.</string>
+    <string name="tool_temp_file_create_progress">Creating a temporary file…</string>
+    <string name="tool_temp_file_list_progress">Listing temporary files…</string>
+    <string name="tool_temp_file_read_progress">Reading a temporary file…</string>
+    <string name="tool_temp_file_create_receipt">Create temporary file</string>
+    <string name="tool_temp_file_list_receipt">List temporary files</string>
+    <string name="tool_temp_file_read_receipt">Read temporary file</string>
 </resources>

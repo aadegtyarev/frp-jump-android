@@ -292,6 +292,9 @@ class AssistantChatScreenTest {
                             .jsonObject.getValue("reference").jsonPrimitive.content
                         AgentReply("I found the tunnel.\n\n$token")
                     }
+                "temp-file-create" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
+                    ToolCall("temp-1", "temp_file_create", buildJsonObject { put("name", "synthetic.txt"); put("text", "sample") })))
+                    else { heldProviderReply.await(); AgentReply("Created the temporary file.") }
                 "two-profile-calls" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(0, 13).mapIndexed { i, offset ->
                     ToolCall("two-$i", "profile_information", buildJsonObject { put("query", "board150"); put("offset", offset) }) })
                     else { heldProviderReply.await(); AgentReply("Both lookups found the same synthetic board.") }
@@ -675,6 +678,21 @@ class AssistantChatScreenTest {
         shot("work-progress-expanded")
         compose.onNodeWithTag("chat_work_toggle").performClick()
         compose.onAllNodesWithTag("chat_work_step").assertCountEquals(0)
+    }
+
+    @Test fun temporaryFileWorkShowsRunningAndCollapsedProgress() {
+        mode = "temp-file-create"; settings.update { it.copy(assistantTempFiles = true) }
+        install(); input().performTextInput("Create a temporary file")
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { it.size == 1 && it.single().result?.outcome == ToolOutcome.SUCCESS } }
+        compose.onNodeWithTag("chat_work_step").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_temp_file_create_receipt), substring = true)
+        shot("work-temporary-file-running")
+        compose.runOnIdle { heldProviderReply.complete(Unit) }; awaitIdle()
+        compose.onNodeWithTag("chat_work_toggle").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithTag("chat_work_step").assertCountEquals(0)
+        shot("work-temporary-file-collapsed")
+        compose.onNodeWithTag("chat_work_toggle").performClick()
+        compose.onNodeWithTag("chat_work_step").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_temp_file_create_receipt), substring = true)
     }
 
     @Test fun runningActionShowsItsLabelAndStopRemainsAvailable() {
@@ -1186,6 +1204,18 @@ class AssistantChatScreenTest {
         if (!allow.isDisplayed()) allow.performScrollTo()
         allow.performClick()
         compose.runOnIdle { assertEquals(ConfirmationDecision.ONCE, answer) }
+    }
+
+    @Test fun toolsScreenShowsTemporaryFilesDisclosureAndSavesSwitch() {
+        install(); button("chat_tools").performClick()
+        compose.onNodeWithTag("tool_temp_file_create").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_temp_files_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_temp_file_create"))).assertExists()
+        toolToggle("temp_file_create").assertIsOff(); assertFalse(settings.assistantAvailability.tools.tempFiles)
+        shot("tools-temporary-files-off")
+        toolToggle("temp_file_create").performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.tempFiles }
+        toolToggle("temp_file_create").assertIsOn()
+        shot("tools-temporary-files-on")
     }
 
     @Test fun toolsScreenShowsHttpPostSwitchOffAndSavesIt() {

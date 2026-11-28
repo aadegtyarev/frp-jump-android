@@ -14,7 +14,7 @@ internal object AssistantToolFactory {
         sshCommands: AssistantSshCommands?, publish: (ChatSource) -> Unit,
         declined: Set<String> = emptySet(), terminalTabs: AssistantTerminalTabs? = null, tunnels: AssistantTunnels? = null,
         waits: WaitAdder? = null, limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits(),
-        sessions: AssistantSessions? = null, skills: SkillRegistry? = null, mqttRead: AssistantMqttRead? = null, mqttPublish: AssistantMqttPublish? = null, webHttp: AssistantWebHttp? = null): List<AgentTool> {
+        sessions: AssistantSessions? = null, skills: SkillRegistry? = null, mqttRead: AssistantMqttRead? = null, mqttPublish: AssistantMqttPublish? = null, webHttp: AssistantWebHttp? = null, temporary: TemporaryWorkspace? = null): List<AgentTool> {
         val web = AssistantWebTools(enabled, runtime.publicWeb, runtime.webSearch, active as? ImageInspector, publish)
         // terminal_input is offered only while the tabs are on: the model asks for terminal_tabs first.
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }
@@ -30,6 +30,7 @@ internal object AssistantToolFactory {
             (if (enabled[AssistantToolId.TERMINAL_OPEN] && sessions != null && terminalTabs != null) listOf(TerminalOpenTool(sessions, limits.sessionsAtOnce), TerminalShowTool(sessions), TerminalCloseTool(sessions)) else emptyList()) +
             skillTools(enabled, skills, limits) +
             (if (enabled[AssistantToolId.WAIT_FOR] && waits != null) listOf(WaitForTool(waits, limits, waitKinds(enabled, terminalTabs != null, tunnels != null))) else emptyList()) +
+            (if (enabled.tempFiles && temporary != null) listOf(TemporaryCreateTool(), TemporaryListTool(limits.toolOutputChars), TemporaryReadTool(limits.toolOutputChars)) else emptyList()) +
             (if (enabled.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands, limits)) else emptyList()) +
             (if (off.isNotEmpty() && enabled.offer) listOf(AssistantRequestTool(off, declined)) else emptyList())
     }

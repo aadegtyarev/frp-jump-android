@@ -1728,4 +1728,12 @@
     <string name="confirm_http_remember_hint">Для сессии — HTTP POST, пока туннель открыт. Для подключения — до его изменения или смены сертификата. Разрешения можно отозвать на карточке туннеля.</string>
     <string name="connection_assistant_sheet_session_http">Для сессии: HTTP POST.</string>
     <string name="connection_assistant_sheet_connection_http">Для подключения: HTTP POST (с %1$s).</string>
+    <string name="tool_temp_files">Временные файлы</string>
+    <string name="tool_temp_files_hint">При чтении текст получает выбранная модель. Файлы удаляются при очистке чата, смене провайдера, отключении помощника или перезапуске.</string>
+    <string name="tool_temp_file_create_progress">Создаю временный файл…</string>
+    <string name="tool_temp_file_list_progress">Смотрю временные файлы…</string>
+    <string name="tool_temp_file_read_progress">Читаю временный файл…</string>
+    <string name="tool_temp_file_create_receipt">Создать временный файл</string>
+    <string name="tool_temp_file_list_receipt">Список временных файлов</string>
+    <string name="tool_temp_file_read_receipt">Прочитать временный файл</string>
 </resources>

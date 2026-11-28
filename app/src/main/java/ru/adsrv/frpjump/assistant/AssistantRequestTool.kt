@@ -55,6 +55,7 @@ internal class AssistantRequestTool(private val off: List<AssistantToolId>, priv
             AssistantToolId.READ_PAGE -> "read a public web page"
             AssistantToolId.INSPECT_IMAGE -> "ask the model about a public image"
             AssistantToolId.MQTT_PUBLISH -> "publish a message to a saved MQTT connection"
+            AssistantToolId.TEMP_FILE_CREATE, AssistantToolId.TEMP_FILE_LIST, AssistantToolId.TEMP_FILE_READ -> "create and read temporary files in the assistant workspace"
             AssistantToolId.HTTP_POST -> "send an HTTP POST through a saved Web tunnel"
             AssistantToolId.HTTP_GET -> "read private responses from a saved Web tunnel"
             AssistantToolId.MQTT_READ -> "read private messages already observed by a connected MQTT explorer"

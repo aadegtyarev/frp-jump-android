@@ -18,7 +18,7 @@ internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime,
     /** Whether a chat screen was attached at that real time: a card that runs out while none was ends the attempt. */
     val screenAttachedAt: (Long) -> Boolean = { true },
     /** Told once when an attempt ended that way (the owner keeps it for the notification). */
-    val onUnanswered: () -> Unit = {}, val mqttRead: AssistantMqttRead? = null, val mqttPublish: AssistantMqttPublish? = null, val webHttp: AssistantWebHttp? = null) {
+    val onUnanswered: () -> Unit = {}, val mqttRead: AssistantMqttRead? = null, val mqttPublish: AssistantMqttPublish? = null, val webHttp: AssistantWebHttp? = null, val temporary: TemporaryWorkspace? = null) {
     val confirmIds = java.util.concurrent.atomic.AtomicLong()
 }
 
@@ -81,11 +81,20 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             val id = candidateCall?.takeIf { it.name == tool.wire }?.id
             if (id == null) null else changeDispatchCheck(tool, env.confirm, changeOffCount, noQuestion[id], target)
         }
-        withContext(env.io + admission + progress + changeAuthority) {
+        val tempAccess = TemporaryAccess { action, job ->
+            own.guarded(owner, "temp-file") {
+                val workspace = env.temporary
+                if (job?.isActive != true || workspace == null || a.temporaryGeneration == null ||
+                    !authority.tools[AssistantToolId.TEMP_FILE_CREATE] ||
+                    (authority.toolOffs[AssistantToolId.TEMP_FILE_CREATE] ?: 0L) != a.temporaryOffCount ||
+                    workspace.stampLocked() != a.temporaryGeneration) null else workspace.applyLocked(action)
+            }
+        }
+        withContext(env.io + admission + progress + changeAuthority + tempAccess) {
             val past = a.past.map { it to it.model(active) }
             val limits = env.limits(a.settings, a.limits)
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
-                env.waits, a.limits, env.sessions, env.skills, env.mqttRead, env.mqttPublish, env.webHttp)
+                env.waits, a.limits, env.sessions, env.skills, env.mqttRead, env.mqttPublish, env.webHttp, env.temporary)
             // The skills the model may use are fixed for the Send, like the tool list: the system text is the same in every request of it.
             val skillsSection = env.skills?.section(a.tools, a.limits.skillsListChars) ?: SkillsSection(emptyList())
             val summary = summary(active, prompts.summary)
