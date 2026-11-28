@@ -45,13 +45,13 @@ class AssistantChatOwnerTest {
 
     private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0, private val failing: Boolean = false, private val withProfiles: Boolean = false,
         private val withUndo: Boolean = false, val storage: HoldableStorage = HoldableStorage(), private val sshOn: Boolean = true,
-        private val script: ((AgentRequest) -> AgentReply)? = null) : AutoCloseable {
+        private val script: ((AgentRequest) -> AgentReply)? = null, private val ignoreCancellation: Boolean = false) : AutoCloseable {
         val removed = kotlinx.coroutines.flow.MutableStateFlow(false)
         val stopping = kotlinx.coroutines.flow.MutableStateFlow(false)
         val executed = AtomicInteger()
         val requests = CopyOnWriteArrayList<AgentRequest>()
         @Volatile var now = 1_000L
-        /** The provider's first reply waits here while [hold] is set. */
+        /** The selected provider reply waits here. */
         val release = CompletableDeferred<Unit>()
         val entered = CompletableDeferred<Unit>()
         val settings = SettingsStore(ru.adsrv.frpjump.ssh.MemoryStorage()).apply { update { it.copy(assistantEnabled = true, assistantSshCommand = sshOn) } }
@@ -85,7 +85,10 @@ class AssistantChatOwnerTest {
                 requests += request
                 script?.let { return@AgentProvider it(request) }
                 if (failing) throw IllegalStateException("synthetic failure")
-                if (requests.size == holdAt) { entered.complete(Unit); release.await() }
+                if (requests.size == holdAt) {
+                    entered.complete(Unit)
+                    if (ignoreCancellation) withContext(NonCancellable) { release.await() } else release.await()
+                }
                 val done = request.turns.last().exchanges.size
                 if (done < calls.size) AgentReply(calls = listOf(ToolCall("c$done", "ssh_command", buildJsonObject {
                     put("profile_id", "p"); put("connection_id", "c"); put("command", calls[done].command)
@@ -93,7 +96,7 @@ class AssistantChatOwnerTest {
             }
         }, { now }, stoppingOut = stopping, removed = removed, grants = grants)
         init { live += this }
-        override fun close() { owner.shutdown(); scope.cancel() }
+        override fun close() { release.complete(Unit); owner.shutdown(); scope.cancel() }
         fun results() = requests.last().turns.last().exchanges.flatMap { it.results }
     }
 
@@ -277,7 +280,8 @@ class AssistantChatOwnerTest {
         val chat = h.owner.attach(); h.send(chat)
         val card = chat.card()
         h.now += 299_999
-        chat.answer(card.id, ConfirmationDecision.ONCE); h.idle()
+        chat.answer(card.id, ConfirmationDecision.ONCE)
+        eventually("attempt complete") { chat.state.value.takeIf { !it.busy } }
         assertEquals(1, h.executed.get())
     }
 
@@ -334,11 +338,13 @@ class AssistantChatOwnerTest {
     }
 
     @Test fun `a Stop that the provider ignores leaves no end, even when its late reply arrives`() {
-        val h = Harness(holdAt = 1)
+        val h = Harness(holdAt = 1, ignoreCancellation = true)
         val chat = h.owner.attach(); h.send(chat); runBlocking { withTimeout(5000) { h.entered.await() } }
         h.owner.stop()
         eventually("stopping") { h.stopping.value.takeIf { it } }
-        h.release.complete(Unit); h.idle()
+        h.release.complete(Unit)
+        eventually("attempt complete") { chat.state.value.takeIf { !it.busy } }
+        eventually("stopping cleared") { true.takeIf { !h.stopping.value } }
         assertEquals(ChatEnd.NONE, h.owner.lastEnd.value)
         assertFalse("stopping is cleared when the attempt is over", h.stopping.value)
     }
