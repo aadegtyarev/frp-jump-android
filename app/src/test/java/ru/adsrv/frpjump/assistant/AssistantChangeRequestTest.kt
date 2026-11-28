@@ -23,9 +23,9 @@ class AssistantChangeRequestTest {
         val box = FakeKeystore().box("synthetic-ssh")
         val env = SshEnvironment(SshKeyStore(MemoryStorage(), box), SshPasswords(MemoryStorage(), box), { "synthetic" }, TmuxNames(MemoryStorage()),
             clientFactory = { throw AssertionError("must not construct a client") })
-        val all = AssistantToolFactory.create(AssistantTools(true, true, true, true, true, terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true, mqttRead = true, mqttPublish = true), AssistantChatRuntime(), AgentProvider { AgentReply("x") },
+        val all = AssistantToolFactory.create(AssistantTools(true, true, true, true, true, terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true, mqttRead = true, mqttPublish = true, httpGet = true), AssistantChatRuntime(), AgentProvider { AgentReply("x") },
             synthetic.information, AssistantSshCommands(SshTargets(synthetic.state, synthetic.hidden, env)), { }, terminalTabs = AssistantTerminalTabs({ emptyList() }, { emptySet() }, { null }, { _, _, _ -> null }), tunnels = TunnelFixture().also { it.host.add(profile = "p", id = "c", isOn = true) }.tunnels, waits = WaitFixture().waits,
-            sessions = SessionRig().also { it.existing(1) }.sessions, skills = SkillFixtures.registry(owner = listOf(SkillFixtures.owner())), mqttRead = noMqttReader(), mqttPublish = mqttPublisherFixture())
+            sessions = SessionRig().also { it.existing(1) }.sessions, skills = SkillFixtures.registry(owner = listOf(SkillFixtures.owner())), mqttRead = noMqttReader(), mqttPublish = mqttPublisherFixture(), httpGet = AssistantHttpGet { null })
         return all.associate { tool -> AssistantToolId.fromWire(tool.spec.name)!! to (tool as AppTool<*>) }
     }
 
@@ -40,6 +40,7 @@ class AssistantChangeRequestTest {
             AssistantToolId.INSPECT_IMAGE to obj("url" to JsonPrimitive("https://127.0.0.1/"), "question" to JsonPrimitive("q")),
             AssistantToolId.PROFILE_INFORMATION to obj(),
             AssistantToolId.MQTT_PUBLISH to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "topic" to JsonPrimitive("device/x"), "payload" to JsonPrimitive("value"), "qos" to JsonPrimitive(1), "retain" to JsonPrimitive(false)),
+            AssistantToolId.HTTP_GET to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "path" to JsonPrimitive("/")),
             AssistantToolId.MQTT_READ to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c")),
             AssistantToolId.START_TUNNEL to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c")),
             AssistantToolId.STOP_TUNNEL to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c")),

@@ -1202,7 +1202,7 @@ Permitted app-originated network flows are calls to the configured frp-jump
 servers, traffic through the owner's tunnels, public GitHub update checks and
 requested APK/checksum downloads, and explicit provider model discovery and
 chat (including explicitly invoked profile information and SSH commands/output), and explicitly enabled
-assistant public HTTPS read/search/image requests.
+assistant public HTTPS read/search/image requests. The separately enabled assistant Web GET tool uses only an exact ready saved Web tunnel and discloses private responses to the selected provider; see the [assistant contract](agent-contract.md).
 These optional credential-free public requests and same-model image analysis
 follow the [assistant contract](agent-contract.md#optional-public-web-tools), not
 connection permissions. They cannot access local/tunnel/file targets and perform

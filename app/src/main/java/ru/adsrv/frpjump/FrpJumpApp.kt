@@ -299,6 +299,18 @@ class FrpJumpApp : Application() {
             realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
             terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, sessions = assistantSessions, skills = assistantSkills, waitCountOut = assistantWaitCount,
             grants = sessionGrants, connectionGrants = connectionGrants,
+            httpGet = ru.adsrv.frpjump.assistant.AssistantHttpGet { ids ->
+                val target = assistantTunnels.find(ids)
+                val runtime = profiles.runtime(ids.profileId)
+                val connection = runtime?.connections?.connections?.value?.singleOrNull { it.id == ids.connectionId }
+                val period = sshTargets.period(ids.profileId, ids.connectionId)
+                val pin = assistantTunnels.pin(ids)
+                val state = runtime?.tunnels?.state?.value
+                val key = target?.let { ru.adsrv.frpjump.ports.localPortKey(it.device, it.port) }
+                val port = ru.adsrv.frpjump.assistant.readyWebPort(state, key)
+                if (target == null || target.kind != ru.adsrv.frpjump.ports.PortKind.WEB || !assistantTunnels.isOn(target) || connection == null || period == null || pin == null || port == null) null
+                else ru.adsrv.frpjump.assistant.HttpGetTarget(port, connection.https, runtime.webCerts.pinned(target.device, target.port), pin, period)
+            },
             mqttRead = ru.adsrv.frpjump.assistant.AssistantMqttRead(assistantTunnels, mqtt, pendingUndo.hidden) { target ->
                 profiles.runtime(target.profileId)?.tunnels?.state?.value?.tunnels?.singleOrNull { it.device == target.device && it.port == target.port }?.localPort
             },

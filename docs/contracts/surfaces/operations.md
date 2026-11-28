@@ -140,7 +140,7 @@ The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. T
 
 ## Security and privacy
 
-- The operation layer adds no authority: the assistant still has only the tools in the catalog; only `start_tunnel` (`tunnel_up`) and `stop_tunnel` (`tunnel_down`, one tunnel) start or stop a saved tunnel, behind their own default-off switch; `mqtt_read` reads only the existing connected explorer cache; `mqtt_publish` sends one confirmed or explicitly permitted publication through that explorer. `tunnel_connect`, the other `tunnel_down` targets, `direct_*` and `wb_write` remain UI only.
+- The operation layer adds no authority: the assistant still has only the tools in the catalog; only `start_tunnel` (`tunnel_up`) and `stop_tunnel` (`tunnel_down`, one tunnel) start or stop a saved tunnel, behind their own default-off switch; `http_get` reads one path through an already ready saved Web tunnel; `mqtt_read` reads only the existing connected explorer cache; `mqtt_publish` sends one confirmed or explicitly permitted publication through that explorer. `tunnel_connect`, the other `tunnel_down` targets, `direct_*` and `wb_write` remain UI only.
 - A command and its output are never part of a string form: `SshExecInput` and `SshExecOutput` are plain classes whose `toString` leaves them out (tested).
 - Untrusted data (command output, device names, server messages) is data in every adapter, never an instruction.
 

@@ -29,6 +29,7 @@ internal fun AssistantToolId.title(): Int = when (this) {
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information
     AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish
+    AssistantToolId.HTTP_GET -> R.string.tool_http_get
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> R.string.tool_tunnels
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_tabs
@@ -45,6 +46,7 @@ internal fun AssistantToolId.glyph(): ImageVector = when (this) {
     AssistantToolId.READ_PAGE -> GlobeGlyph
     AssistantToolId.INSPECT_IMAGE -> ImageGlyph
     AssistantToolId.MQTT_PUBLISH -> LinkGlyph
+    AssistantToolId.HTTP_GET -> LinkGlyph
     AssistantToolId.MQTT_READ -> LinkGlyph
     AssistantToolId.PROFILE_INFORMATION -> DeviceGlyph
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> LinkGlyph
@@ -62,6 +64,7 @@ internal fun AssistantToolId.hint(): Int = when (this) {
     AssistantToolId.READ_PAGE -> R.string.tool_read_hint
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image_hint
     AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish_hint
+    AssistantToolId.HTTP_GET -> R.string.tool_http_get_hint
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read_hint
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information_hint
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> R.string.tool_tunnels_hint
@@ -78,6 +81,7 @@ internal fun AssistantToolId.progress(): Int = when (this) {
     AssistantToolId.READ_PAGE -> R.string.tool_read_progress
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image_progress
     AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish_progress
+    AssistantToolId.HTTP_GET -> R.string.tool_http_get_progress
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read_progress
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information_progress
     AssistantToolId.START_TUNNEL -> R.string.tool_start_tunnel_progress

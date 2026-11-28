@@ -18,7 +18,7 @@ internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime,
     /** Whether a chat screen was attached at that real time: a card that runs out while none was ends the attempt. */
     val screenAttachedAt: (Long) -> Boolean = { true },
     /** Told once when an attempt ended that way (the owner keeps it for the notification). */
-    val onUnanswered: () -> Unit = {}, val mqttRead: AssistantMqttRead? = null, val mqttPublish: AssistantMqttPublish? = null) {
+    val onUnanswered: () -> Unit = {}, val mqttRead: AssistantMqttRead? = null, val mqttPublish: AssistantMqttPublish? = null, val httpGet: AssistantHttpGet? = null) {
     val confirmIds = java.util.concurrent.atomic.AtomicLong()
 }
 
@@ -85,7 +85,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             val past = a.past.map { it to it.model(active) }
             val limits = env.limits(a.settings, a.limits)
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
-                env.waits, a.limits, env.sessions, env.skills, env.mqttRead, env.mqttPublish)
+                env.waits, a.limits, env.sessions, env.skills, env.mqttRead, env.mqttPublish, env.httpGet)
             // The skills the model may use are fixed for the Send, like the tool list: the system text is the same in every request of it.
             val skillsSection = env.skills?.section(a.tools, a.limits.skillsListChars) ?: SkillsSection(emptyList())
             val summary = summary(active, prompts.summary)
