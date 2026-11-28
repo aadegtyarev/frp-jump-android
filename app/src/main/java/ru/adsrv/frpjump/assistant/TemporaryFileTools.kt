@@ -13,8 +13,8 @@ import java.util.UUID
 
 private const val TEXT_BYTES = 16 * 1024
 private fun unavailable() = ToolOutput("The temporary workspace is unavailable or this attempt is no longer authorized.", ToolOutcome.FAILED)
-private fun info(file: TempInfo) = buildJsonObject { put("id", file.id); put("name", file.name); put("bytes", file.bytes) }
-private suspend fun perform(action: TempAction): TempResult? {
+internal fun temporaryInfo(file: TempInfo) = buildJsonObject { put("id", file.id); put("name", file.name); put("bytes", file.bytes) }
+internal suspend fun performTemporary(action: TempAction): TempResult? {
     val context = currentCoroutineContext()
     return context[TemporaryAccess]?.apply?.invoke(action, context[Job])
 }
@@ -34,8 +34,8 @@ internal class TemporaryCreateTool : AppTool<TemporaryCreateTool.Input>(Assistan
     override suspend fun run(args: Input): ToolOutput {
         // Both the encoding and ID generation are outside the short ownership guard.
         val action = TempAction.Create(UUID.randomUUID().toString(), args.name, args.text.toByteArray(Charsets.UTF_8))
-        return when (val result = perform(action)) {
-            is TempResult.Created -> ToolOutput(buildJsonObject { put("file", info(result.file)) }.toString())
+        return when (val result = performTemporary(action)) {
+            is TempResult.Created -> ToolOutput(buildJsonObject { put("file", temporaryInfo(result.file)) }.toString())
             TempResult.Full -> ToolOutput("The temporary workspace is full; nothing was saved.", ToolOutcome.FAILED)
             else -> unavailable()
         }
@@ -49,12 +49,12 @@ internal class TemporaryListTool(private val budget: Int) : AppTool<Int>(Assista
     override fun parse(args: StrictArgs) = args.run { onlyKeys("offset"); optionalInt("offset", 0, TemporaryWorkspace.MAX_FILES) ?: 0 }
     override val invalidArguments = ToolOutput("Provide an optional nonnegative listing offset.", ToolOutcome.FAILED)
     override suspend fun run(args: Int): ToolOutput {
-        val result = perform(TempAction.List) as? TempResult.Listed ?: return unavailable()
+        val result = performTemporary(TempAction.List) as? TempResult.Listed ?: return unavailable()
         val rows = ArrayList<JsonObject>()
         fun page(next: Int?) = buildJsonObject { put("files", JsonArray(rows)); put("next_offset", next?.let(::JsonPrimitive) ?: JsonNull) }.toString()
         val remaining = result.files.drop(args)
         for (file in remaining) {
-            rows += info(file)
+            rows += temporaryInfo(file)
             if (page(args + rows.size).length > budget) { rows.removeAt(rows.lastIndex); break }
         }
         return ToolOutput(page((args + rows.size).takeIf { it < result.files.size }))
@@ -68,7 +68,7 @@ internal class TemporaryReadTool(private val budget: Int) : AppTool<String>(Assi
     override fun parse(args: StrictArgs) = args.run { exactKeys("id"); string("id", 64) }
     override val invalidArguments = ToolOutput("Provide the exact temporary file ID.", ToolOutcome.FAILED)
     override suspend fun run(args: String): ToolOutput {
-        val result = perform(TempAction.Read(args))
+        val result = performTemporary(TempAction.Read(args))
         if (result == TempResult.Missing) return ToolOutput("No temporary file has that ID.", ToolOutcome.FAILED)
         val preview = result as? TempResult.Preview ?: return unavailable()
         val input = ByteBuffer.wrap(preview.bytes)

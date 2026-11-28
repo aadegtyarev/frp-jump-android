@@ -20,7 +20,7 @@ internal object AssistantToolFactory {
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }
         return web.tools + (if (enabled.profileInformation && profileInformation != null) listOf(
             AssistantProfileInformationTool(profileInformation, limits)) else emptyList()) +
-            (if (enabled.httpGet && webHttp != null) listOf(AssistantHttpGetTool(webHttp, limits.toolOutputChars)) else emptyList()) +
+            (if (enabled.httpGet && webHttp != null) listOf(AssistantHttpGetTool(webHttp, limits.toolOutputChars, enabled.tempFiles && temporary != null)) else emptyList()) +
             (if (enabled.httpPost && webHttp != null) listOf(AssistantHttpPostTool(webHttp, limits.toolOutputChars)) else emptyList()) +
             (if (enabled.mqttRead && mqttRead != null) listOf(AssistantMqttReadTool(mqttRead.operation, limits)) else emptyList()) +
             (if (enabled.mqttPublish && mqttPublish != null) listOf(AssistantMqttPublishTool(mqttPublish)) else emptyList()) +

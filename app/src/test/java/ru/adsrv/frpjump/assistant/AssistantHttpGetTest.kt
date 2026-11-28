@@ -5,6 +5,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.*
+import ru.adsrv.frpjump.settings.AssistantAvailability
+import ru.adsrv.frpjump.settings.AssistantTools
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.*
@@ -69,6 +72,90 @@ class AssistantHttpGetTest {
             assertTrue(result.text.length <= 1000); assertTrue(result.text.contains("\"truncated\":true"))
         }
     }
+    @Test fun `download saves exact binary metadata only and rejects partial unsupported and oversized responses`() = runBlocking {
+        val data = byteArrayOf(0, -1, -128, 65, 42)
+        val variants = listOf(
+            response(data, "application/octet-stream") to true,
+            response(byteArrayOf(), "application/octet-stream") to true,
+            response(data, code = "206 Partial Content") to false,
+            response(data, code = "200 OK\r\nContent-Range: bytes 0-4/9") to false,
+            response(data, code = "200 OK\r\nContent-Encoding: gzip") to false,
+            response(data, code = "200 OK\r\nContent-Encoding: gzip\r\nContent-Encoding: identity") to false,
+            response(data, code = "200 OK\r\nContent-Length: 5") to false,
+            ("HTTP/1.1 200 OK\r\nConnection: close\r\n\r\npartial".toByteArray()) to false,
+            ("HTTP/1.0 200 OK\r\n\r\npartial".toByteArray()) to false,
+            ("HTTP/1.1 205 Reset Content\r\nConnection: close\r\n\r\ninvalid".toByteArray()) to false,
+            response(data, code = "204 No Content") to false,
+            ("HTTP/1.1 200 OK\r\nContent-Length: 3, 5\r\nConnection: close\r\n\r\nabc".toByteArray()) to false,
+            ("HTTP/1.1 200 OK\r\nContent-Length: -1\r\nConnection: close\r\n\r\nabc".toByteArray()) to false,
+            ("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nConnection: close\r\n\r\nabc".toByteArray()) to false,
+            response(data, code = "302 Found\r\nLocation: /elsewhere") to false,
+            ("HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nshort".toByteArray()) to false,
+            response(ByteArray(TemporaryWorkspace.MAX_FILE_BYTES + 1)) to false
+        )
+        for ((reply, succeeds) in variants) serve(reply) { port, _ ->
+            val workspace = TemporaryWorkspace({ AssistantAvailability(true, tools = AssistantTools(tempFiles = true, httpGet = true)) },
+                { AssistantProviderSnapshot(AssistantProviderSettings(model = "synthetic"), "provider") })
+            val access = TemporaryAccess { action, job -> if (job?.isActive == true && (action !is TempAction.Download || action.valid())) workspace.applyLocked(action) else null }
+            val target = WebHttpTarget(port, false, null, "identity", "period")
+            val tool = AssistantHttpGetTool(AssistantWebHttp { target }, 2000, true)
+            val request = buildJsonObject { put("profile_id", "p"); put("connection_id", "c"); put("path", "/file"); put("save_as", "file.bin") }
+            val result = withContext(SideEffectAdmission { true } + access) { tool.execute(request) }
+            assertEquals(if (succeeds) ToolOutcome.SUCCESS else ToolOutcome.FAILED, result.outcome)
+            val files = (workspace.applyLocked(TempAction.List) as TempResult.Listed).files
+            assertEquals(if (succeeds) 1 else 0, files.size)
+            if (succeeds) {
+                val expected = if (reply.contentEquals(response(data, "application/octet-stream"))) data else byteArrayOf()
+                assertEquals(expected.size, files.single().bytes)
+                assertArrayEquals(expected, (workspace.applyLocked(TempAction.Read(files.single().id)) as TempResult.Preview).bytes)
+                assertFalse(result.text.contains("status")); assertFalse(result.text.contains("text"))
+            }
+        }
+    }
+
+    @Test fun `download supports complete chunked and maximum sized bodies`() = runBlocking {
+        val huge = ByteArray(TemporaryWorkspace.MAX_FILE_BYTES) { (it % 251).toByte() }
+        val chunk = byteArrayOf(0, 1, 2, 3)
+        val wireChunk = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\n".toByteArray() + chunk + "\r\n0\r\n\r\n".toByteArray()
+        for ((wire, expected) in listOf(wireChunk to chunk, response(huge, "application/octet-stream") to huge)) serve(wire) { port, _ ->
+            val workspace = TemporaryWorkspace({ AssistantAvailability(true, tools = AssistantTools(tempFiles = true, httpGet = true)) },
+                { AssistantProviderSnapshot(AssistantProviderSettings(model = "synthetic"), "provider") })
+            val access = TemporaryAccess { action, job -> if (job?.isActive == true && (action !is TempAction.Download || action.valid())) workspace.applyLocked(action) else null }
+            val request = buildJsonObject { put("profile_id", "p"); put("connection_id", "c"); put("path", "/file"); put("save_as", "file.bin") }
+            val result = withContext(SideEffectAdmission { true } + access) {
+                AssistantHttpGetTool(AssistantWebHttp { WebHttpTarget(port, false, null, "identity", "period") }, 2000, true).execute(request)
+            }
+            assertEquals(ToolOutcome.SUCCESS, result.outcome)
+            val file = (workspace.applyLocked(TempAction.List) as TempResult.Listed).files.single()
+            assertEquals(expected.size, file.bytes)
+            assertArrayEquals(expected.copyOfRange(0, minOf(expected.size, TemporaryWorkspace.PREVIEW_BYTES)),
+                (workspace.applyLocked(TempAction.Read(file.id)) as TempResult.Preview).bytes)
+        }
+    }
+
+    @Test fun `disabled download and changed target never store or dispatch`() = runBlocking {
+        val request = buildJsonObject { put("profile_id", "p"); put("connection_id", "c"); put("path", "/file"); put("save_as", "file.bin") }
+        var resolved = 0
+        val http = AssistantWebHttp { resolved++; WebHttpTarget(12345, false, null, "identity", "period") }
+        val old = AssistantHttpGetTool(http, 2000)
+        assertFalse(old.spec.parameters.toString().contains("save_as"))
+        assertEquals(ToolOutcome.FAILED, withContext(SideEffectAdmission { true }) { old.execute(request) }.outcome)
+        assertEquals(0, resolved)
+        val nullName = buildJsonObject { put("profile_id", "p"); put("connection_id", "c"); put("path", "/file"); put("save_as", JsonNull) }
+        assertEquals(ToolOutcome.FAILED, withContext(SideEffectAdmission { true }) { old.execute(nullName) }.outcome)
+        assertEquals(0, resolved)
+        serve(response("secret".toByteArray())) { port, _ ->
+            var calls = 0
+            val workspace = TemporaryWorkspace({ AssistantAvailability(true, tools = AssistantTools(tempFiles = true, httpGet = true)) },
+                { AssistantProviderSnapshot(AssistantProviderSettings(model = "synthetic"), "provider") })
+            val access = TemporaryAccess { action, job -> if (job?.isActive == true && (action !is TempAction.Download || action.valid())) workspace.applyLocked(action) else null }
+            val changing = AssistantWebHttp { WebHttpTarget(port, false, null, "identity", if (++calls < 5) 1 else 2) }
+            val result = withContext(SideEffectAdmission { true } + access) { AssistantHttpGetTool(changing, 2000, true).execute(request) }
+            assertEquals(ToolOutcome.FAILED, result.outcome)
+            assertTrue((workspace.applyLocked(TempAction.List) as TempResult.Listed).files.isEmpty())
+        }
+    }
+
     @Test fun `pinned certificate succeeds and untrusted and changed certificates fail`() = runBlocking {
         val directory = java.nio.file.Files.createTempDirectory("http-get-test").toFile()
         try {

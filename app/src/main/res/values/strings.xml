@@ -1650,7 +1650,7 @@
     <string name="connection_assistant_sheet_session_mqtt">For session: MQTT publishing.</string>
     <string name="connection_assistant_sheet_connection_mqtt">For this connection: MQTT publishing (since %1$s).</string>
     <string name="tool_http_get">Read Web tunnel</string>
-    <string name="tool_http_get_hint">Responses from an open Web tunnel go to the configured provider.</string>
+    <string name="tool_http_get_hint">The selected provider receives response text when read, and only file details when downloaded.</string>
     <string name="tool_http_get_progress">Reading Web tunnel…</string>
     <string name="chat_attachment_remove">Remove context</string>
     <string name="chat_attachment_limit">Up to 8 context items can be attached.</string>

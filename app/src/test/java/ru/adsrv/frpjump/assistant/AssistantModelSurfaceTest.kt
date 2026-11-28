@@ -56,7 +56,7 @@ class AssistantModelSurfaceTest {
         val actual = ArrayList<JsonElement>()
         webTools().forEach { actual += specJson(it.spec) }
         actual += specJson(profileTool().spec)
-        actual += specJson(AssistantHttpGetTool(AssistantWebHttp { null }, 1000).spec)
+        actual += specJson(AssistantHttpGetTool(AssistantWebHttp { null }, 1000, true).spec)
         actual += specJson(AssistantHttpPostTool(AssistantWebHttp { null }, 1000).spec)
         actual += specJson(AssistantMqttReadTool(noMqttReader().operation, AssistantLimits()).spec)
         actual += specJson(AssistantMqttPublishTool(mqttPublisherFixture()).spec)
