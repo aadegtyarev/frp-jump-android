@@ -26,7 +26,7 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test: one hash per asset.
-        assertEquals(25, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(26, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(3, AssistantPrompts.SUMMARY_VERSION)
         val pinned = mapOf(
         "assistant/skill.md" to "9bfde087148973cae9b4fc037d56387f1633fd268efee7a25054ec9ee0163831",
@@ -35,6 +35,7 @@ class AssistantPromptsTest {
         "assistant/summary.md" to "b1d30cb5d6ed25e55fe6c1f81e989a91972747723e7b39647b3c21333bfdadeb",
         "assistant/tools/inspect_image.md" to "50831383f2b4610ae976ecda4fb7e69f83f3dcbe9edce084794cabb6d3405f46",
         "assistant/tools/mqtt_publish.md" to "0e1e5138db00e0f08f8f616cf6065a6f11a131b600b521291f07dedc698d8919",
+        "assistant/tools/http_post.md" to "29f54e645240fb79c645959673cf0d235a4f21f2406006e0677db724a24afec8",
         "assistant/tools/http_get.md" to "01e11ce61c504b40667cda02d73da7d069e8e22deb2f098169c62bd6907de758",
         "assistant/tools/mqtt_read.md" to "9a751c473e2fbe109d6b41feff07a6975dda5da0f29f0299b6cc1b7bce3cdc50",
         "assistant/tools/profile_information.md" to "d87a87abc62a3b28a6cad96421619b6c05b30c7ac93bcdcd9aac71128acadf8d",
@@ -141,6 +142,7 @@ class AssistantPromptsTest {
         val sentenceOf = mapOf(
             AssistantToolId.WEB_SEARCH to "web_search is unofficial", AssistantToolId.READ_PAGE to "read_page does not run JavaScript.",
             AssistantToolId.INSPECT_IMAGE to "inspect_image gives an unverified model answer.", AssistantToolId.PROFILE_INFORMATION to "profile_information finds",
+            AssistantToolId.HTTP_POST to "Use http_post only",
             AssistantToolId.HTTP_GET to "Use http_get only",
             AssistantToolId.MQTT_READ to "Use mqtt_read for current values",
             AssistantToolId.MQTT_PUBLISH to "Use mqtt_publish only when the owner asks",

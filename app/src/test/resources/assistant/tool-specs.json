@@ -57,6 +57,22 @@
     }
   },
   {
+    "name": "http_post",
+    "description": "Send one owner-requested HTTP POST through an already running saved Web tunnel. Use profile_id and connection_id from profile_information, a root-relative path, content type and literal UTF-8 body. May change the device; no retry.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": { "type": "string", "maxLength": 256 },
+        "connection_id": { "type": "string", "maxLength": 256 },
+        "path": { "type": "string", "maxLength": 2048 },
+        "content_type": { "type": "string", "enum": ["application/json", "text/plain"] },
+        "body": { "type": "string", "maxLength": 8192 }
+      },
+      "required": ["profile_id", "connection_id", "path", "content_type", "body"]
+    }
+  },
+  {
     "name": "mqtt_read",
     "description": "Read current values already observed by the owner's connected MQTT explorer for a saved MQTT connection. Use profile_id and connection_id from profile_information. Optional filter is an MQTT topic filter; no subscription is made. Results are incomplete cached observations, not broker state. Private messages go to the configured model.",
     "parameters": {
@@ -268,6 +284,7 @@
               "inspect_image",
               "profile_information",
               "http_get",
+              "http_post",
               "mqtt_read",
               "mqtt_publish",
               "start_tunnel",
@@ -280,7 +297,7 @@
             ]
           },
           "minItems": 0,
-          "maxItems": 14
+          "maxItems": 15
         },
         "body": {
           "type": "string",

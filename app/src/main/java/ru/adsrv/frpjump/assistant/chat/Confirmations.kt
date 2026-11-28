@@ -31,6 +31,11 @@ class MqttPublishCard(val topic: String, val qos: Int, val retain: Boolean, val 
     override fun toString() = "MqttPublishCard(qos=$qos, retain=$retain)"
 }
 
+/** Exact endpoint and request fields shown with the literal body. */
+class HttpPostCard(val profile: String, val name: String, val device: String, val port: Int, val https: Boolean, val path: String, val contentType: String) {
+    override fun toString() = "HttpPostCard()"
+}
+
 /**
  * The question shown to the owner. Not a data class: [command] may hold secrets and its toString must never print it.
  * Equality is by [id] only, so a state update never compares or prints the command.
@@ -39,7 +44,7 @@ class PendingConfirmation(val id: Long, val tool: AssistantToolId, val command: 
     val info: ConfirmationTargetInfo?, val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null,
     val close: ru.adsrv.frpjump.assistant.CloseCard? = null, val skill: ru.adsrv.frpjump.assistant.SkillCard? = null,
     /** The grantable tools a For session or For this connection answer on this card would cover (in effect when the card was raised): what its hints say. Empty: none. */
-    val sessionTools: Set<AssistantToolId> = emptySet(), val mqtt: MqttPublishCard? = null) {
+    val sessionTools: Set<AssistantToolId> = emptySet(), val mqtt: MqttPublishCard? = null, val http: HttpPostCard? = null) {
     override fun equals(other: Any?) = other is PendingConfirmation && other.id == id
     override fun hashCode() = id.hashCode()
     override fun toString() = "PendingConfirmation(id=$id, tool=$tool)"

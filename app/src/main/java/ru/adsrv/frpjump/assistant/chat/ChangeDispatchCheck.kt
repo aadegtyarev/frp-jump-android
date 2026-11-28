@@ -4,9 +4,8 @@ import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.settings.*
 
 /** Validates a remembered basis off the scheduler and returns its in-memory dispatch check. */
-internal fun mqttDispatchCheck(support: ConfirmationSupport?, offCount: Long?, basis: NoQuestion?, target: GrantTarget): (() -> Boolean)? {
+internal fun changeDispatchCheck(tool: AssistantToolId, support: ConfirmationSupport?, offCount: Long?, basis: NoQuestion?, target: GrantTarget): (() -> Boolean)? {
     if (support == null || offCount == null) return null
-    val tool = AssistantToolId.MQTT_PUBLISH
     val key = GrantKey(tool.actionClass, target)
     val persistent = if (basis == NoQuestion.CONNECTION) support.connection?.dispatchStamp(tool, key) else null
     if (basis == NoQuestion.CONNECTION && persistent == null) return null

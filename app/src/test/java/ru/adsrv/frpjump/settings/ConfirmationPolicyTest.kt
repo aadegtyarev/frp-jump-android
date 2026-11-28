@@ -53,12 +53,17 @@ class ConfirmationPolicyTest {
                 val mqtt = AssistantToolId.MQTT_PUBLISH
                 assertTrue(g.record(GrantKey(ActionClass.MQTT_PUBLISH, target), mqtt, g.stamp(target)!!, g.coverableBy(mqtt)))
             }
+            val httpHeld = grants().also { g ->
+                val post = AssistantToolId.HTTP_POST
+                assertTrue(g.record(GrantKey(ActionClass.HTTP_POST, target), post, g.stamp(target)!!, g.coverableBy(post)))
+            }
             val asksToday = tool.effect.changes && tool.confirms
             assertEquals("${tool.name}: no grant, ask", asksToday, mustAsk(tool, k, ask, none))
             assertFalse("${tool.name}: global off", mustAsk(tool, k, off, none)); assertFalse("${tool.name}: global off with a grant", mustAsk(tool, k, off, held))
             // A valid grant of CONNECTION_CHANGE waives only the grantable tools of that class.
             assertEquals("${tool.name}: SSH grant", asksToday && !(tool.grantable && tool.actionClass == ActionClass.CONNECTION_CHANGE), mustAsk(tool, k, ask, held))
             assertEquals("${tool.name}: MQTT grant", asksToday && !(tool.grantable && tool.actionClass == ActionClass.MQTT_PUBLISH), mustAsk(tool, k, ask, mqttHeld))
+            assertEquals("${tool.name}: HTTP grant", asksToday && !(tool.grantable && tool.actionClass == ActionClass.HTTP_POST), mustAsk(tool, k, ask, httpHeld))
         }
     }
 

@@ -299,7 +299,7 @@ class FrpJumpApp : Application() {
             realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
             terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, sessions = assistantSessions, skills = assistantSkills, waitCountOut = assistantWaitCount,
             grants = sessionGrants, connectionGrants = connectionGrants,
-            httpGet = ru.adsrv.frpjump.assistant.AssistantHttpGet { ids ->
+            webHttp = ru.adsrv.frpjump.assistant.AssistantWebHttp { ids ->
                 val target = assistantTunnels.find(ids)
                 val runtime = profiles.runtime(ids.profileId)
                 val connection = runtime?.connections?.connections?.value?.singleOrNull { it.id == ids.connectionId }
@@ -309,7 +309,7 @@ class FrpJumpApp : Application() {
                 val key = target?.let { ru.adsrv.frpjump.ports.localPortKey(it.device, it.port) }
                 val port = ru.adsrv.frpjump.assistant.readyWebPort(state, key)
                 if (target == null || target.kind != ru.adsrv.frpjump.ports.PortKind.WEB || !assistantTunnels.isOn(target) || connection == null || period == null || pin == null || port == null) null
-                else ru.adsrv.frpjump.assistant.HttpGetTarget(port, connection.https, runtime.webCerts.pinned(target.device, target.port), pin, period)
+                else ru.adsrv.frpjump.assistant.WebHttpTarget(port, connection.https, runtime.webCerts.pinned(target.device, target.port), pin, period, target.profileName, target.name, target.device, target.port, runtime.webCerts.revision(target.device, target.port), runtime.webCerts.readable)
             },
             mqttRead = ru.adsrv.frpjump.assistant.AssistantMqttRead(assistantTunnels, mqtt, pendingUndo.hidden) { target ->
                 profiles.runtime(target.profileId)?.tunnels?.state?.value?.tunnels?.singleOrNull { it.device == target.device && it.port == target.port }?.localPort

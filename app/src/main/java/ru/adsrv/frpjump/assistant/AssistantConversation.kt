@@ -63,7 +63,7 @@ class AssistantConversation(
     private val onEnded: (Boolean) -> Unit = {},
     private val mqttRead: AssistantMqttRead? = null,
     private val mqttPublish: AssistantMqttPublish? = null,
-    private val httpGet: AssistantHttpGet? = null,
+    private val webHttp: AssistantWebHttp? = null,
     private val attachments: MutableStateFlow<List<ChatAttachment>> = MutableStateFlow(emptyList()),
 ) {
     private val gate = runtime.gate
@@ -86,7 +86,7 @@ class AssistantConversation(
     }
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
     private val own = RunOwnership(c, runtime, availability, snapshot, onRevoked = { disabled -> endWaitsLocked(note = disabled) })
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, sessions, skills, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered, mqttRead, mqttPublish, httpGet)
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, sessions, skills, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered, mqttRead, mqttPublish, webHttp)
     val state: StateFlow<ChatState> = c.mutable
 
     init {

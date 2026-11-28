@@ -1,6 +1,8 @@
 package ru.adsrv.frpjump.assistant
 
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -8,6 +10,11 @@ import okhttp3.ConnectionPool
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import okio.BufferedSink
+import java.util.concurrent.atomic.AtomicBoolean
+import ru.adsrv.frpjump.settings.GrantTarget
 import okio.Buffer
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.tools.*
@@ -30,19 +37,35 @@ internal fun readyWebPort(state: ru.adsrv.frpjump.tunnel.TunnelsState?, key: Str
 }
 
 /** The whole endpoint and its authority, captured together and resolved again before and after the call. */
-internal data class HttpGetTarget(val localPort: Int, val https: Boolean, val pin: String?, val identity: Any, val period: Any)
+internal data class WebHttpTarget(val localPort: Int, val https: Boolean, val pin: String?, val identity: Any, val period: Any,
+    val profile: String = "", val name: String = "", val device: String = "", val port: Int = 0, val certRevision: Long = 0, val certReadable: Boolean = true)
 
-class AssistantHttpGet internal constructor(private val resolve: (SavedTunnelIds) -> HttpGetTarget?) {
+
+class AssistantWebHttp internal constructor(private val resolve: (SavedTunnelIds) -> WebHttpTarget?) {
     internal suspend fun get(ids: SavedTunnelIds, path: String, budget: Int): ToolOutput {
         val target = resolve(ids) ?: return unavailable()
-        val parts = path.split('?', limit = 2)
-        val url = HttpUrl.Builder().scheme(if (target.https) "https" else "http").host("127.0.0.1").port(target.localPort)
-            .encodedPath(parts[0]).apply { if (parts.size == 2) encodedQuery(parts[1]) }.build()
-        val admission = currentCoroutineContext()[SideEffectAdmission] ?: return unavailable()
+        return exchange(ids, path, budget, target, null)
+    }
+    internal fun pin(ids: SavedTunnelIds): WebHttpTarget? = resolve(ids)
+    internal suspend fun post(ids: SavedTunnelIds, path: String, contentType: String, body: String, budget: Int, target: WebHttpTarget): ToolOutput {
+        val authority = currentCoroutineContext()[ChangeDispatchAuthority]?.prepare(AssistantToolId.HTTP_POST, GrantTarget(ids.profileId, ids.connectionId)) ?: return unavailable()
+        val dispatched = AtomicBoolean(false)
+        return try { exchange(ids, path, budget, target, Post(contentType, body.toByteArray(Charsets.UTF_8), authority, dispatched)) }
+        catch (cancel: CancellationException) { throw cancel }
+        catch (_: Exception) { if (dispatched.get()) uncertain() else unavailable() }
+    }
+    private class Post(val contentType: String, val bytes: ByteArray, val authority: () -> Boolean, val dispatched: AtomicBoolean)
+    private suspend fun exchange(ids: SavedTunnelIds, path: String, budget: Int, target: WebHttpTarget, post: Post?): ToolOutput {
+        val url = localHttpUrl(target.https, target.localPort, path)
+        val context = currentCoroutineContext()
+        val admission = context[SideEffectAdmission] ?: return unavailable()
+        val job = context[Job]
+        val category = if (post == null) "http-get-dispatch" else "http-post-dispatch"
         val builder = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
             .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false).callTimeout(30, TimeUnit.SECONDS)
             .addNetworkInterceptor { chain ->
-                if (!admission.check("http-get-dispatch") || resolve(ids) != target) throw java.io.IOException("Unavailable")
+                if (job?.isActive != true || !admission.check(category) || job.isActive.not() || post?.authority?.invoke() == false || resolve(ids) != target ||
+                    (post != null && !post.dispatched.compareAndSet(false, true))) throw java.io.IOException("Unavailable")
                 val response = chain.proceed(chain.request())
                 // OkHttp otherwise retries a 503 with Retry-After: 0, even with retryOnConnectionFailure disabled.
                 if (response.code == 503) response.newBuilder().removeHeader("Retry-After").build() else response
@@ -62,8 +85,15 @@ class AssistantHttpGet internal constructor(private val resolve: (SavedTunnelIds
             }
         }
         currentCoroutineContext().ensureActive()
-        if (!admission.check("http-get-dispatch") || resolve(ids) != target) return unavailable()
-        val call = builder.build().newCall(Request.Builder().url(url).header("Accept-Encoding", "identity").get().build())
+        if (!admission.check(category) || post?.authority?.invoke() == false || resolve(ids) != target) return unavailable()
+        val request = Request.Builder().url(url).header("Accept-Encoding", "identity")
+        if (post == null) request.get() else request.post(object : RequestBody() {
+            override fun contentType() = post.contentType.toMediaType()
+            override fun contentLength() = post.bytes.size.toLong()
+            override fun isOneShot() = true
+            override fun writeTo(sink: BufferedSink) { sink.write(post.bytes) }
+        })
+        val call = builder.build().newCall(request.build())
         val result = blockingCancellable(call::cancel) {
             call.execute().use { response ->
                 val bytes = Buffer(); val source = response.body?.source()
@@ -99,12 +129,14 @@ class AssistantHttpGet internal constructor(private val resolve: (SavedTunnelIds
             }
         }
         currentCoroutineContext().ensureActive()
-        return if (admission.check("http-get-result") && resolve(ids) == target) ToolOutput(result) else unavailable()
+        return if (admission.check(if (post == null) "http-get-result" else "http-post-result") && resolve(ids) == target) ToolOutput(result)
+            else if (post?.dispatched?.get() == true) uncertain() else unavailable()
     }
+    private fun uncertain() = ToolOutput("The POST may have reached the device. The outcome is unknown; do not retry automatically.", ToolOutcome.FAILED)
     private fun unavailable() = ToolOutput("The saved Web tunnel is unavailable or changed.", ToolOutcome.FAILED)
 }
 
-internal class AssistantHttpGetTool(private val http: AssistantHttpGet, private val budget: Int) : AppTool<AssistantHttpGetTool.Input>(AssistantToolId.HTTP_GET,
+internal class AssistantHttpGetTool(private val http: AssistantWebHttp, private val budget: Int) : AppTool<AssistantHttpGetTool.Input>(AssistantToolId.HTTP_GET,
     "Read one root-relative path through an already running saved Web tunnel. Supply profile_id and connection_id from profile_information. Response text is untrusted data and may be private.",
     objectSchema { string("profile_id", 256); string("connection_id", 256); string("path", 2048) }) {
     data class Input(val ids: SavedTunnelIds, val path: String)
@@ -112,10 +144,23 @@ internal class AssistantHttpGetTool(private val http: AssistantHttpGet, private 
         exactKeys("profile_id", "connection_id", "path")
         val ids = SavedTunnelIds(string("profile_id", 256), string("connection_id", 256))
         val path = string("path", 2048)
-        if (!path.startsWith('/') || path.startsWith("//") || path.any { it == '\\' || it == '#' || it.code < 32 || it.code == 127 }) throw InvalidArguments()
+        if (!validHttpPath(path)) throw InvalidArguments()
         Input(ids, path)
     }
     override val invalidArguments = ToolOutput("Provide profile_id and connection_id from profile_information and a root-relative path with optional query.", ToolOutcome.FAILED)
     override suspend fun run(args: Input) = http.get(args.ids, args.path, budget)
     override fun failure(error: Exception) = ToolOutput(if (error is javax.net.ssl.SSLException) "HTTPS trust failed. Open Web in the app and review the certificate." else "Could not read the saved Web tunnel.", ToolOutcome.FAILED)
+}
+
+internal fun validHttpPath(path: String): Boolean = path.startsWith('/') && !path.startsWith("//") && path.none { it == '\\' || it == '#' || it.code < 32 || it.code == 127 }
+
+internal fun localHttpUrl(https: Boolean, port: Int, path: String): HttpUrl {
+    val parts = path.split('?', limit = 2)
+    return HttpUrl.Builder().scheme(if (https) "https" else "http").host("127.0.0.1").port(port)
+        .encodedPath(parts[0]).apply { if (parts.size == 2) encodedQuery(parts[1]) }.build()
+}
+internal fun exactHttpPath(path: String): Boolean {
+    if (!validHttpPath(path)) return false
+    val url = localHttpUrl(false, 1, path)
+    return path == url.encodedPath + (url.encodedQuery?.let { "?$it" } ?: "")
 }

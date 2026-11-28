@@ -18,7 +18,7 @@ import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.undo.PendingUndo
 
 class AssistantMqttPublishTest {
-    private val authority = MqttPublishAuthority { { true } }
+    private val authority = ChangeDispatchAuthority { _, _ -> { true } }
     internal class Scheduler : MqttScheduler {
         val base = FakeScheduler(); var hold = false; val queue = ArrayDeque<() -> Unit>()
         override fun now() = base.now()
@@ -121,7 +121,7 @@ class AssistantMqttPublishTest {
             r.scheduler.hold = true
             if (change == "reconnect") r.events.lost()
             var admitted = true; var granted = true
-            val guard = MqttPublishAuthority { { granted } }
+            val guard = ChangeDispatchAuthority { _, _ -> { granted } }
             val pending = async(start = CoroutineStart.UNDISPATCHED, context = SideEffectAdmission { category ->
                 if (category == "mqtt-dispatch" && change == "admission-changes-target") r.fingerprint = "changed"
                 category != "mqtt-dispatch" || admitted

@@ -39,7 +39,7 @@ object GrantFingerprint {
         MessageDigest.getInstance("SHA-256").digest("$controlUrl\n$deviceId\n$certPem".toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
     fun of(connection: Connection, profileId: String, keyAlias: String, activationPending: Boolean, enrollment: String?, sshLogin: SshLogin?,
-        hostKey: PinnedHostKey?, mqttUser: String?): String {
+        hostKey: PinnedHostKey?, mqttUser: String?, webCert: String? = null): String {
         val json: JsonObject = buildJsonObject {
             put("connection", buildJsonObject {
                 put("id", connection.id); put("device", connection.device); put("port", connection.port)
@@ -52,6 +52,7 @@ object GrantFingerprint {
             put("ssh_login", sshLogin?.let { buildJsonObject { put("user", it.user); put("method", WireJson.encodeToJsonElement(it.method)) } } ?: JsonNull)
             put("host_key", hostKey?.let { buildJsonObject { put("type", it.type); put("fingerprint", it.fingerprint) } } ?: JsonNull)
             put("mqtt_user", mqttUser?.let(::JsonPrimitive) ?: JsonNull)
+            if (connection.kind == ru.adsrv.frpjump.ports.PortKind.WEB) put("web_cert", webCert?.let(::JsonPrimitive) ?: JsonNull)
         }
         val digest = MessageDigest.getInstance("SHA-256").digest(json.toString().toByteArray(Charsets.UTF_8))
         return PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(digest)

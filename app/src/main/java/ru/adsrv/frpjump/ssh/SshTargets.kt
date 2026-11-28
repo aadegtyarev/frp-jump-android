@@ -88,8 +88,10 @@ class SshTargets(
         val profile = state.index.profiles.singleOrNull { it.id == profileId } ?: return null
         val runtime = state.runtimes[profileId] ?: return null
         val connection = runtime.connections.connections.value.singleOrNull { it.id == connectionId } ?: return null
-        return listOf(connection.withoutFavorite, profile.id, profile.keyAlias, profile.activationPending, state.enrollments[profileId],
+        if (connection.kind == PortKind.WEB && !runtime.webCerts.readable) return null
+        val base = listOf(connection.withoutFavorite, profile.id, profile.keyAlias, profile.activationPending, state.enrollments[profileId],
             runtime.sshLogins.stored(connection.device, connection.port), runtime.hostKeys.pinned(connection.device, connection.port))
+        return if (connection.kind == PortKind.WEB) base + listOf(runtime.webCerts.pinned(connection.device, connection.port), runtime.webCerts.revision(connection.device, connection.port)) else base
     }
 
     /**
@@ -106,7 +108,7 @@ class SshTargets(
         val profile = listed.singleOrNull() ?: return PersistentFp.Unknown
         val runtime = state.runtimes[profileId] ?: return PersistentFp.Unknown
         val connection = runtime.connections.connections.value.singleOrNull { it.id == connectionId } ?: return PersistentFp.Gone
-        if (!runtime.sshLogins.readable || !runtime.hostKeys.readable) return PersistentFp.Unknown
+        if (!runtime.sshLogins.readable || !runtime.hostKeys.readable || connection.kind == PortKind.WEB && !runtime.webCerts.readable) return PersistentFp.Unknown
         val enrollment = when (val identity = runtime.store.identity()) {
             is EnrollmentIdentity.Present -> identity.hash
             EnrollmentIdentity.None -> null
@@ -114,7 +116,8 @@ class SshTargets(
         }
         val user = if (connection.kind == PortKind.MQTT) (try { mqttUser(profileId, connectionId) } catch (_: Exception) { return PersistentFp.Unknown }) else null
         return PersistentFp.Known(GrantFingerprint.of(connection, profile.id, profile.keyAlias, profile.activationPending, enrollment,
-            runtime.sshLogins.stored(connection.device, connection.port), runtime.hostKeys.pinned(connection.device, connection.port), user))
+            runtime.sshLogins.stored(connection.device, connection.port), runtime.hostKeys.pinned(connection.device, connection.port), user,
+            if (connection.kind == PortKind.WEB) runtime.webCerts.pinned(connection.device, connection.port) else null))
     }
 
     /** The configured public MQTT principal; never unseals a password. */
@@ -136,7 +139,8 @@ class SshTargets(
         if (PendingUndo.connectionKey(profileId, connectionId) in gone || PendingUndo.tunnelKey(profileId, connection.device, connection.port) in gone) return null
         val open = runtime.tunnels.openPeriod(connection.device, connection.port) ?: return null
         // The hide counts are part of it: hidden for Undo and brought back is not the same period any more (the key may be seen again by nobody in between).
-        return OpenPeriod(open, hides(PendingUndo.tunnelKey(profileId, connection.device, connection.port)), hides(PendingUndo.connectionKey(profileId, connectionId)))
+        val period = OpenPeriod(open, hides(PendingUndo.tunnelKey(profileId, connection.device, connection.port)), hides(PendingUndo.connectionKey(profileId, connectionId)))
+        return if (connection.kind == PortKind.WEB && connection.https) listOf(period, runtime.webCerts.revision(connection.device, connection.port)) else period
     }
 
     /** An opaque period of a saved connection's tunnel: equal only while it is the same open tunnel and was never hidden since. */

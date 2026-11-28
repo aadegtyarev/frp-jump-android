@@ -78,7 +78,7 @@ class AssistantChatOwner(
     private val connectionGrants: ru.adsrv.frpjump.settings.ConnectionGrants? = null,
     private val mqttRead: AssistantMqttRead? = null,
     private val mqttPublish: AssistantMqttPublish? = null,
-    private val httpGet: AssistantHttpGet? = null,
+    private val webHttp: AssistantWebHttp? = null,
 ) {
     private val pendingAttachments = MutableStateFlow<List<ru.adsrv.frpjump.assistant.chat.ChatAttachment>>(emptyList())
     val attachments: StateFlow<List<ru.adsrv.frpjump.assistant.chat.ChatAttachment>> = pendingAttachments.asStateFlow()
@@ -172,7 +172,7 @@ class AssistantChatOwner(
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
-            profileInformation = profileInformation, mqttRead = mqttRead, mqttPublish = mqttPublish, httpGet = httpGet, attachments = pendingAttachments, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, sessions = sessions, skills = skills, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
+            profileInformation = profileInformation, mqttRead = mqttRead, mqttPublish = mqttPublish, webHttp = webHttp, attachments = pendingAttachments, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, sessions = sessions, skills = skills, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
             awaitHistoryClear = { historyUndo?.awaitDone(HISTORY_UNDO_KEY) },
             commitHistoryClear = { historyUndo?.let { it.commit(HISTORY_UNDO_KEY); it.awaitDone(HISTORY_UNDO_KEY) } }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,
