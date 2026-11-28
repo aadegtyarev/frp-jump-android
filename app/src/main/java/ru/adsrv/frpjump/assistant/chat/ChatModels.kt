@@ -29,7 +29,7 @@ data class ChatTurn(val user: String, val answer: String, val sources: List<Chat
     /** The attempt searched or read pages from the internet, so what it asked for may have been suggested by foreign text. */
     val readWeb: Boolean = false,
     /** Events of waits delivered in this turn; with [eventOnly] they started it (the chat draws them as muted lines, not as the owner's message). */
-    val events: List<WaitEvent> = emptyList(), val eventOnly: Boolean = false)
+    val events: List<WaitEvent> = emptyList(), val eventOnly: Boolean = false, val attachments: List<ChatAttachment> = emptyList())
 sealed interface ChatToolProgress {
     /** A call of a known tool is running. */
     data class Tool(val id: AssistantToolId) : ChatToolProgress
@@ -73,7 +73,7 @@ data class ChatState(
     /** The number of event replies in a row that was reached: no more start by themselves until the owner writes. Null below the cap. */
     val eventCap: Int? = null,
     /** The events of the running turn (those that started it, or came with the owner's message); [pendingEventOnly]: the turn is theirs alone. */
-    val pendingEvents: List<WaitEvent> = emptyList(), val pendingEventOnly: Boolean = false,
+    val pendingEvents: List<WaitEvent> = emptyList(), val pendingEventOnly: Boolean = false, val pendingAttachments: List<ChatAttachment> = emptyList(),
 )
 
 /** A question to the owner is on screen: the message field is hidden and the card takes the room. Ends with an answer, Stop or a timeout. */

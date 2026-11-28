@@ -127,6 +127,7 @@ fun DevicesScreen(
     onProfiles: () -> Unit,
     onOpen: (String, String) -> Unit,
     onSettings: () -> Unit,
+    onAskAssistant: ((String, DeviceRow) -> Unit)? = null,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
@@ -148,7 +149,7 @@ fun DevicesScreen(
     LaunchedEffect(notice, current?.id) {
         if (notice != null) vm.takeNotice()?.let { snackbar.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long) }
     }
-    DevicesContent(state, profiles, onProfiles, onOpen, onSettings, vm::pull, vm::saveDisplay, vm::toggleFavorite, snackbar)
+    DevicesContent(state, profiles, onProfiles, onOpen, onSettings, vm::pull, vm::saveDisplay, vm::toggleFavorite, snackbar, onAskAssistant)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -158,6 +159,7 @@ internal fun DevicesContent(
     onSettings: () -> Unit, onPull: () -> Unit,
     onSave: (String, String, ru.adsrv.frpjump.devices.DisplayChange, (ru.adsrv.frpjump.devices.DisplayFailure?) -> Unit) -> Unit,
     onFavorite: (String, String, (String?) -> Unit) -> Unit, snackbar: SnackbarHostState = remember { SnackbarHostState() },
+    onAskAssistant: ((String, DeviceRow) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
@@ -230,7 +232,7 @@ internal fun DevicesContent(
             } else state.error?.let { error ->
                 Text(error.userText(), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             }
-            DeviceRows(state, query, onlyOnline, { onlyOnline = false }, openRow, onPull, onOpen = { device -> state.profile?.let { onOpen(it, device) } }, onEdit = { device, label -> editDevice = device to label }, onFavorite = { device -> state.profile?.let { profile -> onFavorite(profile, device) { failure -> if (failure != null) scope.launch { snackbar.showSnackbar(failure) } } } })
+            DeviceRows(state, query, onlyOnline, { onlyOnline = false }, openRow, onPull, onOpen = { device -> state.profile?.let { onOpen(it, device) } }, onEdit = { device, label -> editDevice = device to label }, onFavorite = { device -> state.profile?.let { profile -> onFavorite(profile, device) { failure -> if (failure != null) scope.launch { snackbar.showSnackbar(failure) } } } }, onAsk = onAskAssistant?.let { ask -> { device -> state.profile?.let { ask(it, device) } } })
         }
     }
     editDevice?.let { (device, label) ->
@@ -299,7 +301,7 @@ private fun RemovedElsewhereLine(removed: List<ProfileItem>, onClick: () -> Unit
 /** Filtering and ordering are shared with the Devices projection. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun DeviceRows(state: DevicesUiState, query: String, onlyOnline: Boolean, showAll: () -> Unit, openRow: OpenRow, onPull: () -> Unit, onOpen: (String) -> Unit, onEdit: (DeviceRow, Boolean) -> Unit, onFavorite: (String) -> Unit) {
+internal fun DeviceRows(state: DevicesUiState, query: String, onlyOnline: Boolean, showAll: () -> Unit, openRow: OpenRow, onPull: () -> Unit, onOpen: (String) -> Unit, onEdit: (DeviceRow, Boolean) -> Unit, onFavorite: (String) -> Unit, onAsk: ((DeviceRow) -> Unit)? = null) {
     val listState = rememberLazyListState()
     LaunchedEffect(listState, openRow) { snapshotFlow { listState.isScrollInProgress }.collect { if (it) openRow.close() } }
     LaunchedEffect(state.refreshing) { if (state.refreshing) openRow.close() }
@@ -326,13 +328,15 @@ internal fun DeviceRows(state: DevicesUiState, query: String, onlyOnline: Boolea
                     val favorite = device.name in state.favorites
                     val open = openRow.name == device.name
                     val favoriteActionLabel = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add)
-                    SwipeReveal(open = open, enabled = false, onOpenChange = { openRow.reported(device.name, it) }, actionWidth = 76.dp, action = {},
+                    SwipeReveal(open = open, enabled = onAsk != null, onOpenChange = { openRow.reported(device.name, it) }, actionWidth = ru.adsrv.frpjump.ui.connections.revealWidth(), action = {
+                            if (onAsk != null) ru.adsrv.frpjump.ui.connections.RevealButton(stringResource(R.string.terminal_ask_assistant), glyph = { Icon(ru.adsrv.frpjump.ui.AssistantGlyph, contentDescription = null, tint = AppTheme.colors.onAccentContainer, modifier = Modifier.size(22.dp)) }, modifier = Modifier.testTag("device_ask_action")) { openRow.close(); onAsk(device) }
+                        },
                         startAction = {
                             Surface(onClick = { openRow.close(); onFavorite(device.name) }, color = AppTheme.colors.accentContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.width(70.dp).fillMaxHeight().testTag("device_favorite_action").semantics { contentDescription = favoriteActionLabel }) {
                                 Box(contentAlignment = Alignment.Center) { Text(if (favorite) "★" else "☆", color = AppTheme.colors.onAccentContainer, fontSize = 24.sp) }
                             }
                         }, modifier = Modifier.touchesRow(openRow, device.name)) {
-                        DeviceItem(device, favorite, onClick = { if (open) openRow.close() else onOpen(device.name) }, onFavorite = { onFavorite(device.name) }, onEdit = if (state.display) ({ label -> onEdit(device, label) }) else null)
+                        DeviceItem(device, favorite, onClick = { if (open) openRow.close() else onOpen(device.name) }, onFavorite = { onFavorite(device.name) }, onAsk = onAsk?.let { ask -> { ask(device) } }, onEdit = if (state.display) ({ label -> onEdit(device, label) }) else null)
                     }
                 }
             }
@@ -348,9 +352,10 @@ internal fun DeviceRows(state: DevicesUiState, query: String, onlyOnline: Boolea
  * TalkBack as an action of the row, since the swipe is not.
  */
 @Composable
-private fun DeviceItem(device: DeviceRow, favorite: Boolean, onClick: () -> Unit, onFavorite: () -> Unit, onEdit: ((Boolean) -> Unit)?) {
+private fun DeviceItem(device: DeviceRow, favorite: Boolean, onClick: () -> Unit, onFavorite: () -> Unit, onEdit: ((Boolean) -> Unit)?, onAsk: (() -> Unit)? = null) {
     val colors = AppTheme.colors
     val favoriteLabel = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add)
+    val askLabel = stringResource(R.string.terminal_ask_assistant)
     val stateText = when {
         device.online && device.stale -> wasOnline(device)
         device.online -> stringResource(R.string.device_online)
@@ -374,7 +379,7 @@ private fun DeviceItem(device: DeviceRow, favorite: Boolean, onClick: () -> Unit
             .fillMaxWidth()
             .testTag("device_" + device.name)
             .semantics {
-                customActions = listOf(CustomAccessibilityAction(favoriteLabel) { onFavorite(); true })
+                customActions = listOfNotNull(CustomAccessibilityAction(favoriteLabel) { onFavorite(); true }, onAsk?.let { ask -> CustomAccessibilityAction(askLabel) { ask(); true } })
             },
     ) {
         Row(

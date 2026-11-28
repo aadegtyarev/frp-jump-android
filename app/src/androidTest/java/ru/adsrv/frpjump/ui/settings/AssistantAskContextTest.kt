@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -52,19 +53,12 @@ import ru.adsrv.frpjump.store.AtomicTextFile
 import ru.adsrv.frpjump.store.KeystoreSecretBox
 import ru.adsrv.frpjump.store.SecretBox
 import ru.adsrv.frpjump.store.TextStorage
-import ru.adsrv.frpjump.ui.ApplyAssistantQuote
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 import ru.adsrv.frpjump.ui.Routes
-import ru.adsrv.frpjump.ui.askAssistant
-import ru.adsrv.frpjump.ui.connections.askDraft
+import ru.adsrv.frpjump.ui.openAssistant
 import java.util.Locale
 
-/**
- * The tunnel's opening words (swipe or TalkBack action "Ask the assistant" on a tunnel card, R36b) and a terminal selection reach the model
- * with the owner's next message: the chat route's own [ApplyAssistantQuote] and the same entry ([askAssistant]) on a real chat screen and a
- * fake provider that records what it is sent. Cases: the chat never opened; open under another screen with a saved draft; open with an old
- * history; closed with a saved draft; a turn still running; the composer already holding text; a terminal quote.
- */
+/** The shared chat carries removable selected context only with an admitted manual Send. */
 @RunWith(AndroidJUnit4::class)
 class AssistantAskContextTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -98,15 +92,15 @@ class AssistantAskContextTest {
     private val owner by lazy {
         AssistantChatOwner(ownerScope, settings, store, module, null, null, AssistantChatHistory(AtomicTextFile(file), box, historyScope), undo,
             lazy { AssistantPrompts("system", "summary") }, prepare = {
-                AgentProvider { request -> requests += request; hold?.await(); AgentReply("Answer ${requests.size}") }
+                AgentProvider { request -> requests += request; hold?.await(); AgentReply(if (request.turns.last().user.contains("[tunnel:synthetic]")) "Answer\n\n[tunnel:synthetic]" else "Answer ${requests.size}") }
             }, realtime = { SystemClock.elapsedRealtime() })
     }
-    private val quotes = MutableStateFlow<String?>(null)
     private lateinit var nav: NavHostController
     private lateinit var model: AssistantChatViewModel
     private val tunnel = Connection("c1", "alpha", 80, PortKind.WEB, customName = "panel")
     private val context get() = compose.activity
-    private val prefix get() = askDraft(context, tunnel)
+    private val attachment get() = ru.adsrv.frpjump.assistant.chat.ChatAttachment("tunnel", "panel · alpha · Work", profileId = "p1", device = "alpha", port = 80,
+        connectionId = "c1", reference = "[tunnel:synthetic]", tunnelKind = "WEB")
     private val question = "подскажи статус машины"
 
     @Before fun display() {
@@ -114,7 +108,7 @@ class AssistantAskContextTest {
         compose.activityRule.scenario.onActivity {
             it.requestedOrientation = if (landscape) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             @Suppress("DEPRECATION")
-            it.resources.updateConfiguration(Configuration(it.resources.configuration).apply { setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en")) }, it.resources.displayMetrics)
+            it.resources.updateConfiguration(Configuration(it.resources.configuration).apply { setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en")); fontScale = args.getString("composerFontScale")?.toFloatOrNull() ?: 1f }, it.resources.displayMetrics)
         }
         val expected = if (landscape) Configuration.ORIENTATION_LANDSCAPE else Configuration.ORIENTATION_PORTRAIT
         val until = SystemClock.uptimeMillis() + 5000
@@ -122,6 +116,7 @@ class AssistantAskContextTest {
         assertEquals(expected, compose.activity.resources.configuration.orientation)
         compose.setContent {
             FrpJumpTheme {
+              androidx.compose.material3.Surface(color = ru.adsrv.frpjump.ui.AppTheme.colors.ground, contentColor = ru.adsrv.frpjump.ui.AppTheme.colors.ink) {
                 nav = rememberNavController()
                 NavHost(nav, "tunnels") {
                     composable("tunnels") { Text("Tunnels") }
@@ -129,10 +124,10 @@ class AssistantAskContextTest {
                     composable(Routes.CHAT) {
                         val vm = viewModel { AssistantChatViewModel(settings, store, owner) }
                         androidx.compose.runtime.SideEffect { model = vm }
-                        ApplyAssistantQuote(quotes, vm)
                         AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {})
                     }
                 }
+              }
             }
         }
     }
@@ -151,7 +146,7 @@ class AssistantAskContextTest {
     private fun fieldText() = field().fetchSemanticsNode().config[SemanticsProperties.EditableText].text
     private fun fieldCursor() = field().fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange]
     private fun go(to: String) { compose.runOnUiThread { nav.navigate(to) }; compose.waitUntil(WAIT) { route == to } }
-    private fun swipeAsk(text: String? = prefix) { compose.runOnUiThread { nav.askAssistant(quotes, text) }; compose.waitUntil(WAIT) { route == Routes.CHAT } }
+    private fun swipeAsk(item: ru.adsrv.frpjump.assistant.chat.ChatAttachment? = attachment) { compose.runOnUiThread { if (item != null) assertTrue(owner.attach(item)); nav.openAssistant() }; compose.waitUntil(WAIT) { route == Routes.CHAT } }
     private fun loaded() = compose.waitUntil(WAIT) { runCatching { !model.conversation.state.value.loading }.getOrDefault(false) }
     private fun type(text: String) { val node = field(); if (compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) node.performScrollTo(); node.performTextInput(text) }
     private fun send() {
@@ -170,166 +165,70 @@ class AssistantAskContextTest {
         assertEquals(expected, draft)
     }
 
-    @Test fun theSwipeFromTunnelsOnAChatNeverOpenedGivesThePrefixAndTheQuestionToTheModel() {
-        swipeAsk(); loaded()
-        assertShown(prefix)
-        assertEquals(0, requests.size)
-        type(question)
-        compose.waitUntil(WAIT) { draft == prefix + question }
+    @Test fun attachmentIsVisibleBeforeSendAndIncludedInTheNextRequest() {
+        swipeAsk(); loaded(); assertShown("")
+        compose.onNodeWithTag("chat_attachments").assertExists()
+        assertTrue(requests.isEmpty())
+        type(question); assertShown(question)
+        compose.waitForIdle(); SystemClock.sleep(300)
+        val tag = listOf(args.getString("composerOrientation") ?: "portrait", args.getString("composerFontScale") ?: "1.0", args.getString("chatLocale") ?: "en").joinToString("-")
+        InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { image ->
+            java.io.File(compose.activity.getExternalFilesDir(null), "context-composer-$tag.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; image.recycle()
+        }
         send()
-        assertEquals(1, requests.size)
-        assertEquals(prefix + question, lastUser())
-        assertTrue(lastUser().startsWith(prefix.trim()))
+        assertTrue(lastUser().contains(question)); assertTrue(lastUser().contains("[tunnel:synthetic]"))
+        compose.waitUntil(WAIT) { owner.attachments.value.isEmpty() }
+        compose.onNodeWithTag("chat_sent_attachment").assertExists()
+        compose.waitUntil(WAIT) { !model.conversation.state.value.busy }
+        compose.onNodeWithText(context.getString(R.string.chat_open_tunnel, attachment.label)).assertExists().performClick()
     }
 
-    @Test fun theChatOpenUnderAnotherScreenWithASavedDraftKeepsItAndGetsThePrefixAfterIt() {
-        swipeAsk(null); loaded()
-        type("old draft")
-        compose.waitUntil(WAIT) { draft == "old draft" }
-        go("other")
-        swipeAsk(); loaded()
-        val expected = "old draft\n\n$prefix"
-        assertShown(expected)
-        type(question)
-        compose.waitUntil(WAIT) { draft == expected + question }
-        send()
-        assertEquals(expected + question, lastUser())
+    @Test fun draftAndAttachmentSurviveBackAndReentry() {
+        swipeAsk(null); loaded(); type("old draft"); go("other"); swipeAsk(); assertShown("old draft")
+        compose.runOnUiThread { nav.popBackStack() }; compose.waitUntil(WAIT) { route == "tunnels" }
+        swipeAsk(null); loaded(); assertShown("old draft")
+        compose.onNodeWithTag("chat_attachments").assertExists(); send()
+        assertTrue(lastUser().contains("old draft")); assertTrue(lastUser().contains("[tunnel:synthetic]"))
     }
 
-    @Test fun theChatClosedWithASavedDraftRestoresItAndGetsThePrefixAfterIt() {
-        swipeAsk(null); loaded()
-        type("old draft")
-        compose.waitUntil(WAIT) { draft == "old draft" }
-        compose.runOnUiThread { nav.popBackStack() }
-        compose.waitUntil(WAIT) { route == "tunnels" }
-        swipeAsk(); loaded()
-        val expected = "old draft\n\n$prefix"
-        assertShown(expected)
-        type(question)
-        compose.waitUntil(WAIT) { draft == expected + question }
-        send()
-        assertEquals(expected + question, lastUser())
-    }
-
-    @Test fun theChatWithAnOldHistoryGetsThePrefixInAFreshDraft() {
-        swipeAsk(null); loaded()
-        type("first question"); send()
-        compose.waitUntil(WAIT) { model.conversation.state.value.turns.size == 1 && !model.conversation.state.value.busy }
-        compose.runOnUiThread { nav.popBackStack() }
-        compose.waitUntil(WAIT) { route == "tunnels" }
-        compose.waitForIdle()
-        swipeAsk(); loaded()
-        assertShown(prefix)
-        type(question)
-        compose.waitUntil(WAIT) { draft == prefix + question }
-        send()
-        assertEquals(2, requests.size)
-        assertEquals(prefix + question, lastUser())
-    }
-
-    @Test fun aTurnStillRunningHoldsThePrefixUntilItEndsThenTheQuestionCarriesIt() {
-        hold = CompletableDeferred()
-        swipeAsk(null); loaded()
-        type("first question"); send()
+    @Test fun attachmentWhileBusyWaitsForTheNextManualSend() {
+        hold = CompletableDeferred(); swipeAsk(null); loaded(); type("first"); send()
         compose.waitUntil(WAIT) { model.conversation.state.value.busy }
-        compose.runOnUiThread { nav.popBackStack() }
-        compose.waitUntil(WAIT) { route == "tunnels" }
-        swipeAsk()
-        compose.runOnIdle { assertEquals(1, requests.size) }
-        hold!!.complete(Unit)
-        compose.waitUntil(WAIT) { !model.conversation.state.value.busy && model.conversation.state.value.turns.size == 1 }
-        assertShown(prefix)
-        type(question)
-        compose.waitUntil(WAIT) { draft == prefix + question }
-        send()
-        assertEquals(prefix + question, lastUser())
+        compose.runOnUiThread { nav.popBackStack() }; compose.waitUntil(WAIT) { route == "tunnels" }; swipeAsk()
+        assertEquals(1, requests.size); hold!!.complete(Unit)
+        compose.waitUntil(WAIT) { !model.conversation.state.value.busy }
+        compose.onNodeWithTag("chat_attachments").assertExists(); type(question); send()
+        assertTrue(lastUser().contains("[tunnel:synthetic]"))
     }
 
-    @Test fun textAlreadyInTheComposerStaysAndThePrefixGoesAfterItWithTheChatOnScreen() {
-        swipeAsk(null); loaded()
-        type("typed before")
-        compose.waitUntil(WAIT) { draft == "typed before" }
-        swipeAsk()
-        val expected = "typed before\n\n$prefix"
-        assertShown(expected)
-        type(question)
-        compose.waitUntil(WAIT) { draft == expected + question }
-        send()
-        assertEquals(expected + question, lastUser())
-    }
-
-    @Test fun aClearWaitingForItsUndoDoesNotHideThePrefixAndTheSendInThatWindowCarriesIt() {
-        swipeAsk(null); loaded()
-        type("first question"); send()
+    @Test fun clearUndoKeepsPendingContext() {
+        swipeAsk(null); loaded(); type("first"); send()
         compose.waitUntil(WAIT) { model.conversation.state.value.turns.size == 1 && !model.conversation.state.value.busy }
-        compose.runOnUiThread { model.clearHistory() }
-        compose.waitUntil(WAIT) { model.conversation.state.value.clearing }
-        compose.runOnUiThread { nav.popBackStack() }
-        compose.waitUntil(WAIT) { route == "tunnels" }
-        swipeAsk()
-        // The Undo window is still open: the field is free and Send works, so the owner must see the prefix now.
-        assertTrue(model.conversation.state.value.clearing)
-        assertShown(prefix)
-        type(question)
-        compose.waitUntil(WAIT) { draft == prefix + question }
-        send()
-        assertEquals(2, requests.size)
-        assertEquals(prefix + question, lastUser())
-    }
-
-    /** A chat with one answered turn whose Clear waits for its Undo, left by Back; then the swipe lands in that window. */
-    private fun askInsideTheClearWindow() {
-        swipeAsk(null); loaded()
-        type("first question"); send()
-        compose.waitUntil(WAIT) { model.conversation.state.value.turns.size == 1 && !model.conversation.state.value.busy }
-        compose.runOnUiThread { model.clearHistory() }
-        compose.waitUntil(WAIT) { model.conversation.state.value.clearing }
-        compose.runOnUiThread { nav.popBackStack() }
-        compose.waitUntil(WAIT) { route == "tunnels" }
-        swipeAsk()
-        assertShown(prefix)
-    }
-
-    @Test fun theClearCommittingAfterTheSwipeKeepsThePrefixInTheNewDraft() {
-        askInsideTheClearWindow()
-        compose.runOnUiThread { expire!!.invoke() }
-        compose.waitUntil(WAIT) { !model.conversation.state.value.clearing }
-        assertShown(prefix)
-        assertEquals(0, model.conversation.state.value.turns.size)
-        type(question)
-        compose.waitUntil(WAIT) { draft == prefix + question }
-        send()
-        assertEquals(prefix + question, lastUser())
-    }
-
-    @Test fun anUndoAfterTheSwipeBringsTheHistoryBackAndKeepsThePrefixInTheDraft() {
-        askInsideTheClearWindow()
+        compose.runOnUiThread { model.clearHistory() }; compose.waitUntil(WAIT) { model.conversation.state.value.clearing }
+        compose.runOnUiThread { nav.popBackStack() }; compose.waitUntil(WAIT) { route == "tunnels" }; swipeAsk()
+        compose.onNodeWithTag("chat_attachments").assertExists()
         compose.runOnUiThread { undoNow!!.invoke() }
-        compose.waitUntil(WAIT) { model.conversation.state.value.let { !it.clearing && !it.restoring && !it.loading && it.turns.size == 1 } }
-        assertShown(prefix)
-        type(question)
-        compose.waitUntil(WAIT) { draft == prefix + question }
-        send()
-        assertEquals(prefix + question, lastUser())
+        compose.waitUntil(WAIT) { !model.conversation.state.value.clearing && !model.conversation.state.value.restoring }
+        type(question); send(); assertTrue(lastUser().contains("[tunnel:synthetic]"))
     }
 
-    @Test fun twoSwipesInARowGiveBothPrefixes() {
-        swipeAsk(); loaded()
-        assertShown(prefix)
-        go("other")
-        swipeAsk(prefix.replace("panel", "second"))
-        val expected = prefix + "\n\n" + prefix.replace("panel", "second")
-        assertShown(expected)
+    @Test fun removedAttachmentDoesNotReachProviderAndDistinctProfilesRemain() {
+        swipeAsk(); loaded(); compose.runOnUiThread { assertTrue(owner.attach(attachment.copy(profileId = "p2", reference = "[tunnel:other]"))) }
+        compose.onNodeWithTag("chat_attachment_details").performClick()
+        compose.onNodeWithTag("chat_attachment_sheet_remove_0").performClick()
+        androidx.test.espresso.Espresso.pressBack()
+        type(question); send()
+        assertTrue(!lastUser().contains("[tunnel:synthetic]")); assertTrue(lastUser().contains("[tunnel:other]"))
     }
 
-    @Test fun aTerminalQuoteStillReachesTheModelWithTheQuestion() {
+    @Test fun selectedTerminalTextIsRemovableContext() {
         val quote = ChatQuote.block("ls -l\ntotal 0", "[truncated]")!!
-        swipeAsk(quote); loaded()
-        assertShown(quote)
-        type(question)
-        compose.waitUntil(WAIT) { draft == quote + question }
-        send()
-        assertEquals(quote + question, lastUser())
+        swipeAsk(ru.adsrv.frpjump.assistant.chat.ChatAttachment("terminal_selection", "Terminal", quote = quote)); loaded()
+        assertShown(""); compose.onNodeWithTag("chat_attachment_details").performClick()
+        compose.onNodeWithTag("chat_attachment_quote_0").assertExists()
+        androidx.test.espresso.Espresso.pressBack()
+        type(question); send()
+        assertTrue(lastUser().contains("total 0")); assertTrue(lastUser().contains(question))
     }
 
     private companion object { const val WAIT = 15_000L }

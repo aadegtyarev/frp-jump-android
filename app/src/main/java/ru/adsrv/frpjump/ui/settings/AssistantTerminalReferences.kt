@@ -10,7 +10,7 @@ import ru.adsrv.frpjump.assistant.chat.ChatToolReceipt
 internal data class ReferenceAnswer(val text: String, val references: List<ToolReference>)
 
 /** Only an issued token occupying a top-level paragraph becomes an action. */
-internal fun referenceAnswer(answer: String, receipts: List<ChatToolReceipt>): ReferenceAnswer {
+internal fun referenceAnswer(answer: String, receipts: List<ChatToolReceipt>, attachments: List<ru.adsrv.frpjump.assistant.chat.ChatAttachment> = emptyList()): ReferenceAnswer {
     val issued = receipts.flatMap { receipt ->
         receipt.result?.takeIf { it.outcome == ToolOutcome.SUCCESS && it.name == receipt.call.name }
             ?.references.orEmpty().filter { reference ->
@@ -20,7 +20,7 @@ internal fun referenceAnswer(answer: String, receipts: List<ChatToolReceipt>): R
                     else -> false
                 }
             }
-    }.associateBy { it.token }
+    }.plus(attachments.mapNotNull { it.toolReference() }).associateBy { it.token }
     if (issued.isEmpty()) return ReferenceAnswer(answer, emptyList())
 
     val blocks = runCatching { MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(answer).children }

@@ -1705,4 +1705,12 @@
     <string name="tool_http_get">Чтение веб-туннеля</string>
     <string name="tool_http_get_hint">Данные из открытого веб-туннеля передаются выбранному провайдеру.</string>
     <string name="tool_http_get_progress">Читаю веб-туннель…</string>
+    <string name="chat_attachment_remove">Убрать контекст</string>
+    <string name="chat_attachment_limit">Можно прикрепить не более 8 объектов.</string>
+    <string name="chat_selected_text">Выделенный текст</string>
+    <string name="chat_context_device">Устройство</string>
+    <string name="chat_context_tunnel">Туннель</string>
+    <string name="chat_context_session">Сессия</string>
+    <string name="chat_context_title">Выбранный контекст</string>
+    <plurals name="chat_context_count"><item quantity="one">%d объект</item><item quantity="few">%d объекта</item><item quantity="many">%d объектов</item><item quantity="other">%d объекта</item></plurals>
 </resources>

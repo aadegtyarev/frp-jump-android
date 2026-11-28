@@ -2,7 +2,6 @@ package ru.adsrv.frpjump.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.assistant.*
@@ -34,14 +33,8 @@ class AssistantChatViewModel(
     fun dismissAsk(ask: OwnerAsk) = owner.dismissAsk(ask.id)
     /** The live conversation's confirmation support: a chat built here asks before a changing call. */
     internal val confirmations get() = owner.confirmations
-    /** A terminal quote this chat has taken and not yet put in the draft. Memory only: it goes with the model, never saved or restored. */
-    val heldQuote = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
-    /** Counts quotes taken, so the screen can come back from its Tools sub-screen when one arrives (the flow above is cleared once applied). */
-    val quotesTaken = kotlinx.coroutines.flow.MutableStateFlow(0)
-    fun hold(quote: String?) {
-        if (quote != null) quotesTaken.update { it + 1 }
-        if (quote != null) heldQuote.update { old -> if (old == null) quote else ru.adsrv.frpjump.assistant.chat.ChatQuote.appended(old, quote) }
-    }
+    val attachments get() = owner.attachments
+    fun removeAttachment(item: ru.adsrv.frpjump.assistant.chat.ChatAttachment) = owner.removeAttachment(item)
     fun clearHistory() {
         if (!conversation.hideHistory()) return
         val undo = owner.historyUndo

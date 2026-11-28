@@ -138,7 +138,7 @@ fun ConnectionsScreen(
     onOpenFiles: (targetId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
     /** Opens the assistant chat with this draft (nothing is sent); null while the assistant is off: no such menu item and no such swipe. */
-    onAskAssistant: ((draft: String) -> Unit)? = null,
+    onAskAssistant: ((ru.adsrv.frpjump.assistant.chat.ChatAttachment) -> Unit)? = null,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
@@ -700,7 +700,7 @@ private fun TunnelCard(
 
 /** The button behind a card swiped aside; its description names the action (the glyph is drawn, not read). */
 @Composable
-private fun RevealButton(label: String, glyph: @Composable () -> Unit, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun RevealButton(label: String, glyph: @Composable () -> Unit, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         color = AppTheme.colors.accentContainer,
@@ -720,4 +720,4 @@ private fun RevealButton(label: String, glyph: @Composable () -> Unit, modifier:
 
 /** The swipe button's width: [REVEAL_WIDTH] at the normal font, wider with a larger one so its label wraps between words only. */
 @Composable
-private fun revealWidth(): androidx.compose.ui.unit.Dp = REVEAL_WIDTH * LocalDensity.current.fontScale.coerceIn(1f, 1.8f)
+internal fun revealWidth(): androidx.compose.ui.unit.Dp = REVEAL_WIDTH * LocalDensity.current.fontScale.coerceIn(1f, 1.8f)

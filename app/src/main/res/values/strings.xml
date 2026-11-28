@@ -1652,4 +1652,12 @@
     <string name="tool_http_get">Read Web tunnel</string>
     <string name="tool_http_get_hint">Responses from an open Web tunnel go to the configured provider.</string>
     <string name="tool_http_get_progress">Reading Web tunnel…</string>
+    <string name="chat_attachment_remove">Remove context</string>
+    <string name="chat_attachment_limit">Up to 8 context items can be attached.</string>
+    <string name="chat_selected_text">Selected text</string>
+    <string name="chat_context_device">Device</string>
+    <string name="chat_context_tunnel">Tunnel</string>
+    <string name="chat_context_session">Session</string>
+    <string name="chat_context_title">Selected context</string>
+    <plurals name="chat_context_count"><item quantity="one">%d item</item><item quantity="other">%d items</item></plurals>
 </resources>

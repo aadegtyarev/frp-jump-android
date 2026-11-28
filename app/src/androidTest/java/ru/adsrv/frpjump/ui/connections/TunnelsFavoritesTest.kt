@@ -113,7 +113,7 @@ class TunnelsFavoritesTest {
                 val actions = RowActions(
                     { connectCalls++ }, {}, { tapCalls++ }, {}, {}, {}, {}, { filesRow = it.key }, {}, {}, {}, {}, { false }, {}, {},
                     favorite = { row -> favoriteCalls++; toggle(row.connection.id) },
-                    ask = if (assistantOn) ({ row -> asked = askDraft(context, row.connection) }) else null,
+                    ask = if (assistantOn) ({ row -> asked = row.key }) else null,
                 )
                 val view = tunnelsView(groupByDevice(connectionRows("p1", connections, TunnelsState()), emptyMap()), onlyOn = false, query = "") { it.connection.customName.orEmpty() }
                 // Tall, in a scroll of its own: every row is composed at any font size, and a test scrolls to the one it touches.
@@ -223,7 +223,7 @@ class TunnelsFavoritesTest {
         shot("tunnels-swipe-left")
         tap("swipe_ask_assistant")
         compose.waitForIdle()
-        assertEquals(text(R.string.ask_assistant_about_tunnel, "panel", "alpha") + " ", asked)
+        assertEquals("p1/c3", asked)
         assertEquals(0, tapCalls)
     }
 
@@ -284,7 +284,7 @@ class TunnelsFavoritesTest {
         val panelActions = compose.onNode(hasAnyAncestor(hasTestTag(cardTag(panel))) and SemanticsMatcher.keyIsDefined(SemanticsActions.CustomActions)).fetchSemanticsNode().config[SemanticsActions.CustomActions]
         compose.runOnUiThread { panelActions.first { it.label == text(R.string.terminal_ask_assistant) }.action() }
         compose.waitForIdle()
-        assertEquals(text(R.string.ask_assistant_about_tunnel, "panel", "alpha") + " ", asked)
+        assertEquals("p1/c3", asked)
         // A favourite's action takes it out.
         val piActions = compose.onNode(hasAnyAncestor(hasTestTag(cardTag(pi))) and SemanticsMatcher.keyIsDefined(SemanticsActions.CustomActions)).fetchSemanticsNode().config[SemanticsActions.CustomActions]
         assertEquals(text(R.string.favorite_remove), piActions.last().label)

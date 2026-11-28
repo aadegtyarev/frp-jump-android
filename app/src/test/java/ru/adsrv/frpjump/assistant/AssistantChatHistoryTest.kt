@@ -337,10 +337,10 @@ class AssistantChatHistoryTest {
         }
     }
 
-    @Test fun `a quote added during the clear is part of the typed text`() = runBlocking {
+    @Test fun `text typed during the clear is preserved`() = runBlocking {
         Pending().use { f ->
             f.owner.edit("saved draft"); f.clear()
-            assertTrue(f.owner.appendToDraft("quoted"))
+            f.owner.edit("quoted")
             f.undo.undoAll(); f.settled()
             assertEquals("saved draft\nquoted", f.owner.state.value.draft)
         }

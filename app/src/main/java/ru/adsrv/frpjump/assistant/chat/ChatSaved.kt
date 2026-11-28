@@ -63,8 +63,9 @@ import ru.adsrv.frpjump.assistant.tools.*
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val events: List<SavedEvent> = emptyList(),
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val eventOnly: Boolean = false,
     /** Notes for the model only (the owner cancelled a wait): read after the turn's text, not shown. Not written while empty. */
-    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val notes: List<String> = emptyList()) {
-    @Transient val chars = user.length.toLong() + events.sumOf { 64L + (it.subject?.length ?: 0) + (it.text?.length ?: 0) } + notes.sumOf { it.length.toLong() } + exchanges.sumOf { it.chars } + sources.sumOf { it.title.length.toLong() + it.url.length }
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val notes: List<String> = emptyList(),
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val attachments: List<ChatAttachment> = emptyList()) {
+    @Transient val chars = attachments.sumOf { it.label.length.toLong() + it.quote.length + it.profileId.length + it.device.length + it.connectionId.length + it.user.length + it.sessionKey.length + it.reference.length + 128 } + user.length.toLong() + events.sumOf { 64L + (it.subject?.length ?: 0) + (it.text?.length ?: 0) } + notes.sumOf { it.length.toLong() } + exchanges.sumOf { it.chars } + sources.sumOf { it.title.length.toLong() + it.url.length }
     fun model(provider: AgentProvider): AgentTurn {
         val blocks = exchanges.map { exchange ->
             if (exchange.reply.calls.size == exchange.results.size) AgentExchange(exchange.reply.value(provider), exchange.results.map { it.value() })
@@ -73,7 +74,7 @@ import ru.adsrv.frpjump.assistant.tools.*
                 exchange.results.joinToString("\n") { "${it.name}: ${it.outcome}: ${it.text}" }))
         }
         // Events that came with the owner's message, and notes, follow it as their own lines (the turn started by events already has them in [user]).
-        val extra = (if (eventOnly) emptyList() else events.mapNotNull { it.value()?.message() }) + notes
+        val extra = attachmentText(attachments) + (if (eventOnly) emptyList() else events.mapNotNull { it.value()?.message() }) + notes
         return AgentTurn(withApp(user, extra), blocks + if (status == SavedTurnState.COMPLETE) emptyList() else listOf(
             AgentExchange(AgentReply("Previous attempt: $status${problem?.let { "; $it" }.orEmpty()}. Preserve received facts; do not blindly repeat actions with unknown outcomes."))))
     }
@@ -103,7 +104,7 @@ import ru.adsrv.frpjump.assistant.tools.*
             unanswered = status == SavedTurnState.INTERRUPTED && exchanges.lastOrNull()?.results?.lastOrNull()
                 ?.let { it.outcome == ToolOutcome.DECLINED.name && it.text == ru.adsrv.frpjump.settings.ConfirmationTexts.NO_ANSWER } == true,
             askedTools = asked, readWeb = receipts.any { it.call.name in webTools },
-            events = events.mapNotNull { it.value() }, eventOnly = eventOnly)
+            events = events.mapNotNull { it.value() }, eventOnly = eventOnly, attachments = attachments)
     }
     companion object {
         fun of(turn: AgentTurn, provider: AgentProvider? = null) = SavedTurn(turn.user, turn.exchanges.map {
@@ -152,7 +153,7 @@ internal fun SavedChat.compaction(): Compaction? = summary?.let { if (it.byModel
         require(version == 1 && draft.length <= ChatLimits.MAX_INPUT && contextStart in 0..records.size)
         require(records.size <= 1000)
         summary?.let { require(it.text.isNotBlank() && it.text.length <= MAX_SUMMARY_CHARS && it.turn in contextStart..records.lastIndex && it.exchange in 0..records[it.turn].exchanges.size) }
-        return copy(records = records.map { if (it.status == SavedTurnState.RUNNING) it.copy(status = SavedTurnState.INTERRUPTED) else it },
+        return copy(records = records.map { it.copy(status = if (it.status == SavedTurnState.RUNNING) SavedTurnState.INTERRUPTED else it.status, attachments = it.attachments.filter(ChatAttachment::valid).take(8)) },
             declinedTools = declinedTools.filter { AssistantToolId.fromWire(it) != null }.distinct())
     }
 }

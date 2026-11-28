@@ -1,8 +1,7 @@
 package ru.adsrv.frpjump.assistant.chat
 
 /**
- * A terminal selection quoted into the chat draft (Terminal › ⋮ › Ask the assistant). The quote is the owner's own draft text, not an
- * instruction of the app: it goes through the same draft as typing and is sent only when the owner sends it.
+ * A bounded terminal selection for the owner's removable chat context. It is data and is sent only with the next accepted manual Send.
  */
 object ChatQuote {
     /** The whole quote, fences and note included, is at most this many characters. */
@@ -11,7 +10,7 @@ object ChatQuote {
     /**
      * [selection] as a fenced code block ending in a newline, so the cursor placed after it starts a new line. Null for no selection or
      * one without visible text. A selection that does not fit [limit] keeps its END (in terminal output the latest lines matter most):
-     * [note] ("start truncated") is the first line of the quote, before the block, so the draft shows what is missing. The cut is on a
+     * [note] ("start truncated") is the first line of the quote, before the block, so the context shows what is missing. The cut is on a
      * line boundary; a last line that alone is too long is cut by characters, never between the halves of a surrogate pair. The fence
      * is longer than any run of backticks inside, so the text cannot close it.
      */
@@ -44,14 +43,6 @@ object ChatQuote {
             else -> start
         }
         return text.substring(start).trimStart('\n', '\r')
-    }
-
-    /** [draft] with [quote] after it, separated by a blank line; the draft is otherwise kept as it is. */
-    fun appended(draft: String, quote: String): String = when {
-        draft.isEmpty() -> quote
-        draft.endsWith("\n\n") -> draft + quote
-        draft.endsWith("\n") -> draft + "\n" + quote
-        else -> draft + "\n\n" + quote
     }
 
     private fun longestRun(text: String): Int {

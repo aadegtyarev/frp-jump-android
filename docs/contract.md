@@ -316,8 +316,7 @@ Quick access to the saved connections of every device.
   and changing it does not end a grant. It goes with its connection (delete, forgetting or removing its profile).
 - The card's "⋮" menu offers "Add to favourites" / «В избранное» or "Remove from favourites" / «Убрать из избранного», and, while the assistant is on, ✦ "Ask the assistant" / «Спросить помощника». A long press starts selection.
 - Swipes on a saved connection's card, as on a Devices row (a swipe reveals a button; nothing runs by the swipe, only the button's tap does,
-  and then the card slides back): to the left ✦ "Ask the assistant" opens the assistant's chat with the draft «Про туннель <name> (<device>): » /
-  "About tunnel <name> (<device>): " after what is already typed; nothing is sent. This side is absent while the assistant is off. To the
+  and then the card slides back): to the left ✦ "Ask the assistant" opens the shared chat with the exact tunnel in a removable context slot; the draft is unchanged and nothing is sent. This side is absent while the assistant is off. To the
   right ★ "Add to favourites" / "Remove from favourites". One card is open at a time; another opening, a scroll or a pull, Back, a tap on the
   open card (it puts it back instead of acting) or anywhere else closes it. The swipes are horizontal only, so the list's vertical scroll
   and pull to refresh work; a touch that starts in the system gesture zone at a screen edge belongs to the system's Back gesture. Both
@@ -437,7 +436,7 @@ multiplexer started by hand in a plain-shell tab can't be detected.
 
 **Ask the assistant.** ⋮ → "Ask the assistant" / «Спросить помощника» opens the assistant's chat. It exists only while the
 [assistant](#optional-llm-assistant) is on. The text selected in the shown tab, read from the terminal view when ⋮ is used (never in
-the background), goes into the chat draft as a quoted code block; without a selection the chat just opens. See the
+the background), is attached as a removable bounded quote alongside the exact session; the draft stays unchanged. See the
 [assistant contract](agent-contract.md#entry-points).
 
 **Insert image.** ⋮ → Insert image opens the system photo picker (no storage

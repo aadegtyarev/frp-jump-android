@@ -90,7 +90,7 @@ class AssistantEntryNavTest {
             assertEquals(lang, res.configuration.locales[0].language)
         }
         assertEquals(args.getString("composerFontScale")?.toFloat() ?: 1f, compose.activity.resources.configuration.fontScale, 0.01f)
-        compose.runOnUiThread { original = app.settings.settings.value; app.assistantQuote.value = null }
+        compose.runOnUiThread { original = app.settings.settings.value; app.assistantChatOwner.attachments.value.forEach(app.assistantChatOwner::removeAttachment) }
         chatFile.save()
         runBlocking(Dispatchers.IO) { app.assistantHistory.clear() }
     }
@@ -102,7 +102,7 @@ class AssistantEntryNavTest {
             compose.waitUntil(10_000) { compose.runOnUiThread { nav.visibleEntries.value.none { it.destination.route in setOf(Routes.CHAT, Routes.PROVIDER) } } }
             compose.waitForIdle()
         }
-        compose.runOnIdle { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.IDLE; app.assistantQuote.value = null; app.pendingUndo.withdraw("assistant-chat-history"); original?.let { old -> app.settings.update { old } } }
+        compose.runOnIdle { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.IDLE; app.assistantChatOwner.attachments.value.forEach(app.assistantChatOwner::removeAttachment); app.pendingUndo.withdraw("assistant-chat-history"); original?.let { old -> app.settings.update { old } } }
         // Whatever the chat saved on the way is dropped, then the device's own chat file comes back.
         runBlocking(Dispatchers.IO) { app.assistantHistory.clear() }
         chatFile.restore()
@@ -306,11 +306,12 @@ class AssistantEntryNavTest {
         compose.onNodeWithTag("chat_tools").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("tools_back").fetchSemanticsNodes().isNotEmpty() }
         val quote = ChatQuote.block("ls -l\ntotal 0", text(R.string.chat_quote_truncated))!!
-        compose.runOnUiThread { nav.askAssistant(app, quote) }
+        compose.runOnUiThread { nav.askAttachment(app, ru.adsrv.frpjump.assistant.chat.ChatAttachment("terminal_selection", app.getString(R.string.chat_selected_text), quote = quote)) }
         // The tools screen is a state of the chat screen, not a route: the chat itself shows again, with the quote in its draft.
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("tools_back").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("chat_title").assertIsDisplayed()
-        compose.waitUntil(10_000) { runCatching { draft == quote }.getOrDefault(false) }
+        compose.waitUntil(10_000) { app.assistantChatOwner.attachments.value.any { it.quote == quote } }
+        assertEquals("", draft)
         assertEquals(1, chatEntries())
     }
 
@@ -359,17 +360,17 @@ class AssistantEntryNavTest {
         // The saved chat is "being cleared": the chat's load waits for it, so Back comes before the load ends.
         compose.runOnUiThread { app.pendingUndo.enqueue("assistant-chat-history", commit = {}, undo = {}) }
         val quote = ChatQuote.block("ls -l\ntotal 0", text(R.string.chat_quote_truncated))!!
-        compose.runOnUiThread { nav.askAssistant(app, quote) }
+        compose.runOnUiThread { nav.askAttachment(app, ru.adsrv.frpjump.assistant.chat.ChatAttachment("terminal_selection", app.getString(R.string.chat_selected_text), quote = quote)) }
         compose.waitUntil(10_000) { route == Routes.CHAT }
         // The chat took it at once.
-        compose.waitUntil(10_000) { app.assistantQuote.value == null }
+        compose.waitUntil(10_000) { app.assistantChatOwner.attachments.value.isNotEmpty() }
         compose.runOnUiThread { nav.popBackStack() }
         compose.waitUntil(10_000) { route == Routes.DEVICES }
         compose.runOnUiThread { app.pendingUndo.withdraw("assistant-chat-history") }
         openFromNav()
         compose.waitForIdle()
         assertEquals("", draft)
-        assertNull(app.assistantQuote.value)
+        assertTrue(app.assistantChatOwner.attachments.value.isNotEmpty())
     }
 
     @Test fun theAssistantItemIsAButtonNotAnUnselectedTab() {
@@ -439,47 +440,31 @@ class AssistantEntryNavTest {
         compose.onNodeWithTag("assistant_root").assertIsDisplayed()
     }
 
-    @Test fun aWaitingQuoteReachesTheDraftOnceWithTheCursorAfterIt() {
+    @Test fun aWaitingQuoteIsRemovableAndLeavesDraftUnchanged() {
         host()
         val quote = ChatQuote.block("ls -l\ntotal 0", text(R.string.chat_quote_truncated))!!
-        compose.runOnUiThread { nav.askAssistant(app, quote) }
-        compose.waitUntil(10_000) { route == Routes.CHAT }
-        compose.waitUntil(10_000) { app.assistantQuote.value == null }
-        compose.onNodeWithTag("chat_input").assertTextContains("total 0", substring = true)
-        compose.waitUntil(10_000) {
-            compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange] == TextRange(quote.length)
-        }
-        compose.onNodeWithTag("chat_input").performTextInput("what is this")
-        compose.waitUntil(10_000) { compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.EditableText].text == quote + "what is this" }
-        // Opening again with no quote waiting keeps the draft as it is.
-        // In landscape the chat is scrolled to its field with the keyboard up, so the header (and Back) is above the screen, as in any chat: put the keyboard away and scroll to it.
-        androidx.test.espresso.Espresso.closeSoftKeyboard()
-        compose.waitForIdle()
-        if (runCatching { compose.onNodeWithTag("chat_back").assertIsDisplayed() }.isFailure) compose.onNodeWithTag("chat_back").performScrollTo()
-        compose.onNodeWithTag("chat_back").assertIsDisplayed().performClick()
-        compose.waitUntil(10_000) { route == Routes.DEVICES }
-        assertNull(app.assistantQuote.value)
-        openFromNav()
-        compose.waitUntil(10_000) { compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.EditableText].text == quote + "what is this" }
+        compose.runOnUiThread { nav.askAttachment(app, ru.adsrv.frpjump.assistant.chat.ChatAttachment("terminal_selection", app.getString(R.string.chat_selected_text), quote = quote)) }
+        compose.waitUntil(10_000) { route == Routes.CHAT && app.assistantChatOwner.attachments.value.any { it.quote == quote } }
+        compose.onNodeWithTag("chat_attachments").assertExists()
+        assertEquals("", draft)
+        compose.onNodeWithTag("chat_attachment_remove_0").performClick()
+        compose.waitUntil(10_000) { app.assistantChatOwner.attachments.value.isEmpty() }
     }
 
-    @Test fun aTunnelPrefixFromTheSwipeReachesTheDraftAndTheQuestionGoesAfterIt() {
+    @Test fun aTunnelContextLeavesTheDraftForTheQuestion() {
         host()
-        val tunnel = ru.adsrv.frpjump.connections.Connection("c1", "alpha", 80, ru.adsrv.frpjump.ports.PortKind.WEB, customName = "panel")
-        val prefix = ru.adsrv.frpjump.ui.connections.askDraft(compose.activity, tunnel)
-        compose.runOnUiThread { nav.askAssistant(app, prefix) }
+        val item = ru.adsrv.frpjump.assistant.chat.ChatAttachment("tunnel", "Work · alpha · panel", profileId = "p", device = "alpha", port = 80, connectionId = "c", reference = "[tunnel:synthetic]", tunnelKind = "WEB")
+        compose.runOnUiThread { nav.askAttachment(app, item) }
         compose.waitUntil(10_000) { route == Routes.CHAT }
-        compose.waitUntil(10_000) { runCatching { draft == prefix }.getOrDefault(false) }
-        compose.waitUntil(10_000) {
-            compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange] == TextRange(prefix.length)
-        }
+        compose.onNodeWithTag("chat_attachments").assertExists()
+        assertEquals("", draft)
         compose.onNodeWithTag("chat_input").performTextInput("status")
-        compose.waitUntil(10_000) { draft == prefix + "status" }
+        compose.waitUntil(10_000) { draft == "status" }
     }
 
     @Test fun noSelectionJustOpensTheChat() {
         host()
-        compose.runOnUiThread { app.assistantQuote.value = null; nav.openAssistant() }
+        compose.runOnUiThread { app.assistantChatOwner.attachments.value.forEach(app.assistantChatOwner::removeAttachment); nav.openAssistant() }
         compose.waitUntil(10_000) { route == Routes.CHAT }
         compose.onNodeWithTag("chat_title").assertIsDisplayed()
         compose.waitForIdle()

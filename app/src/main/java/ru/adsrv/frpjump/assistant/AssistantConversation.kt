@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.assistant
 
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import ru.adsrv.frpjump.agent.*
@@ -63,6 +64,7 @@ class AssistantConversation(
     private val mqttRead: AssistantMqttRead? = null,
     private val mqttPublish: AssistantMqttPublish? = null,
     private val httpGet: AssistantHttpGet? = null,
+    private val attachments: MutableStateFlow<List<ChatAttachment>> = MutableStateFlow(emptyList()),
 ) {
     private val gate = runtime.gate
     /** Events that fired and wait for a turn (under the gate), notes for the model's next turn, and the event replies in a row since the owner last wrote. */
@@ -115,7 +117,7 @@ class AssistantConversation(
                 val projected = withContext(io) { value.views() }
                 synchronized(gate) {
                     if (!c.closed) {
-                        // The draft saved at Clear, then what was typed or quoted while the clear waited; nothing of either is lost.
+                        // The draft saved at Clear, then what was typed while the clear waited; nothing of either is lost.
                         val typed = if (c.clearing) c.document.draft else ""
                         val draft = listOf(value.draft, typed).filter { it.isNotEmpty() }.joinToString("\n")
                         // A decline of a tool that is on now is over (it ends when the tool is turned on, also while no chat was open).
@@ -179,17 +181,6 @@ class AssistantConversation(
             if (text.length > MAX_INPUT) c.mutable.value = c.mutable.value.copy(problem = ChatProblem.TOO_LONG)
             else { c.document = c.document.copy(draft = text); c.mutable.value = c.mutable.value.copy(draft = text, problem = null) }
         }
-    }
-    /**
-     * Puts [quote] after the draft (a terminal selection the owner asked to ask about). Like [edit]: nothing changes while the history
-     * loads or cannot be read, or while a Send runs; a result over [MAX_INPUT] is not applied and says "too long". True when applied.
-     */
-    fun appendToDraft(quote: String): Boolean = synchronized(gate) {
-        if (c.closed || c.pending != null || c.settlingText != null || c.mutable.value.loading || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return false
-        val text = ChatQuote.appended(c.document.draft, quote)
-        if (text.length > MAX_INPUT) { c.mutable.value = c.mutable.value.copy(problem = ChatProblem.TOO_LONG); return false }
-        c.document = c.document.copy(draft = text); c.mutable.value = c.mutable.value.copy(draft = text, problem = null)
-        true
     }
     fun refresh() {
         val cancel = synchronized(gate) { own.refreshLocked(); c.pending?.takeIf { it.stopped }?.job }
@@ -318,7 +309,9 @@ class AssistantConversation(
         // Nothing that fired is delivered while the switch is off; the notes about waits the owner or the switch ended still go.
         if (!availability().tools.waits) queued.clear()
         val delivery = if (queued.isEmpty() && notes.isEmpty()) null else Delivery(queued.toList(), notes.toList())
-        val admission = own.admit(fixed, delivery) ?: return null
+        val selected = if (fixed == null) attachments.value else emptyList()
+        val admission = own.admit(fixed, delivery, selected) ?: return null
+        if (selected.isNotEmpty()) attachments.value = emptyList()
         queued.clear(); notes.clear(); streak = 0
         if (c.mutable.value.eventCap != null) c.mutable.value = c.mutable.value.copy(eventCap = null)
         return admission

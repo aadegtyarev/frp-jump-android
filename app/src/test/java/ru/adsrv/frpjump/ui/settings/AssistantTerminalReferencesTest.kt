@@ -38,4 +38,10 @@ class AssistantTerminalReferencesTest {
             assertEquals(if (name == "profile_information") listOf(tunnel) else emptyList(), answer.references)
         }
     }
+    @Test fun `only attached same turn references become actions`() {
+        val item = ru.adsrv.frpjump.assistant.chat.ChatAttachment("ssh_session", "Work · me@host", profileId = "p", device = "host", sessionId = 1, reference = token)
+        assertEquals(listOf(ToolReference(token, label = item.label)), referenceAnswer("Here\n\n$token", emptyList(), listOf(item)).references)
+        assertEquals(emptyList<ToolReference>(), referenceAnswer("Here\n\n$token", emptyList()).references)
+    }
+
 }

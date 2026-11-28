@@ -577,4 +577,74 @@ class AssistantChatOwnerTest {
         h.idle()
         h.owner.detach()
     }
+    @Test fun `attachments survive failed admission and are consumed only by a manual send`() {
+        val h = Harness(script = { request -> AgentReply(if (request.turns.last().user.contains("[tunnel:synthetic]")) "Answer\n\n[tunnel:synthetic]" else "Answer") })
+        val chat = h.owner.attach()
+        eventually("loaded") { chat.state.value.takeIf { !it.loading } }
+        val item = ru.adsrv.frpjump.assistant.chat.ChatAttachment("tunnel", "Work · panel", profileId = "p1", device = "router", port = 443,
+            connectionId = "c1", reference = "[tunnel:synthetic]", tunnelKind = "WEB", https = true)
+        assertTrue(h.owner.attach(item))
+        chat.send() // empty draft is rejected
+        assertEquals(listOf(item), h.owner.attachments.value)
+        chat.edit("check")
+        chat.sendOwnerMessage("fixed follow-up")
+        eventually("fixed reply") { chat.state.value.takeIf { it.turns.size == 1 && !it.busy } }
+        assertEquals(listOf(item), h.owner.attachments.value)
+        assertFalse(h.requests.last().turns.last().user.contains("[tunnel:synthetic]"))
+        chat.send()
+        eventually("manual reply") { chat.state.value.takeIf { it.turns.size == 2 && !it.busy } }
+        assertTrue(h.owner.attachments.value.isEmpty())
+        assertTrue(h.requests.last().turns.last().user.contains("[tunnel:synthetic]"))
+        val turn = chat.state.value.turns.last()
+        assertEquals(listOf(item), turn.attachments)
+        assertEquals(listOf("[tunnel:synthetic]"), ru.adsrv.frpjump.ui.settings.referenceAnswer(turn.answer, turn.receipts, turn.attachments).references.map { it.token })
+    }
+
+    @Test fun `identity dedup preserves different profiles and rejects an oversized selection atomically`() {
+        val h = Harness()
+        val a = ru.adsrv.frpjump.assistant.chat.ChatAttachment("device", "Same · device", profileId = "p1", device = "device")
+        val b = a.copy(profileId = "p2")
+        assertTrue(h.owner.attachAll(listOf(a, b, a)))
+        assertEquals(listOf(a, b), h.owner.attachments.value)
+        assertFalse(h.owner.attachAll((3..10).map { a.copy(profileId = "p$it") }))
+        assertEquals(listOf(a, b), h.owner.attachments.value)
+        h.owner.removeAttachment(a)
+        assertEquals(listOf(b), h.owner.attachments.value)
+        h.settings.update { it.copy(assistantEnabled = false) }
+        assertFalse(h.owner.attach(a))
+        assertEquals(listOf(b), h.owner.attachments.value)
+    }
+
+    @Test fun `same terminal number in a new incarnation remains distinct and saved entry refreshes`() {
+        val h = Harness()
+        val a = ru.adsrv.frpjump.assistant.chat.ChatAttachment("ssh_session", "same", profileId = "p", device = "d", sessionId = 1, reference = "[terminal:first]")
+        val b = a.copy(reference = "[terminal:second]")
+        assertTrue(h.owner.attachAll(listOf(a, b)))
+        assertEquals(listOf(a, b), h.owner.attachments.value)
+        val saved = a.copy(kind = "saved_ssh_session", sessionKey = "tmux")
+        val updated = saved.copy(reference = "[terminal:new]")
+        assertTrue(h.owner.attachAll(listOf(saved, updated)))
+        assertEquals(listOf(a, b, updated), h.owner.attachments.value)
+    }
+
+    @Test fun `pending context survives idle chat closure and sent metadata survives history reload`() {
+        val h = Harness()
+        val chat = h.owner.attach()
+        eventually("history loaded") { chat.state.value.takeIf { !it.loading } }
+        val item = ru.adsrv.frpjump.assistant.chat.ChatAttachment("device", "Work · router", profileId = "p1", device = "router")
+        assertTrue(h.owner.attach(item))
+        h.owner.detach()
+        val reopened = h.reopened(chat)
+        eventually("reloaded") { reopened.state.value.takeIf { !it.loading } }
+        assertEquals(listOf(item), h.owner.attachments.value)
+        h.send(reopened, "status")
+        eventually("answer") { reopened.state.value.takeIf { it.turns.size == 1 && !it.busy } }
+        eventually("stored context") { h.storage.inner.text?.takeIf { it.contains("router") } }
+        h.owner.detach()
+        val restored = h.reopened(reopened)
+        eventually("history restored") { restored.state.value.takeIf { !it.loading && it.turns.size == 1 } }
+        assertEquals(listOf(item), restored.state.value.turns.single().attachments)
+        assertTrue(h.owner.attachments.value.isEmpty())
+    }
+
 }
