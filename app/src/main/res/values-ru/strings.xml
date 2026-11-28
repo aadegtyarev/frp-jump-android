@@ -1599,7 +1599,7 @@
     <string name="limit_tool_timeout">Предел одного вызова, с</string>
     <string name="limit_model_timeout">Ожидание ответа модели, с</string>
     <string name="limit_reply_seconds">Время на весь ответ, с</string>
-    <string name="limit_steps">Шагов за ответ</string>
+    <string name="limit_steps">Шагов до итогов</string>
     <string name="limit_calls">Вызовов за шаг</string>
     <string name="limit_tool_output">Вывод инструмента, символов</string>
     <string name="limit_input_chars">Ввод за раз, символов</string>

@@ -1546,7 +1546,7 @@
     <string name="limit_tool_timeout">One call, s</string>
     <string name="limit_model_timeout">Model answer, s</string>
     <string name="limit_reply_seconds">Whole reply, s</string>
-    <string name="limit_steps">Steps per reply</string>
+    <string name="limit_steps">Steps before wrap-up</string>
     <string name="limit_calls">Calls per step</string>
     <string name="limit_tool_output">Tool output, characters</string>
     <string name="limit_input_chars">Input at once, characters</string>

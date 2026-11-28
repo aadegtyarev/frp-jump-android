@@ -32,6 +32,27 @@ import java.io.File
 class AssistantLimitsScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    @org.junit.Before fun display() {
+        val args = InstrumentationRegistry.getArguments()
+        args.getString("composerOrientation")?.let { orientation ->
+            val landscape = orientation == "landscape"
+            compose.activityRule.scenario.onActivity { it.requestedOrientation = if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+            val expected = if (landscape) android.content.res.Configuration.ORIENTATION_LANDSCAPE else android.content.res.Configuration.ORIENTATION_PORTRAIT
+            val until = android.os.SystemClock.uptimeMillis() + 5000
+            while (compose.activity.resources.configuration.orientation != expected && android.os.SystemClock.uptimeMillis() < until) android.os.SystemClock.sleep(50)
+        }
+        args.getString("chatLocale")?.let { lang ->
+            @Suppress("DEPRECATION") compose.activity.resources.updateConfiguration(android.content.res.Configuration(compose.activity.resources.configuration).apply { setLocale(java.util.Locale.forLanguageTag(lang)) }, compose.activity.resources.displayMetrics)
+        }
+    }
+
+    @Test fun stepperNamesTheStartOfWrapUp() {
+        compose.setContent { FrpJumpTheme { AssistantLimitsScreen(AssistantLimits(), onChange = {}, onBack = {}) } }
+        scrolled("limit_steps_per_reply_value").assertTextEquals(AssistantLimits().stepsPerReply.toString())
+        compose.onNode(hasContentDescription(text(R.string.limit_steps) + ": " + AssistantLimits().stepsPerReply)).assertExists()
+        capture("limits-wrap-up")
+    }
+
     /** The screen is composed in the activity's own locale, so the strings it shows are the activity's. */
     private fun text(id: Int): String = compose.activity.getString(id)
 

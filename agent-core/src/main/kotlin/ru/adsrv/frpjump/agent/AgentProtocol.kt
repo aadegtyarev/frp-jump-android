@@ -43,10 +43,28 @@ data class AgentRequest(val instructions: String, val tools: List<ToolSpec>, val
      * transport timeout shorter than it must not cut the call sooner. Null: the provider's own default (calls that are not part of a run).
      */
     val timeoutMs: Long? = null,
-    /** Final answer after tool steps: exactly one provider request, no tools or provider-backed compaction. */
-    val finalSynthesis: Boolean = false)
+    /** Request-only budget, including this round; absent on summary and other standalone requests. */
+    val toolBudget: AgentToolBudget? = null) {
+    /** The last answer opportunity: no provider-backed compaction and no execution of proposed calls. */
+    val finalSynthesis: Boolean get() = toolBudget?.rounds == 0
+}
 
-const val FINAL_SYNTHESIS_INSTRUCTION = "Tools are finished. Answer the original question using the results already available, state what remains unknown, and reply in ordinary text without simulating a tool call."
+data class AgentToolBudget(val rounds: Int, val callsPerRound: Int) {
+    init { require(rounds >= 0 && callsPerRound > 0) }
+}
+
+/** App-authored request guidance only; never part of the saved turn. */
+fun AgentRequest.toolBudgetInstruction(): String? {
+    val budget = toolBudget ?: return null
+    if (tools.isEmpty()) return null
+    val roundWord = if (budget.rounds == 1) "round" else "rounds"
+    val verb = if (budget.rounds == 1) "remains" else "remain"
+    val callWord = if (budget.callsPerRound == 1) "call" else "calls"
+    val prefix = "Tool budget: ${budget.rounds} executable $roundWord $verb, up to ${budget.callsPerRound} $callWord per round. " +
+        "Calls are proposed together; dependencies on results need separate rounds. "
+    return if (budget.rounds == 0) prefix + "No tool calls will run. Answer the original question using available results and state what remains unknown."
+    else prefix + "This includes the current round. Use tools as needed, then answer and state what remains unknown."
+}
 
 /** Fixed, model-facing heading of the owner's own instructions; the text follows after one line break. */
 const val OWNER_INSTRUCTIONS_HEADER = "## Owner's additional instructions"
@@ -74,7 +92,7 @@ object Utf8TokenEstimate : TokenCounter {
         fun size(text: String) = text.toByteArray(Charsets.UTF_8).size.toLong()
         // The owner's part (separator, header and text) is inside the first message; it adds a framing allowance only when present.
         var total = 256L + size(request.systemContent()) + if (request.ownerInstructions.isEmpty()) 0 else OWNER_FRAMING_TOKENS
-        if (request.finalSynthesis) total += 64 + size(FINAL_SYNTHESIS_INSTRUCTION)
+        request.toolBudgetInstruction()?.let { total += 64 + size(it) }
         request.tools.forEach { total += 128 + size(it.name) + size(it.description) + size(it.parameters.toString()) }
         request.turns.forEach { turn ->
             total += 64 + size(turn.user)

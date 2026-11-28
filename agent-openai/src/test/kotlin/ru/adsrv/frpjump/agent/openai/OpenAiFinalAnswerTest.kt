@@ -13,22 +13,44 @@ class OpenAiFinalAnswerTest {
         }) }
     }.toString()
 
-    @Test fun `final instruction follows real results and reasoning without declarations`() {
+    @Test fun `reserve guidance follows real results and reasoning with identical tool declarations`() {
         val owner = Any()
         val continuation = OpenAiCodec.restoreContinuation("opaque reasoning", owner)
         val call = ToolCall("id", "synthetic", buildJsonObject { put("value", "x") })
         val exchange = AgentExchange(AgentReply("working", listOf(call), continuation), listOf(ToolResult("id", "synthetic", "actual result <｜DSML｜ calls>", ToolOutcome.SUCCESS)))
-        val base = AgentRequest("base", emptyList(), listOf(AgentTurn("original question", listOf(exchange))), 100)
+        val spec = ToolSpec("synthetic", "description", buildJsonObject { put("type", "object") })
+        val base = AgentRequest("base", listOf(spec), listOf(AgentTurn("original question", listOf(exchange))), 100)
         val normal = Json.parseToJsonElement(OpenAiCodec.encode(base, config, owner)).jsonObject
-        val final = Json.parseToJsonElement(OpenAiCodec.encode(base.copy(finalSynthesis = true), config, owner)).jsonObject
+        val final = Json.parseToJsonElement(OpenAiCodec.encode(base.copy(toolBudget = AgentToolBudget(0, 7)), config, owner)).jsonObject
         val messages = final.getValue("messages").jsonArray
         assertEquals(normal.getValue("messages").jsonArray, JsonArray(messages.dropLast(1)))
-        assertNull(final["tools"])
+        assertEquals(normal["tools"], final["tools"])
         assertEquals("opaque reasoning", messages[2].jsonObject.getValue("reasoning_content").jsonPrimitive.content)
         assertTrue(messages[3].jsonObject.getValue("content").jsonPrimitive.content.contains("actual result <｜DSML｜ calls>"))
         assertEquals("user", messages.last().jsonObject.getValue("role").jsonPrimitive.content)
-        assertEquals(FINAL_SYNTHESIS_INSTRUCTION, messages.last().jsonObject.getValue("content").jsonPrimitive.content)
-        assertEquals(64 + FINAL_SYNTHESIS_INSTRUCTION.toByteArray().size.toLong(), Utf8TokenEstimate.count(base.copy(finalSynthesis = true)) - Utf8TokenEstimate.count(base))
+        assertEquals(base.copy(toolBudget = AgentToolBudget(0, 7)).toolBudgetInstruction()!!, messages.last().jsonObject.getValue("content").jsonPrimitive.content)
+        for (remaining in listOf(7, 3, 2, 1, 0)) {
+            val request = base.copy(toolBudget = AgentToolBudget(remaining, 7))
+            val encoded = Json.parseToJsonElement(OpenAiCodec.encode(request, config, owner)).jsonObject
+            assertEquals(normal["tools"], encoded["tools"])
+            assertEquals(normal.getValue("messages").jsonArray, JsonArray(encoded.getValue("messages").jsonArray.dropLast(1)))
+            val tail = encoded.getValue("messages").jsonArray.last().jsonObject
+            assertEquals("user", tail.getValue("role").jsonPrimitive.content)
+            assertEquals(request.toolBudgetInstruction(), tail.getValue("content").jsonPrimitive.content)
+            assertTrue(tail.getValue("content").jsonPrimitive.content.contains("$remaining executable ${if (remaining == 1) "round" else "rounds"}"))
+            assertTrue(tail.getValue("content").jsonPrimitive.content.contains("7 calls per round"))
+            assertTrue(tail.getValue("content").jsonPrimitive.content.contains("separate rounds"))
+            assertEquals(64 + request.toolBudgetInstruction()!!.toByteArray().size.toLong(), Utf8TokenEstimate.count(request) - Utf8TokenEstimate.count(base))
+        }
+    }
+
+    @Test fun `standalone requests and chat with no tools get no budget tail`() {
+        val turn = listOf(AgentTurn("question"))
+        val standalone = AgentRequest("summary", emptyList(), turn, 100)
+        val noTools = standalone.copy(toolBudget = AgentToolBudget(2, 3))
+        assertNull(standalone.toolBudgetInstruction()); assertNull(noTools.toolBudgetInstruction())
+        assertEquals(OpenAiCodec.encode(standalone, config), OpenAiCodec.encode(noTools, config))
+        assertEquals(Utf8TokenEstimate.count(standalone), Utf8TokenEstimate.count(noTools))
     }
 
     @Test fun `raw or unfinished dsml frames are invalid but quoted examples remain prose`() {

@@ -58,7 +58,7 @@ internal object OpenAiCodec {
                     }) }
                 }
             }
-            if (request.finalSynthesis) add(buildJsonObject { put("role", "user"); put("content", FINAL_SYNTHESIS_INSTRUCTION) })
+            request.toolBudgetInstruction()?.let { instruction -> add(buildJsonObject { put("role", "user"); put("content", instruction) }) }
         }
         if (request.tools.isNotEmpty()) putJsonArray("tools") {
             request.tools.forEach { tool -> add(buildJsonObject {

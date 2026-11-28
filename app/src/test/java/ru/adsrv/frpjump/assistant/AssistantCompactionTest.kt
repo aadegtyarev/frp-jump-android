@@ -326,20 +326,24 @@ class AssistantCompactionTest {
         val requests = mutableListOf<AgentRequest>()
         val model = AgentProvider { request ->
             requests += request
-            if (requests.size == 1) AgentReply(calls = listOf(ToolCall("ghost", "ghost", buildJsonObject {}))) else AgentReply("answer")
+            if (requests.size <= 3) AgentReply(calls = listOf(ToolCall("ghost${requests.size}", "ghost", buildJsonObject {}))) else AgentReply("answer")
         }
         val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot }, { model }, {}, AgentModule(true),
             limits = { _, _ -> AgentLimits(contextTokens = 12_000, outputReserveTokens = 512, maxSteps = 1) }, io = Dispatchers.Unconfined,
             historyStore = history, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
         try {
             chat.ready(); chat.edit("Continue"); chat.send(); chat.ready()
-            assertEquals(2, requests.size)
+            assertEquals(4, requests.size)
+            assertEquals(listOf(3, 2, 1, 0), requests.map { it.toolBudget?.rounds })
+            assertTrue(requests.all { it.tools == requests.first().tools })
             val final = requests.last()
             assertTrue(final.finalSynthesis)
             val texts = final.turns.flatMap { t -> listOf(t.user) + t.exchanges.flatMap { e -> listOf(e.reply.text) + e.results.map { it.text } } }
             assertTrue("final texts: $texts", texts.any { it.contains("saved summary fact") })
             assertFalse(texts.any { it.contains("covered raw secret") })
-            assertEquals("ghost", final.turns.last().exchanges.single().results.single().name)
+            assertFalse(texts.any { it.contains("Tool budget:") })
+            assertFalse(history.load()!!.records.toString().contains("Tool budget:"))
+            assertEquals(listOf("ghost", "ghost", "ghost"), final.turns.last().exchanges.flatMap { it.results }.map { it.name })
         } finally { chat.close(); scope.cancel() }
     }
 
@@ -356,9 +360,9 @@ class AssistantCompactionTest {
                 AgentReply("Summary of older exchanges")
             } else {
                 mainCalls++
-                if (mainCalls == 1) AgentReply(calls = listOf(ToolCall("ghost", "ghost", buildJsonObject { put("blob", "x".repeat(5000)) })))
+                if (mainCalls <= 3) AgentReply(calls = listOf(ToolCall("ghost$mainCalls", "ghost", buildJsonObject { put("blob", "x".repeat(200)) })))
                 else {
-                    assertTrue(request.finalSynthesis); assertTrue(request.tools.isEmpty())
+                    assertTrue(request.finalSynthesis); assertEquals(0, request.toolBudget?.rounds)
                     throw OpenAiProviderException(ProviderFailure.HTTP, 400, contextTooLong = true)
                 }
             }
@@ -368,7 +372,7 @@ class AssistantCompactionTest {
             historyStore = history, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
         try {
             chat.ready(); chat.edit("Continue"); chat.send(); chat.ready()
-            assertEquals(2, mainCalls)
+            assertEquals(4, mainCalls)
             assertEquals(0, summariesAfterTool)
             assertNotNull(chat.state.value.problem)
         } finally { chat.close(); scope.cancel() }
