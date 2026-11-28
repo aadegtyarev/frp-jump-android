@@ -44,10 +44,11 @@ class MqttPublishTest {
         PublishAnswer.Failed(PublishFailure.TIMEOUT, "d4") to OpResult.Failed(MqttWriteFailure.NoAnswer("d4"), RemoteOutcome.UNKNOWN),
     )
 
-    @Test fun `declares its name and a remote change with no grant target`() {
+    @Test fun `declares its name class and exact grant target`() {
         assertEquals("mqtt_publish", op.name)
         assertEquals(Effect.CHANGE_REMOTE, op.effect)
-        assertNull(op.target(MqttPublishInput(target, request)))
+        assertEquals(ru.adsrv.frpjump.ops.ActionClass.MQTT_PUBLISH, op.actionClass)
+        assertEquals(ru.adsrv.frpjump.settings.GrantTarget(target.profile, target.connectionId), op.target(MqttPublishInput(target, request)))
     }
 
     @Test fun `every answer maps to its result and the screen gets the same answer back`() = runBlocking {

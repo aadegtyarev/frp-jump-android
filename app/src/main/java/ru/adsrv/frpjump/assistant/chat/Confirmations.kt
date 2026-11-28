@@ -26,6 +26,11 @@ class TypingCard(val tabId: Int, val profile: String?, val user: String?, val de
     override fun toString() = "TypingCard(tab=$tabId)"
 }
 
+/** Publish metadata shown with the exact payload in the existing command box. */
+class MqttPublishCard(val topic: String, val qos: Int, val retain: Boolean, val profile: String, val name: String, val device: String, val port: Int) {
+    override fun toString() = "MqttPublishCard(qos=$qos, retain=$retain)"
+}
+
 /**
  * The question shown to the owner. Not a data class: [command] may hold secrets and its toString must never print it.
  * Equality is by [id] only, so a state update never compares or prints the command.
@@ -34,7 +39,7 @@ class PendingConfirmation(val id: Long, val tool: AssistantToolId, val command: 
     val info: ConfirmationTargetInfo?, val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null,
     val close: ru.adsrv.frpjump.assistant.CloseCard? = null, val skill: ru.adsrv.frpjump.assistant.SkillCard? = null,
     /** The grantable tools a For session or For this connection answer on this card would cover (in effect when the card was raised): what its hints say. Empty: none. */
-    val sessionTools: Set<AssistantToolId> = emptySet()) {
+    val sessionTools: Set<AssistantToolId> = emptySet(), val mqtt: MqttPublishCard? = null) {
     override fun equals(other: Any?) = other is PendingConfirmation && other.id == id
     override fun hashCode() = id.hashCode()
     override fun toString() = "PendingConfirmation(id=$id, tool=$tool)"

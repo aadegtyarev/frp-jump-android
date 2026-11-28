@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.booleanOrNull
 
 /** A string with a surrogate that is not half of a valid pair: it cannot be encoded, and a command line would carry `?` for it. */
 internal fun hasLoneSurrogate(text: String): Boolean {
@@ -54,6 +55,10 @@ internal class StrictArgs(private val json: JsonObject) {
             if (primitive == null || !primitive.isString || primitive.content.isBlank()) throw InvalidArguments()
             primitive.content
         }
+    }
+    fun boolean(key: String): Boolean {
+        val p = json[key] as? JsonPrimitive ?: throw InvalidArguments()
+        return p.takeUnless { it.isString }?.booleanOrNull ?: throw InvalidArguments()
     }
     /** A non-string JSON number that is an Int in [min]..[max], or null when absent. */
     fun optionalInt(key: String, min: Int = Int.MIN_VALUE, max: Int = Int.MAX_VALUE): Int? {

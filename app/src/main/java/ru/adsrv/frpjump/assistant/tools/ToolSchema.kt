@@ -32,6 +32,7 @@ internal class ToolSchemaBuilder {
     /** A string limited to [values] (a closed list the call must pick from). */
     fun enum(name: String, values: List<String>, required: Boolean = true) =
         add(name, required) { put("type", "string"); put("enum", buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }) }
+    fun boolean(name: String, required: Boolean = true) = add(name, required) { put("type", "boolean") }
     fun integer(name: String, minimum: Int? = null, required: Boolean = true, maximum: Int? = null) =
         add(name, required) { put("type", "integer"); if (minimum != null) put("minimum", minimum); if (maximum != null) put("maximum", maximum) }
 

@@ -18,6 +18,8 @@ private data class StoredLogin(val user: String, @SerialName("password_sealed") 
  */
 class MqttLogins(private val storage: TextStorage, private val box: SecretBox) {
     private var loaded: Map<String, StoredLogin>? = null
+    @Volatile var revision: Long = 0
+        private set
 
     private val logins: Map<String, StoredLogin>
         get() = loaded ?: read().also { loaded = it }
@@ -60,6 +62,7 @@ class MqttLogins(private val storage: TextStorage, private val box: SecretBox) {
     fun wipe() {
         storage.delete()
         loaded = emptyMap()
+        revision++
     }
 
     private fun read(): Map<String, StoredLogin> {
@@ -72,6 +75,7 @@ class MqttLogins(private val storage: TextStorage, private val box: SecretBox) {
     private fun save(value: Map<String, StoredLogin>) {
         storage.write(WireJson.encodeToString(value))
         loaded = value
+        revision++
     }
 
     private companion object {

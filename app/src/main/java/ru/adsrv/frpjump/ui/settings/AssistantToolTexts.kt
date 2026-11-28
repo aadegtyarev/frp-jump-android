@@ -17,6 +17,7 @@ import ru.adsrv.frpjump.ui.TerminalGlyph
 /** The only mapping from an assistant tool to its texts; exhaustive, so a new tool cannot be forgotten. */
 /** The name of an action class on a confirmation card; null for a class that no asking tool has (reads). */
 internal fun ru.adsrv.frpjump.ops.ActionClass.cardName(): Int? = when (this) {
+    ru.adsrv.frpjump.ops.ActionClass.MQTT_PUBLISH -> R.string.action_class_mqtt_publish
     ru.adsrv.frpjump.ops.ActionClass.CONNECTION_CHANGE -> R.string.action_class_connection_change
     ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE -> R.string.action_class_app_change
     else -> null
@@ -27,6 +28,7 @@ internal fun AssistantToolId.title(): Int = when (this) {
     AssistantToolId.READ_PAGE -> R.string.tool_read
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information
+    AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> R.string.tool_tunnels
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_tabs
@@ -42,6 +44,7 @@ internal fun AssistantToolId.glyph(): ImageVector = when (this) {
     AssistantToolId.WEB_SEARCH -> SearchGlyph
     AssistantToolId.READ_PAGE -> GlobeGlyph
     AssistantToolId.INSPECT_IMAGE -> ImageGlyph
+    AssistantToolId.MQTT_PUBLISH -> LinkGlyph
     AssistantToolId.MQTT_READ -> LinkGlyph
     AssistantToolId.PROFILE_INFORMATION -> DeviceGlyph
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> LinkGlyph
@@ -58,6 +61,7 @@ internal fun AssistantToolId.hint(): Int = when (this) {
     AssistantToolId.WEB_SEARCH -> R.string.tool_search_hint
     AssistantToolId.READ_PAGE -> R.string.tool_read_hint
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image_hint
+    AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish_hint
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read_hint
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information_hint
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> R.string.tool_tunnels_hint
@@ -73,6 +77,7 @@ internal fun AssistantToolId.progress(): Int = when (this) {
     AssistantToolId.WEB_SEARCH -> R.string.tool_search_progress
     AssistantToolId.READ_PAGE -> R.string.tool_read_progress
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image_progress
+    AssistantToolId.MQTT_PUBLISH -> R.string.tool_mqtt_publish_progress
     AssistantToolId.MQTT_READ -> R.string.tool_mqtt_read_progress
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information_progress
     AssistantToolId.START_TUNNEL -> R.string.tool_start_tunnel_progress

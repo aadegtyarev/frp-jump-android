@@ -22,10 +22,13 @@ data class MqttTarget(val profile: String, val connectionId: String)
 /** How a message that left the phone ended: the broker confirmed it, or nothing more is known (QoS 0, MQTT 3.1.1). */
 enum class MqttDelivery { ACCEPTED, UNCONFIRMED }
 
-/** What the MQTT write operations need of one open session: its own members, unchanged. */
-interface MqttWriteSession {
-    /** Answers once, on the session's thread. */
+/** What publication needs of an open session. */
+fun interface MqttPublishSession {
     fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit)
+}
+
+/** What the MQTT write operations need of one open session: its own members, unchanged. */
+interface MqttWriteSession : MqttPublishSession {
     fun ownsWbWrites(owner: WbWriteOwner?): Boolean
     fun wbWritable(control: WbControl): Boolean
     fun history(path: MqttPath): List<TopicValue>
@@ -34,8 +37,11 @@ interface MqttWriteSession {
 }
 
 /** What the MQTT write operations need of the app: the open session of [target]; null when there is none. */
-interface MqttWriteHost {
-    fun session(target: MqttTarget): MqttWriteSession?
+fun interface MqttPublishHost {
+    fun session(target: MqttTarget): MqttPublishSession?
+}
+interface MqttWriteHost : MqttPublishHost {
+    override fun session(target: MqttTarget): MqttWriteSession?
 }
 
 /** Maps every [PublishAnswer] case to a result. A refusal means nothing was sent; the other failures happened after the send. */
@@ -65,10 +71,11 @@ data class MqttPublishInput(val target: MqttTarget, val request: PublishRequest)
  * the phone cannot be taken back, so cancelling the caller only stops the wait. What a sent message is remembered for stays with the
  * caller (the ViewModel's scope), not here. UI only.
  */
-class MqttPublish(private val host: MqttWriteHost) : Operation<MqttPublishInput, MqttDelivery> {
+class MqttPublish(private val host: MqttPublishHost) : Operation<MqttPublishInput, MqttDelivery> {
     override val name = "mqtt_publish"
     override val effect = Effect.CHANGE_REMOTE
-    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.CONNECTION_CHANGE
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.MQTT_PUBLISH
+    override fun target(input: MqttPublishInput) = ru.adsrv.frpjump.settings.GrantTarget(input.target.profile, input.target.connectionId)
 
     override suspend fun invoke(input: MqttPublishInput): OpResult<MqttDelivery> {
         val session = host.session(input.target) ?: return OpResult.Refused(MqttWriteRefusal.NotConnected())

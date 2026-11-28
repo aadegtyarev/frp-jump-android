@@ -21,19 +21,17 @@ private const val PAYLOAD_BYTES = 512
 
 class AssistantMqttRead(private val tunnels: AssistantTunnels, private val sessions: MqttSessions, private val hidden: StateFlow<Set<String>>,
     private val localPort: (ru.adsrv.frpjump.ops.tunnel.SavedTunnel) -> Int?) {
+    private val connected = ConnectedMqtt(tunnels, sessions, hidden, localPort)
     internal val operation = MqttRead { input ->
         val target = tunnels.find(input.ids)
         if (target == null || target.kind != PortKind.MQTT) OpResult.Refused(MqttReadRefusal.TargetUnavailable)
         else {
-            val session = sessions.find(target.profileId, target.connectionId)
-            val pin = tunnels.pin(input.ids)
-            fun valid() = pin != null && tunnels.pin(input.ids) == pin && tunnels.find(input.ids) == target && tunnels.isOn(target) && session != null &&
-                session.device == target.device && session.port == target.port && localPort(target) == session.localPort && sessions.find(target.profileId, target.connectionId) === session &&
-                session.state.value is MqttState.Open && !sessionHidden(hidden.value, SessionKind.MQTT, session.id, target.ref)
-            if (!valid()) OpResult.Refused(MqttReadRefusal.NotConnected)
+            val pin = connected.pin(input.ids)
+            if (pin == null) OpResult.Refused(MqttReadRefusal.NotConnected)
             else {
-                val values = session!!.tree.values(filterLevels(input.filter), ITEMS + 1)
-                if (!valid()) OpResult.Refused(MqttReadRefusal.NotConnected)
+                val session = pin.session
+                val values = session.tree.values(filterLevels(input.filter), ITEMS + 1)
+                if (!connected.valid(pin)) OpResult.Refused(MqttReadRefusal.NotConnected)
                 else OpResult.Done(MqttReadSnapshot(values, session.dropped.value, session.cacheDropped.value))
             }
         }

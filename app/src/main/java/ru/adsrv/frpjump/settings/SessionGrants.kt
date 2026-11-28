@@ -100,6 +100,8 @@ class SessionGrants(private val world: GrantWorld = GrantWorld.None) {
     /** Whether [tool] is in effect now. */
     fun inEffect(tool: AssistantToolId): Boolean = world.inEffect(tool)
 
+    fun toolOffCount(tool: AssistantToolId): Long = world.toolOffs(tool)
+
     /** The grantable tools of [tool]'s class that are in effect now: what a For session answer on a card of [tool] covers. Empty for a tool that is not grantable. */
     fun coverableBy(tool: AssistantToolId): Set<AssistantToolId> =
         if (!tool.grantable) emptySet() else AssistantToolId.entries.filter { it.grantable && it.actionClass == tool.actionClass && world.inEffect(it) }.toSet()

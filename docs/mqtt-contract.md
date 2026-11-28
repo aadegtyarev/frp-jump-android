@@ -182,6 +182,8 @@ These are logical per-session owned-data charges, not an exact heap bound.
 UI reader snapshots, transient copies and the MQTT library decoder are not
 covered by this counter; budgets of simultaneously open sessions add up.
 
+The assistant's optional `mqtt_publish` tool uses the existing publisher for one explicitly requested text message through the connected explorer; its confirmation shows the exact topic, payload, QoS and retain, including retained-value deletion. It never opens a session or subscribes. [Assistant](agent-contract.md) owns its authorization and dispatch checks.
+
 The assistant's optional `mqtt_read` tool reads bounded current values already held by the connected explorer, using the same MQTT filter matching as the tree. It starts no session or subscription and sends private values to the configured model provider only when the owner enables it. [Assistant](agent-contract.md) owns the tool's limits, disclosure and admission.
 
 ## Subscriptions

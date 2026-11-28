@@ -92,6 +92,7 @@ internal fun sessionLineRes(cover: GrantCover): Int = when (cover) {
     GrantCover.COMMANDS -> R.string.connection_assistant_sheet_session
     GrantCover.INPUT -> R.string.connection_assistant_sheet_session_input
     GrantCover.BOTH -> R.string.connection_assistant_sheet_session_both
+    GrantCover.MQTT -> R.string.connection_assistant_sheet_session_mqtt
 }
 
 /** The sheet's line of a remembered "For this connection" permission, by what it covers. */
@@ -99,4 +100,5 @@ internal fun connectionLineRes(cover: GrantCover): Int = when (cover) {
     GrantCover.COMMANDS -> R.string.connection_assistant_sheet_connection
     GrantCover.INPUT -> R.string.connection_assistant_sheet_connection_input
     GrantCover.BOTH -> R.string.connection_assistant_sheet_connection_both
+    GrantCover.MQTT -> R.string.connection_assistant_sheet_connection_mqtt
 }

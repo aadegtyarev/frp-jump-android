@@ -299,7 +299,7 @@ class ConnectionGrantsTest {
             if (withSession) session.record(GrantKey(ActionClass.CONNECTION_CHANGE, target), ssh, session.stamp(target)!!, session.coverableBy(ssh))
             if (withPersistent) r.give()
             val asks = tool.effect.changes && tool.confirms
-            val waived = global == ConfirmationMode.OFF || ((withSession || withPersistent) && tool.grantable)
+            val waived = global == ConfirmationMode.OFF || ((withSession || withPersistent) && tool.grantable && tool.actionClass == ActionClass.CONNECTION_CHANGE)
             assertEquals("${tool.name} global=$global session=$withSession persistent=$withPersistent", asks && !waived, mustAsk(tool, k, ConfirmationPolicy(global = global), session, r.grants))
         }
     }

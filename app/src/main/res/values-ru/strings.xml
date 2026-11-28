@@ -1685,4 +1685,21 @@
     <string name="chat_work_collapsed">Свёрнуто</string>
     <string name="chat_checked_tunnels">Проверка устройств и туннелей</string>
     <string name="chat_checked_terminals">Открытые вкладки терминала</string>
+    <string name="action_class_mqtt_publish">Публикация MQTT</string>
+    <string name="tool_mqtt_publish">Публикация MQTT</string>
+    <string name="tool_mqtt_publish_hint">Публикует сообщение через открытую MQTT-сессию; может изменить устройство.</string>
+    <string name="tool_mqtt_publish_progress">Публикация MQTT…</string>
+    <string name="confirm_mqtt_title">Опубликовать сообщение MQTT?</string>
+    <string name="confirm_mqtt_topic">Топик</string>
+    <string name="confirm_mqtt_payload">Сообщение</string>
+    <string name="confirm_mqtt_qos">QoS</string>
+    <string name="confirm_mqtt_retain">Сохранять</string>
+    <string name="confirm_mqtt_yes">Да</string>
+    <string name="confirm_mqtt_no">Нет</string>
+    <string name="confirm_mqtt_clear">Пустое сохраняемое сообщение удалит сохранённое значение на брокере.</string>
+    <string name="confirm_mqtt_empty">Пустое сообщение</string>
+    <string name="confirm_mqtt_warning">Публикация может изменить устройство.</string>
+    <string name="confirm_mqtt_remember_hint">Для сессии — публикации MQTT до отключения или переподключения к брокеру. Для подключения — пока его не изменят. Отменить: метка на карточке туннеля.</string>
+    <string name="connection_assistant_sheet_session_mqtt">Для сессии: публикации MQTT.</string>
+    <string name="connection_assistant_sheet_connection_mqtt">Для подключения: публикации MQTT (с %1$s).</string>
 </resources>
