@@ -7,6 +7,15 @@ import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.assistant.ChatHistoryProblem
 
 class ChatProjectionTest {
+    @Test fun `execution marker survives encrypted history projection and old results remain unknown`() {
+        val saved = SavedResult("c", "web_search", "value", "FAILED", started = true)
+        val encoded = kotlinx.serialization.json.Json.encodeToString(SavedResult.serializer(), saved)
+        val restored = kotlinx.serialization.json.Json.decodeFromString(SavedResult.serializer(), encoded)
+        assertEquals(true, restored.started)
+        val legacy = kotlinx.serialization.json.Json.decodeFromString(SavedResult.serializer(), """{"callId":"c","name":"web_search","text":"value","outcome":"FAILED"}""")
+        assertEquals(null, legacy.started)
+    }
+
     private fun turn(user: String, status: SavedTurnState, answer: String = "", problem: String? = null, problemStatus: Int? = null) =
         SavedTurn(user, listOf(SavedExchange(SavedReply(answer))), status = status, problem = problem, problemStatus = problemStatus)
     private fun project(value: SavedChat, archive: Boolean, running: Boolean, previous: ChatState = ChatState()) =

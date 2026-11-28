@@ -187,10 +187,9 @@ class AssistantToolCatalogTest {
     private val saved = AssistantProviderSnapshot(AssistantProviderSettings(model = "m"), "r")
 
     /**
-     * The progress that the Calling event set, read at the next "progress" step (the FinishedTool update),
-     * i.e. before a failed result can overwrite it. Works for known and unknown names alike.
+     * The tool progress observed during a call, after authorization and argument validation.
      */
-    private fun progressSetByCalling(toolName: String, arguments: JsonObject): ChatToolProgress? = runBlocking {
+    private fun progressSetDuringCall(toolName: String, arguments: JsonObject): ChatToolProgress? = runBlocking {
         val settings = SettingsStore(MemoryStorage()).apply { update { it.copy(assistantEnabled = true, assistantSearch = true, assistantReadPage = true, assistantInspectImage = true) } }
         val calls = AtomicInteger()
         settings.assistantChat.publicWeb = PublicFetcher { _, _, _ -> throw WebException(WebFailure.NETWORK) }
@@ -204,24 +203,25 @@ class AssistantToolCatalogTest {
         try {
             chat.edit("q"); chat.send()
             withTimeout(4000) { chat.state.first { !it.busy } }
-            // seen[0] is taken before Calling's own update (empty); seen[1] before FinishedTool's update.
-            assertEquals(null, seen[0])
-            seen[1]
+            // The proposal itself shows no action; a started tool is observed before its result replaces it.
+            assertEquals(null, seen.first())
+            seen.filterIsInstance<ChatToolProgress.Tool>().singleOrNull()
         } finally { chat.close(); scope.cancel() }
     }
 
     @Test fun `a call of each tool shows that tool's progress when it starts`() {
-        assertEquals(ChatToolProgress.Tool(AssistantToolId.WEB_SEARCH), progressSetByCalling("web_search", buildJsonObject { put("query", "q") }))
-        assertEquals(ChatToolProgress.Tool(AssistantToolId.READ_PAGE), progressSetByCalling("read_page", buildJsonObject { put("url", "https://public.org/a") }))
-        assertEquals(ChatToolProgress.Tool(AssistantToolId.INSPECT_IMAGE), progressSetByCalling("inspect_image", buildJsonObject { put("url", "https://public.org/a.png"); put("question", "q") }))
-        // These two are not offered in this fixture (no owners); Calling still names the tool before the call is refused.
-        assertEquals(ChatToolProgress.Tool(AssistantToolId.PROFILE_INFORMATION), progressSetByCalling("profile_information", buildJsonObject { }))
-        assertEquals(ChatToolProgress.Tool(AssistantToolId.SSH_COMMAND), progressSetByCalling("ssh_command", buildJsonObject { }))
+        assertEquals(ChatToolProgress.Tool(AssistantToolId.WEB_SEARCH), progressSetDuringCall("web_search", buildJsonObject { put("query", "q") }))
+        assertEquals(ChatToolProgress.Tool(AssistantToolId.READ_PAGE), progressSetDuringCall("read_page", buildJsonObject { put("url", "https://public.org/a") }))
+        assertEquals(ChatToolProgress.Tool(AssistantToolId.INSPECT_IMAGE), progressSetDuringCall("inspect_image", buildJsonObject { put("url", "https://public.org/a.png"); put("question", "q") }))
+        // These tools are not offered in this fixture; their proposals do not start.
+        assertNull(progressSetDuringCall("profile_information", buildJsonObject { }))
+        assertNull(progressSetDuringCall("ssh_command", buildJsonObject { }))
+        assertNull(progressSetDuringCall("read_page", buildJsonObject { }))
     }
 
-    @Test fun `a call with an unknown tool name shows the failed progress when it starts`() {
-        assertEquals(ChatToolProgress.FAILED, progressSetByCalling("not_a_tool", buildJsonObject { }))
-        assertEquals(ChatToolProgress.FAILED, progressSetByCalling("WEB_SEARCH", buildJsonObject { put("query", "q") }))
+    @Test fun `unknown proposals do not show running progress`() {
+        assertNull(progressSetDuringCall("not_a_tool", buildJsonObject { }))
+        assertNull(progressSetDuringCall("WEB_SEARCH", buildJsonObject { put("query", "q") }))
     }
 
     @Test fun `progress values compare by tool`() {

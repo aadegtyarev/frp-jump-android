@@ -228,6 +228,7 @@ internal fun AssistantChatContent(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (turn.unanswered) Text(stringResource(R.string.chat_unanswered), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_unanswered"))
                                 else if (turn.interrupted) Text(stringResource(R.string.chat_interrupted), color = AppTheme.colors.muted)
+                                ChatWorkSteps(remember(turn.receipts) { workSteps(turn.receipts) }, collapsed = true, identity = turn)
                                 val answer = remember(turn.answer, turn.receipts) { referenceAnswer(turn.answer, turn.receipts) }
                                 SelectionContainer { AssistantAnswerMarkdown(answer.text) }
                                 answer.references.forEach { reference ->
@@ -254,8 +255,10 @@ internal fun AssistantChatContent(
                     Column(verticalArrangement = Arrangement.spacedBy(PART_GAP)) {
                         ChatEventLines(state.pendingEvents)
                         if (!state.pendingEventOnly) ChatUserMessage(text)
+                        ChatWorkSteps(remember(state.receipts) { workSteps(state.receipts) }, collapsed = false)
                         val waiting = state.confirmation != null
-                        ChatRunStatus(if (state.stopping) R.string.chat_stopping else if (waiting) R.string.confirm_waiting else R.string.chat_waiting, spinning = !waiting)
+                        val progress = (state.toolProgress as? ChatToolProgress.Tool)?.id?.workProgress()
+                        ChatRunStatus(if (state.stopping) R.string.chat_stopping else if (waiting) R.string.confirm_waiting else progress ?: R.string.chat_waiting, spinning = !waiting)
                         ChatSources(state.currentSources)
                     }
                 } }

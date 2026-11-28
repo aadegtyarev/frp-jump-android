@@ -1,6 +1,9 @@
 package ru.adsrv.frpjump.assistant.tools
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import kotlinx.serialization.json.JsonObject
 import ru.adsrv.frpjump.agent.AgentTool
 import ru.adsrv.frpjump.agent.ToolOutput
@@ -10,6 +13,11 @@ import ru.adsrv.frpjump.assistant.chat.TypingCard
 import ru.adsrv.frpjump.ops.Effect
 import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.agent.admitSideEffect
+
+/** Presentation notification after authorization and strict parsing, before the tool body. */
+internal class ToolRunObserver(val onRun: () -> Unit) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<ToolRunObserver>
+}
 
 /**
  * One assistant tool: schema, typed parsing and an action. The pipeline is written once here:
@@ -64,6 +72,7 @@ internal abstract class AppTool<A : Any>(
     final override suspend fun execute(arguments: JsonObject): ToolOutput {
         admitSideEffect("tool-start")
         val parsed = try { parse(StrictArgs(arguments)) } catch (_: InvalidArguments) { return invalidArguments }
+        currentCoroutineContext()[ToolRunObserver]?.onRun?.invoke()
         return try { run(parsed) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { failure(error) }

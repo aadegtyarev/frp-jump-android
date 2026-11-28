@@ -67,6 +67,22 @@ class AssistantToolPipelineTest {
         }
     }
 
+    @Test fun `run observer fires only after valid arguments and before action`() = runBlocking {
+        for (case in cases(Probe()).filter { it.tool is AppTool<*> }) {
+            var observed = false
+            val invalid = Probe()
+            withContext(invalid.admission + ToolRunObserver { observed = true }) { case.tool.execute(case.invalid) }
+            assertFalse(case.name, observed)
+            val valid = Probe()
+            try {
+                withContext(valid.admission + ToolRunObserver { observed = true; throw CancellationException("stop") }) { case.tool.execute(case.valid) }
+                fail(case.name)
+            } catch (_: CancellationException) { }
+            assertTrue(case.name, observed)
+            assertEquals(listOf("tool-start"), valid.categories)
+        }
+    }
+
     @Test fun `invalid arguments of an owned call return the fixed text without any effect`() = runBlocking {
         val probe = Probe()
         for (case in cases(probe)) {

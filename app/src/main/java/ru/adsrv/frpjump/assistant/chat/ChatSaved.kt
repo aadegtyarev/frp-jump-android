@@ -21,9 +21,10 @@ import ru.adsrv.frpjump.assistant.tools.*
 @Serializable internal data class SavedResult(val callId: String, val name: String, val text: String, val outcome: String, val omittedChars: Int = 0,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val references: List<SavedReference> = emptyList(),
     @Transient val original: ToolResult? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val started: Boolean? = null,
     /** Why this call ran without a question (memory only: never written, so a conversation restored from the saved history shows none). */
     @Transient val noQuestion: ru.adsrv.frpjump.settings.NoQuestion? = null) {
-    @Transient val chars = callId.length.toLong() + name.length + text.length + references.sumOf { it.token.length + it.label.length + (it.tunnel?.let { t -> t.profileId.length + t.connectionId.length + t.device.length + t.kind.length + 8 } ?: 0) }
+    @Transient val chars = callId.length.toLong() + name.length + text.length + (if (started == null) 0 else 5) + references.sumOf { it.token.length + it.label.length + (it.tunnel?.let { t -> t.profileId.length + t.connectionId.length + t.device.length + t.kind.length + 8 } ?: 0) }
     /** An outcome name this version does not know (written by a newer one) reads as a failure: not success, not declined. */
     fun value() = original ?: ToolResult(callId, name, text, ToolOutcome.entries.firstOrNull { it.name == outcome } ?: ToolOutcome.FAILED, omittedChars, references.map { ToolReference(it.token, label = it.label, tunnel = it.tunnel?.value()) })
     companion object { fun of(value: ToolResult) = SavedResult(value.callId, value.name, value.text, value.outcome.name, value.omittedChars, value.references.map { SavedReference(it.token, it.label, it.tunnel?.let(SavedTunnelReference::of)) }, value) }
@@ -80,7 +81,7 @@ import ru.adsrv.frpjump.assistant.tools.*
     fun view(): ChatTurn {
         val receipts = exchanges.flatMap { exchange -> exchange.reply.calls.map { call ->
             val saved = exchange.results.firstOrNull { it.callId == call.id }
-            ChatToolReceipt(call.value(), saved?.value(), saved?.noQuestion)
+            ChatToolReceipt(call.value(), saved?.value(), saved?.noQuestion, saved?.started)
         } }
         val failures = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.outcome != ToolOutcome.SUCCESS && it.outcome != ToolOutcome.DECLINED }?.let { result ->
             ChatToolFailure(result, if (receipt.call.name == AssistantToolId.WEB_SEARCH.wire) try { StrictArgs(receipt.call.arguments).optionalString("query", 256, allowBlank = true) } catch (_: InvalidArguments) { null } else null)

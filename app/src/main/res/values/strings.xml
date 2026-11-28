@@ -1622,4 +1622,14 @@
     <string name="tool_mqtt_read">Read MQTT messages</string>
     <string name="tool_mqtt_read_hint">Private MQTT messages from an open explorer go to the configured provider.</string>
     <string name="tool_mqtt_read_progress">Reading MQTT messages</string>
+    <string name="chat_work_title">Work done</string>
+    <string name="chat_work_done">Done</string>
+    <string name="chat_work_failed">Failed</string>
+    <string name="chat_work_timeout">Timed out</string>
+    <string name="chat_checking_tunnels">Checking devices and tunnels…</string>
+    <string name="chat_checking_terminals">Looking at open terminal tabs…</string>
+    <string name="chat_work_expanded">Expanded</string>
+    <string name="chat_work_collapsed">Collapsed</string>
+    <string name="chat_checked_tunnels">Devices and tunnels</string>
+    <string name="chat_checked_terminals">Open terminal tabs</string>
 </resources>
